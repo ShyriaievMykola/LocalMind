@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/LocalMind.App/LocalMind.App.csproj" />
+    <Project Path="src/LocalMind.Cli/LocalMind.Cli.csproj" />
+    <Project Path="src/LocalMind.Core/LocalMind.Core.csproj" />
+    <Project Path="src/LocalMind.Search/LocalMind.Search.csproj" />
+    <Project Path="src/LocalMind.Server/LocalMind.Server.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/LocalMind.Core.Tests/LocalMind.Core.Tests.csproj" />
+    <Project Path="tests/LocalMind.Search.Tests/LocalMind.Search.Tests.csproj" />
+    <Project Path="tests/LocalMind.Server.Tests/LocalMind.Server.Tests.csproj" />
+  </Folder>
+</Solution>

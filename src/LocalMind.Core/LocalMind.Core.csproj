@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Моделі, контракти, ingestion (парсинг, chunking), локальне сховище SQLite, клієнт бекапу. -->
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="LocalMind.Core.Tests" />
+  </ItemGroup>
+
+</Project>

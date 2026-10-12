@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Консольна утиліта: index / search / eval. Прототип тижнів 1–2 і eval-раннер для експериментів. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>localmind</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\LocalMind.Core\LocalMind.Core.csproj" />
+    <ProjectReference Include="..\LocalMind.Search\LocalMind.Search.csproj" />
+  </ItemGroup>
+
+</Project>
