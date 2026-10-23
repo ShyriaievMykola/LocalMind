@@ -235,3 +235,5 @@ SourceFolder 1 ──── * Document 1 ──── * Chunk 1 ──── 0..
 | Приймальний | Сценарії з [acceptance-cases.md](acceptance-cases.md) | Авто + ручний прогін |
 
 Компоненти з важкими залежностями (ONNX-модель, БД) у юніт-тестах замінюються фейками через інтерфейси `Core/Abstractions`.
+Фейки (`FakeEmbedder`, `FakeTokenCounter`, `InMemoryDocumentRepository`, `InMemoryKeywordIndex`) і фабрики `TestData`
+лежать у `tests/LocalMind.TestUtilities` — спільні для всіх тестових проєктів і не враховуються в покритті.

@@ -1,0 +1,13 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Фейкові реалізації інтерфейсів ядра і фабрики тестових даних — спільні для всіх тестових проєктів. -->
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\LocalMind.Core\LocalMind.Core.csproj" />
+  </ItemGroup>
+
+</Project>

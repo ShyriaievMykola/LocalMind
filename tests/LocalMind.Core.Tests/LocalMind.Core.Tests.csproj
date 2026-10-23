@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\LocalMind.Core\LocalMind.Core.csproj" />
+    <ProjectReference Include="..\LocalMind.TestUtilities\LocalMind.TestUtilities.csproj" />
   </ItemGroup>
 
   <ItemGroup>
