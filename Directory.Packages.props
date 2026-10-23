@@ -15,6 +15,8 @@
 
   <ItemGroup Label="Server">
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.10" />
+    <!-- Явно піднята транзитивна залежність: 2.0.0 має вразливість GHSA-v5pm-xwqc-g5wc, виправлено в 2.7.5. -->
+    <PackageVersion Include="Microsoft.OpenApi" Version="2.7.5" />
   </ItemGroup>
 
   <ItemGroup Label="Tests">
