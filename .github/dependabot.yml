@@ -1,0 +1,47 @@
+version: 2
+
+updates:
+  # NuGet-пакети. Версії задані централізовано в Directory.Packages.props у корені.
+  - package-ecosystem: nuget
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: Europe/Kyiv
+    open-pull-requests-limit: 5
+    labels:
+      - type:chore
+      - area:infra
+    commit-message:
+      prefix: "deps"
+    # Пов'язані пакети оновлюємо одним PR, щоб версії не розʼїжджались.
+    groups:
+      avalonia:
+        patterns:
+          - "Avalonia*"
+      aspnetcore:
+        patterns:
+          - "Microsoft.AspNetCore.*"
+          - "Microsoft.OpenApi"
+      tests:
+        patterns:
+          - "xunit*"
+          - "Microsoft.NET.Test.Sdk"
+          - "coverlet.*"
+
+  # Версії actions у .github/workflows.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: Europe/Kyiv
+    labels:
+      - type:chore
+      - area:infra
+    commit-message:
+      prefix: "deps"
+    groups:
+      actions:
+        patterns:
+          - "*"
