@@ -3,6 +3,13 @@
   <!-- Моделі, контракти, ingestion (парсинг, chunking), локальне сховище SQLite, клієнт бекапу. -->
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="LocalMind.Core.Tests" />
   </ItemGroup>
 
