@@ -10,5 +10,6 @@
     <Project Path="tests/LocalMind.Core.Tests/LocalMind.Core.Tests.csproj" />
     <Project Path="tests/LocalMind.Search.Tests/LocalMind.Search.Tests.csproj" />
     <Project Path="tests/LocalMind.Server.Tests/LocalMind.Server.Tests.csproj" />
+    <Project Path="tests/LocalMind.TestUtilities/LocalMind.TestUtilities.csproj" />
   </Folder>
 </Solution>
