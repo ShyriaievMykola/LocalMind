@@ -1,0 +1,33 @@
+name: Зауваження з чекпоінту
+description: Зворотний зв'язок від викладача — закрити до наступного чекпоінту
+labels: ["feedback"]
+body:
+  - type: input
+    id: checkpoint
+    attributes:
+      label: Чекпоінт
+      placeholder: Зріз 0 / Чекпоінт 1 / …
+    validations:
+      required: true
+
+  - type: textarea
+    id: remark
+    attributes:
+      label: Зауваження
+      description: Що саме сказали — максимально близько до оригіналу.
+    validations:
+      required: true
+
+  - type: textarea
+    id: plan
+    attributes:
+      label: Що робимо
+      description: Як плануємо виправити. Якщо потрібно кілька задач — створи окремі issue і вкажи їх тут.
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        Зауваження з чекпоінтів мають бути закриті до наступного етапу (критерій A3).
+        Признач milestone наступного чекпоінту.

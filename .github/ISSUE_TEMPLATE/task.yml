@@ -1,0 +1,51 @@
+name: Задача
+description: Нова задача з беклогу або така, що з'явилась під час роботи
+body:
+  - type: input
+    id: backlog-id
+    attributes:
+      label: ID з беклогу
+      description: Якщо задача є в беклозі (наприклад, I-02). Інакше залиш порожнім.
+      placeholder: I-02
+
+  - type: textarea
+    id: what
+    attributes:
+      label: Що зробити
+      description: Коротко і конкретно — що саме має з'явитися або змінитися.
+    validations:
+      required: true
+
+  - type: textarea
+    id: done
+    attributes:
+      label: Готово, коли…
+      description: Перевірювані умови завершення. Задача без тестів не вважається готовою.
+      placeholder: |
+        - [ ] …
+        - [ ] Є тести
+    validations:
+      required: true
+
+  - type: input
+    id: depends
+    attributes:
+      label: Залежить від
+      description: Номери issue, які мають бути завершені раніше.
+      placeholder: "#12, #15"
+
+  - type: dropdown
+    id: size
+    attributes:
+      label: Розмір
+      options:
+        - S — до півдня
+        - M — 1–2 дні
+        - L — 3–4 дні (бажано розбити на кілька PR)
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        Не забудь: мітки `area:*` і `type:*`, виконавець (Assignees), а в PR — `Closes #<номер>`.
