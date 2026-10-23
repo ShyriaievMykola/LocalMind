@@ -27,8 +27,11 @@ public interface IDocumentRepository
     /// <summary>Фрагменти за ідентифікаторами; відсутні ідентифікатори пропускаються.</summary>
     Task<IReadOnlyList<Chunk>> GetChunksAsync(IReadOnlyCollection<Guid> chunkIds, CancellationToken cancellationToken = default);
 
-    /// <summary>Усі збережені вектори поточної моделі — для заповнення <see cref="IVectorIndex"/> під час запуску.</summary>
-    IAsyncEnumerable<ChunkVector> GetVectorsAsync(CancellationToken cancellationToken = default);
+    /// <summary>Усі збережені вектори вказаної моделі — для заповнення <see cref="IVectorIndex"/> під час запуску.</summary>
+    /// <param name="modelName">Назва моделі (<see cref="IEmbedder.ModelName"/>); вектори інших моделей пропускаються.</param>
+    /// <param name="cancellationToken">Скасування операції.</param>
+    /// <returns>Вектори моделі; порожня послідовність, якщо для цієї моделі ще нічого не збережено.</returns>
+    IAsyncEnumerable<ChunkVector> GetVectorsAsync(string modelName, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Зберігає документ з фрагментами і векторами <b>в одній транзакції</b>. Якщо документ із тим самим
@@ -37,13 +40,20 @@ public interface IDocumentRepository
     /// <param name="document">Документ.</param>
     /// <param name="chunks">Фрагменти документа; порожній список для документів без тексту або з помилкою.</param>
     /// <param name="vectors">Вектори фрагментів у тому самому порядку, що й <paramref name="chunks"/>.</param>
+    /// <param name="modelName">
+    /// Модель, якою обчислено <paramref name="vectors"/> (<see cref="IEmbedder.ModelName"/>).
+    /// Якщо такої моделі ще немає у сховищі, вона реєструється автоматично.
+    /// </param>
     /// <param name="cancellationToken">Скасування операції.</param>
     /// <returns>Ідентифікатори замінених (видалених) фрагментів — щоб прибрати їх із <see cref="IVectorIndex"/>.</returns>
-    /// <exception cref="ArgumentException">Кількість векторів не збігається з кількістю фрагментів.</exception>
+    /// <exception cref="ArgumentException">
+    /// Кількість векторів не збігається з кількістю фрагментів або порожня назва моделі.
+    /// </exception>
     Task<IReadOnlyList<Guid>> SaveAsync(
         Document document,
         IReadOnlyList<Chunk> chunks,
         IReadOnlyList<ReadOnlyMemory<float>> vectors,
+        string modelName,
         CancellationToken cancellationToken = default);
 
     /// <summary>Видаляє документ разом із фрагментами і векторами.</summary>
