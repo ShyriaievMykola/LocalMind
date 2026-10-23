@@ -27,6 +27,9 @@ updates:
         patterns:
           - "Microsoft.AspNetCore.*"
           - "Microsoft.OpenApi"
+      extensions:
+        patterns:
+          - "Microsoft.Extensions.*"
       tests:
         patterns:
           - "xunit*"
