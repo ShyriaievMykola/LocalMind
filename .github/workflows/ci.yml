@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Новий push у ту саму гілку / PR скасовує попередній запуск.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  build-test:
+    name: build & test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Падіння на одній ОС не зупиняє інші — видно, де саме проблема.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 10.0.x — найновіший SDK 10; global.json (rollForward: latestFeature) його приймає.
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore LocalMind.slnx
+
+      # GitHub Actions задає CI=true, тому попередження тут — помилки (Directory.Build.props).
+      - name: Build
+        run: dotnet build LocalMind.slnx --no-restore --configuration Release
+
+      - name: Test
+        run: >-
+          dotnet test LocalMind.slnx --no-build --configuration Release
+          --collect:"XPlat Code Coverage" --results-directory TestResults
+
+      - name: Upload coverage
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: TestResults/**/coverage.cobertura.xml
+          if-no-files-found: ignore
