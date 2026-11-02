@@ -9,20 +9,6 @@ namespace LocalMind.Core.Ingestion.Parsers;
 /// </summary>
 public sealed class PlainTextParser : IDocumentParser
 {
-    private const long DefaultMaxFileSizeBytes = 10 * 1024 * 1024; // 10 MB
-
-    private readonly long _maxFileSizeBytes;
-
-    public PlainTextParser(long maxFileSizeBytes = DefaultMaxFileSizeBytes)
-    {
-        if (maxFileSizeBytes <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(maxFileSizeBytes), "Розмір файлу повинен бути більшим за 0.");
-        }
-
-        _maxFileSizeBytes = maxFileSizeBytes;
-    }
-
     public IReadOnlySet<string> SupportedExtensions { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         ".txt"
@@ -32,26 +18,13 @@ public sealed class PlainTextParser : IDocumentParser
     {
         ArgumentNullException.ThrowIfNull(content);
 
-        if (content.CanSeek)
+        if (content.CanSeek && content.Length == 0)
         {
-            if (content.Length == 0)
-            {
-                return new ParsedDocument(string.Empty);
-            }
-
-            if (content.Length > _maxFileSizeBytes)
-            {
-                throw new InvalidOperationException($"Розмір файлу перевищує максимально допустимий ліміт ({_maxFileSizeBytes} байт).");
-            }
+            return new ParsedDocument(string.Empty);
         }
 
         using var memoryStream = new MemoryStream();
         await content.CopyToAsync(memoryStream, cancellationToken);
-
-        if (memoryStream.Length > _maxFileSizeBytes)
-        {
-            throw new InvalidOperationException($"Розмір файлу перевищує максимально допустимий ліміт ({_maxFileSizeBytes} байт).");
-        }
 
         var bytes = memoryStream.ToArray();
 
