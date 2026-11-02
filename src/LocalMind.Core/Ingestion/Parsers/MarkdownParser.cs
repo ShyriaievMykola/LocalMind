@@ -1,7 +1,9 @@
 using System.Text;
+using System.Text.RegularExpressions;
 using LocalMind.Core.Abstractions;
 using LocalMind.Core.Models;
 using Markdig;
+using Markdig.Extensions.Mathematics;
 using Markdig.Extensions.Yaml;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
@@ -71,7 +73,7 @@ public sealed class MarkdownParser : IDocumentParser
             ProcessBlock(block, builder);
         }
 
-        var resultText = builder.ToString().Replace("\r\n", "\n").Trim();
+        var resultText = builder.ToString().Replace("\r\n", "\n").Replace("\r", "\n").Trim();
 
         return new ParsedDocument(resultText, title);
     }
@@ -81,6 +83,16 @@ public sealed class MarkdownParser : IDocumentParser
         switch (block)
         {
             case YamlFrontMatterBlock:
+                break;
+
+            case HtmlBlock htmlBlock:
+                var rawHtml = htmlBlock.Lines.ToString();
+                var strippedHtml = Regex.Replace(rawHtml, "<.*?>", string.Empty);
+                if (!string.IsNullOrWhiteSpace(strippedHtml))
+                {
+                    EnsureNewLine(builder);
+                    builder.AppendLine(strippedHtml.Trim());
+                }
                 break;
 
             case LeafBlock leafBlock:
@@ -129,6 +141,18 @@ public sealed class MarkdownParser : IDocumentParser
                     sb.Append(code.Content);
                     break;
 
+                case AutolinkInline autolink:
+                    sb.Append(autolink.Url);
+                    break;
+
+                case HtmlEntityInline htmlEntity:
+                    sb.Append(htmlEntity.Transcoded);
+                    break;
+
+                case MathInline math:
+                    sb.Append(math.Content);
+                    break;
+
                 case LineBreakInline:
                     sb.Append('\n');
                     break;
@@ -146,7 +170,7 @@ public sealed class MarkdownParser : IDocumentParser
 
     private static void EnsureNewLine(StringBuilder builder)
     {
-        if (builder.Length > 0 && !builder.ToString().EndsWith('\n'))
+        if (builder.Length > 0 && builder[builder.Length - 1] != '\n')
         {
             builder.AppendLine();
         }
