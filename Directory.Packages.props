@@ -27,6 +27,10 @@
     <PackageVersion Include="Microsoft.OpenApi" Version="2.13.0" />
   </ItemGroup>
 
+  <ItemGroup Label="Ingestion">
+    <PackageVersion Include="Markdig" Version="0.40.0" />
+  </ItemGroup>
+
   <ItemGroup Label="Tests">
     <PackageVersion Include="Microsoft.Extensions.Configuration" Version="10.0.13" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.13" />
