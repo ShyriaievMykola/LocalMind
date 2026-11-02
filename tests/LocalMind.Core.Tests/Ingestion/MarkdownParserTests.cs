@@ -26,6 +26,11 @@ public class MarkdownParserTests
         Assert.Contains("Features", result.Text);
         Assert.Contains("Item 1", result.Text);
         Assert.Contains("Nested item", result.Text);
+        Assert.Contains("Header A", result.Text);
+        Assert.Contains("Header B", result.Text);
+        Assert.Contains("Value 1", result.Text);
+        Assert.Contains("Value 2", result.Text);
+        Assert.DoesNotContain("|", result.Text);
     }
 
     [Fact]
