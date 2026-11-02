@@ -27,6 +27,10 @@
     <PackageVersion Include="Microsoft.OpenApi" Version="2.13.0" />
   </ItemGroup>
 
+  <ItemGroup Label="Ingestion">
+    <PackageVersion Include="PdfPig" Version="0.1.9" />
+  </ItemGroup>
+
   <ItemGroup Label="Tests">
     <PackageVersion Include="Microsoft.Extensions.Configuration" Version="10.0.14" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.14" />
