@@ -2,7 +2,7 @@ using LocalMind.Core.Ingestion.Parsers;
 
 namespace LocalMind.Core.Tests.Ingestion;
 
-public class ParserTests
+public class PlainTextParserTests
 {
     private readonly PlainTextParser _parser = new();
     private readonly string _testDataPath = Path.Combine(AppContext.BaseDirectory, "TestData");
