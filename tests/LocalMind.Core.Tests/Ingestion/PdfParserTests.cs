@@ -27,14 +27,14 @@ public class PdfParserTests
         Assert.Contains("Перевірка", result.Text);
     }
     [Fact]
-    public async Task ParseAsync_MultiPagePdf_SeparatesPagesWithDoubleNewline()
+    public async Task ParseAsync_MultiplePages_SeparatesPagesWithDoubleNewline()
     {
         using var stream = OpenFixture("multipage.pdf");
 
         var result = await _parser.ParseAsync(stream);
 
         Assert.NotNull(result);
-        Assert.Contains("\n\n", result.Text);
+        Assert.Equal("Hello World! Перевірка кирилиці у PDF. ello World! Перевірка кирилиці у PDF.\n\nPage 2 Content", result.Text);
     }
 
     [Fact]
