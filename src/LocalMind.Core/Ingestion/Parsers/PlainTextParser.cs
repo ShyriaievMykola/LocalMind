@@ -18,6 +18,8 @@ public sealed class PlainTextParser : IDocumentParser
     {
         ArgumentNullException.ThrowIfNull(content);
 
+        cancellationToken.ThrowIfCancellationRequested();
+
         if (content.CanSeek && content.Length == 0)
         {
             return new ParsedDocument(string.Empty);
