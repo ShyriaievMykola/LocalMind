@@ -28,19 +28,23 @@ public sealed class DocxParser : IDocumentParser
 
         try
         {
-            using var memoryStream = new MemoryStream();
-            await content.CopyToAsync(memoryStream, cancellationToken);
-
-            cancellationToken.ThrowIfCancellationRequested();
-
-            if (memoryStream.Length == 0)
+            using var memoryStream = content.CanSeek ? null : new MemoryStream();
+            Stream documentStream = content;
+            if (memoryStream is not null)
             {
-                return new ParsedDocument(string.Empty);
+                await content.CopyToAsync(memoryStream, cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (memoryStream.Length == 0)
+                {
+                    return new ParsedDocument(string.Empty);
+                }
+
+                memoryStream.Position = 0;
+                documentStream = memoryStream;
             }
 
-            memoryStream.Position = 0;
-
-            using var document = WordprocessingDocument.Open(memoryStream, false);
+            using var document = WordprocessingDocument.Open(documentStream, false);
             var body = document.MainDocumentPart?.Document?.Body;
             if (body is null)
             {
@@ -52,10 +56,7 @@ public sealed class DocxParser : IDocumentParser
 
             cancellationToken.ThrowIfCancellationRequested();
 
-            var text = string.Join("\n", lines)
-                .Replace("\r\n", "\n")
-                .Replace("\r", "\n")
-                .Trim();
+            var text = string.Join("\n", lines).Trim();
             var title = document.PackageProperties.Title;
 
             return new ParsedDocument(text, title);
@@ -110,7 +111,11 @@ public sealed class DocxParser : IDocumentParser
                     cell.Descendants<Paragraph>()
                         .Select(ExtractText)
                         .Where(text => !string.IsNullOrWhiteSpace(text))));
-            lines.Add(string.Join("\t", cells));
+            var rowText = string.Join("\t", cells);
+            if (!string.IsNullOrWhiteSpace(rowText))
+            {
+                lines.Add(rowText);
+            }
         }
     }
 
@@ -122,7 +127,7 @@ public sealed class DocxParser : IDocumentParser
             switch (child)
             {
                 case Text runText:
-                    text.Append(runText.Text);
+                    AppendNormalizedText(text, runText.Text);
                     break;
                 case TabChar:
                     text.Append('\t');
@@ -135,5 +140,24 @@ public sealed class DocxParser : IDocumentParser
         }
 
         return text.ToString();
+    }
+
+    private static void AppendNormalizedText(StringBuilder builder, string value)
+    {
+        for (var index = 0; index < value.Length; index++)
+        {
+            if (value[index] == '\r')
+            {
+                builder.Append('\n');
+                if (index + 1 < value.Length && value[index + 1] == '\n')
+                {
+                    index++;
+                }
+            }
+            else
+            {
+                builder.Append(value[index]);
+            }
+        }
     }
 }
