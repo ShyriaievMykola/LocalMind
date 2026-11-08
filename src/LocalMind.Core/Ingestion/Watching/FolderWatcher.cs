@@ -196,30 +196,29 @@ public sealed class FolderWatcher : IDisposable
         }
     }
 
-    /// <summary>Зник файл або папка.</summary>
+        /// <summary>Зник файл або папка.</summary>
     private void OnDisappeared(string path)
     {
-        if (IsSupportedFile(path))
+        if (IsTemporaryFile(path))
         {
-            Schedule(new FolderChange(path, FolderChangeKind.FileChanged));
+            return;
         }
-        else if (!Path.HasExtension(path))
-        {
-            // Можливо, видалили папку: про файли всередині система окремо не повідомляє.
-            Schedule(new FolderChange(path, FolderChangeKind.RescanRequired));
-        }
+
+        // Після видалення вже не перевірити, чи це була папка, а її назва може містити крапку
+        // (archive.2026, v1.0). Тому все, що не є підтримуваним файлом, вважаємо можливою папкою:
+        // про файли всередині видаленої папки система окремо не повідомляє.
+        var kind = _parsers.TryGetParser(path, out _) ? FolderChangeKind.FileChanged : FolderChangeKind.RescanRequired;
+        Schedule(new FolderChange(path, kind));
     }
 
-    private bool IsSupportedFile(string path)
+    private bool IsSupportedFile(string path) => !IsTemporaryFile(path) && _parsers.TryGetParser(path, out _);
+
+    /// <summary>Тимчасові файли редакторів: <c>~$*</c>, <c>*.tmp</c>, <c>*.swp</c>.</summary>
+    private static bool IsTemporaryFile(string path)
     {
         var name = Path.GetFileName(path);
-        if (name.StartsWith(OfficeLockFilePrefix, StringComparison.Ordinal)
-            || _ignoredExtensions.Contains(Path.GetExtension(name), StringComparer.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        return _parsers.TryGetParser(path, out _);
+        return name.StartsWith(OfficeLockFilePrefix, StringComparison.Ordinal)
+            || _ignoredExtensions.Contains(Path.GetExtension(name), StringComparer.OrdinalIgnoreCase);
     }
 
     /// <summary>

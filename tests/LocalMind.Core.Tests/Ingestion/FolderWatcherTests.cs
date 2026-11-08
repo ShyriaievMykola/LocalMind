@@ -127,6 +127,37 @@ public sealed class FolderWatcherTests : IDisposable
         Assert.Contains(changes, c =>
             c.Kind == FolderChangeKind.RescanRequired && Path.GetFileName(c.Path) == "moved");
     }
+ 
+    [Theory]
+    [InlineData("archive.2026")]
+    [InlineData("v1.0")]
+    [InlineData("plain")]
+    public async Task DeleteFolder_ReportsRescan(string folderName)
+    {
+        var subfolder = Directory.CreateDirectory(Path.Combine(_folder, folderName)).FullName;
+        await File.WriteAllTextAsync(Path.Combine(subfolder, "inner.md"), "текст");
+        _watcher.Watch(_folder);
+
+        Directory.Delete(subfolder, recursive: true);
+
+        var changes = await ReadUntilAsync(folderName);
+        Assert.Contains(changes, c =>
+            c.Kind == FolderChangeKind.RescanRequired && Path.GetFileName(c.Path) == folderName);
+    }
+
+    [Fact]
+    public async Task DeleteTemporaryFile_IsNotReported()
+    {
+        var temporary = Path.Combine(_folder, "~$report.docx");
+        await File.WriteAllTextAsync(temporary, "x");
+        _watcher.Watch(_folder);
+
+        File.Delete(temporary);
+        await File.WriteAllTextAsync(Path.Combine(_folder, "marker.txt"), "x");
+
+        var changes = await ReadUntilAsync("marker.txt");
+        Assert.DoesNotContain(changes, c => Path.GetFileName(c.Path) == "~$report.docx");
+    }
 
     [Fact]
     public async Task WatcherError_ReportsRescanOfWholeFolder()
