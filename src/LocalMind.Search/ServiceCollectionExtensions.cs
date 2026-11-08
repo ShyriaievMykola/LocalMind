@@ -1,5 +1,7 @@
+using LocalMind.Core.Abstractions;
 using LocalMind.Core.Configuration;
 using LocalMind.Search.Configuration;
+using LocalMind.Search.Embeddings;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -37,6 +39,10 @@ public static class ServiceCollectionExtensions
             ServiceDescriptor.Singleton<IValidateOptions<EmbeddingModelOptions>, EmbeddingModelOptionsValidator>());
         services.TryAddEnumerable(
             ServiceDescriptor.Singleton<IValidateOptions<ChunkingOptions>, ChunkSizeWithinModelLimitValidator>());
+
+        services.TryAddSingleton<ModelTokenizer>();
+        services.TryAddSingleton<ITokenCounter, HfTokenCounter>();
+        services.TryAddSingleton<IEmbedder, OnnxEmbedder>();
 
         return services;
     }

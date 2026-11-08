@@ -14,4 +14,9 @@
     <InternalsVisibleTo Include="LocalMind.Search.Tests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" />
+    <PackageReference Include="Microsoft.ML.Tokenizers" />
+  </ItemGroup>
+
 </Project>

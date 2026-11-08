@@ -42,6 +42,11 @@
     <PackageVersion Include="PdfPig" Version="0.1.9" />
   </ItemGroup>
 
+  <ItemGroup Label="Embeddings">
+    <PackageVersion Include="Microsoft.ML.OnnxRuntime" Version="1.31.1" />
+    <PackageVersion Include="Microsoft.ML.Tokenizers" Version="2.0.1" />
+  </ItemGroup>
+
   <ItemGroup Label="Tests">
     <PackageVersion Include="Microsoft.Extensions.Configuration" Version="10.0.14" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.14" />
