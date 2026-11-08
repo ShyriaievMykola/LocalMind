@@ -1,4 +1,6 @@
+using LocalMind.Core.Abstractions;
 using LocalMind.Core.Configuration;
+using LocalMind.Core.Ingestion.Parsers;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -26,6 +28,12 @@ public static class ServiceCollectionExtensions
             .ValidateOnStart();
         services.TryAddEnumerable(
             ServiceDescriptor.Singleton<IValidateOptions<ChunkingOptions>, ChunkingOptionsValidator>());
+
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IDocumentParser, PlainTextParser>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IDocumentParser, MarkdownParser>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IDocumentParser, PdfParser>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IDocumentParser, DocxParser>());
+        services.TryAddSingleton<ParserRegistry>();
 
         return services;
     }
