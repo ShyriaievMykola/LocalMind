@@ -70,8 +70,8 @@ public sealed class InMemoryDocumentRepository : IDocumentRepository
         }
     }
 
-    /// <summary>Шлях папки без роздільника в кінці: <c>/notes/</c> і <c>/notes</c> — одна папка.</summary>
-    private static string NormalizeFolder(string path) => path.TrimEnd('/', '\\');
+    /// <summary>Шлях папки без роздільника в кінці; корінь (<c>/</c>, <c>C:\</c>) лишається без змін.</summary>
+    private static string NormalizeFolder(string path) => Path.TrimEndingDirectorySeparator(path);
 
     /// <summary>Чи лежить файл у папці; приймає обидва роздільники, щоб тести не залежали від ОС.</summary>
     private static bool IsInsideFolder(string filePath, string folderPath)
@@ -79,7 +79,7 @@ public sealed class InMemoryDocumentRepository : IDocumentRepository
         var folder = NormalizeFolder(folderPath);
         return filePath.Length > folder.Length
             && filePath.StartsWith(folder, StringComparison.Ordinal)
-            && filePath[folder.Length] is '/' or '\\';
+            && (folder[^1] is '/' or '\\' || filePath[folder.Length] is '/' or '\\');
     }
 
     public Task<IReadOnlyList<Document>> GetDocumentsAsync(CancellationToken cancellationToken = default)
