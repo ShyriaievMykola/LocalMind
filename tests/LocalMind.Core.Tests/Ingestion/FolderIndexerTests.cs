@@ -76,6 +76,58 @@ public sealed class FolderIndexerTests : IDisposable
     }
 
     [Fact]
+    public async Task Index_UnchangedBrokenFile_IsStillCountedAsFailed()
+    {
+        Write("broken.pdf", "NOT_A_PDF");
+        await _indexer.IndexAsync(_folder);
+
+        var result = await _indexer.IndexAsync(_folder);
+
+        Assert.Equal(1, result.Failed);
+        Assert.Equal(0, result.Unchanged);
+    }
+
+    [Fact]
+    public async Task Index_SameFolderInOtherCase_KeepsOneDocument()
+    {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsMacOS())
+        {
+            return; // На Linux це інша папка.
+        }
+
+        Write("a.txt", "старий текст");
+        await _indexer.IndexAsync(_folder);
+        var otherCase = Path.Combine(Path.GetDirectoryName(_folder)!, Path.GetFileName(_folder).ToUpperInvariant());
+
+        var unchanged = await _indexer.IndexAsync(otherCase);
+        Write("a.txt", "новий текст");
+        var changed = await _indexer.IndexAsync(otherCase);
+
+        Assert.Equal(1, unchanged.Unchanged);
+        Assert.Equal(0, unchanged.Removed);
+        Assert.Equal(1, changed.Indexed);
+        Assert.Equal(PathOf("a.txt"), Assert.Single(await _repository.GetDocumentsAsync()).Path);
+        Assert.Equal("новий текст", Assert.Single(_repository.AllChunks).Text);
+    }
+
+    [Fact]
+    public async Task Index_FilesDifferingOnlyInCase_AreSeparateOnLinux()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return; // На Windows і macOS це один файл.
+        }
+
+        Write("note.txt", "кава");
+        Write("NOTE.txt", "чай");
+
+        var result = await _indexer.IndexAsync(_folder);
+
+        Assert.Equal(2, result.Indexed);
+        Assert.Equal(2, (await _repository.GetDocumentsAsync()).Count);
+    }
+
+    [Fact]
     public async Task Index_EmptyFile_GetsEmptyStatus()
     {
         Write("empty.txt", string.Empty);

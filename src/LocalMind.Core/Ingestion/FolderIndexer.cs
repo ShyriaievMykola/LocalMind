@@ -18,6 +18,11 @@ public sealed partial class FolderIndexer(
     IDocumentRepository repository,
     ILogger<FolderIndexer> logger)
 {
+    // Windows і macOS за замовчуванням не розрізняють регістр у шляхах, Linux розрізняє.
+    private static readonly bool IgnorePathCase = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS();
+    private static readonly StringComparer PathComparer = IgnorePathCase ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+    private static readonly StringComparison PathComparison = IgnorePathCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
     /// <summary>Індексує всі підтримувані файли папки та її підпапок.</summary>
     /// <param name="folder">Шлях до папки.</param>
     /// <param name="progress">Отримує стан після кожного файла.</param>
@@ -43,20 +48,26 @@ public sealed partial class FolderIndexer(
             .Order(StringComparer.Ordinal)
             .ToList();
 
+        var known = (await repository.GetDocumentsAsync(cancellationToken))
+            .DistinctBy(d => d.Path, PathComparer)
+            .ToDictionary(d => d.Path, PathComparer);
+
         var result = new FolderIndexingResult();
         for (var i = 0; i < files.Count; i++)
         {
             progress?.Report(new IndexingProgress(i, files.Count, result.Failed, files[i]));
-            result = await IndexFileAsync(files[i], result, cancellationToken);
+            known.TryGetValue(files[i], out var existing);
+            result = await IndexFileAsync(files[i], existing, result, cancellationToken);
         }
 
-        result = result with { Removed = await RemoveMissingFilesAsync(root, files, cancellationToken) };
+        result = result with { Removed = await RemoveMissingFilesAsync(root, files, known.Values, cancellationToken) };
         progress?.Report(new IndexingProgress(files.Count, files.Count, result.Failed));
         return result;
     }
 
     private async Task<FolderIndexingResult> IndexFileAsync(
         string path,
+        Document? existing,
         FolderIndexingResult result,
         CancellationToken cancellationToken)
     {
@@ -72,12 +83,16 @@ public sealed partial class FolderIndexer(
         }
 
         var hash = Convert.ToHexStringLower(SHA256.HashData(content));
-        var existing = await repository.GetDocumentByPathAsync(path, cancellationToken);
         if (existing is not null && existing.ContentHash == hash)
         {
-            return result with { Unchanged = result.Unchanged + 1 };
+            // Зіпсований файл не змінився, тож він і далі не проіндексований.
+            return existing.Status == DocumentStatus.Error
+                ? result with { Failed = result.Failed + 1 }
+                : result with { Unchanged = result.Unchanged + 1 };
         }
 
+        // Той самий файл, записаний в іншому регістрі, має замінити стару версію, а не стати другим документом.
+        var storedPath = existing?.Path ?? path;
         var id = Guid.NewGuid();
         ParsedDocument parsed;
         try
@@ -89,7 +104,7 @@ public sealed partial class FolderIndexer(
         catch (DocumentParseException exception)
         {
             LogFileFailed(logger, path, exception.Message);
-            var failed = new Document(id, path, hash, DocumentStatus.Error, DateTimeOffset.UtcNow, exception.Message);
+            var failed = new Document(id, storedPath, hash, DocumentStatus.Error, DateTimeOffset.UtcNow, exception.Message);
             await repository.SaveAsync(failed, [], [], embedder.ModelName, cancellationToken);
             return result with { Failed = result.Failed + 1 };
         }
@@ -98,13 +113,13 @@ public sealed partial class FolderIndexer(
         if (chunks.Count == 0)
         {
             var status = content.Length == 0 ? DocumentStatus.Empty : DocumentStatus.NoText;
-            var empty = new Document(id, path, hash, status, DateTimeOffset.UtcNow);
+            var empty = new Document(id, storedPath, hash, status, DateTimeOffset.UtcNow);
             await repository.SaveAsync(empty, [], [], embedder.ModelName, cancellationToken);
             return result with { WithoutText = result.WithoutText + 1 };
         }
 
         var vectors = await embedder.EmbedAsync([.. chunks.Select(c => c.Text)], EmbeddingPurpose.Passage, cancellationToken);
-        var document = new Document(id, path, hash, DocumentStatus.Indexed, DateTimeOffset.UtcNow);
+        var document = new Document(id, storedPath, hash, DocumentStatus.Indexed, DateTimeOffset.UtcNow);
         await repository.SaveAsync(document, chunks, vectors, embedder.ModelName, cancellationToken);
         return result with { Indexed = result.Indexed + 1, Chunks = result.Chunks + chunks.Count };
     }
@@ -113,15 +128,16 @@ public sealed partial class FolderIndexer(
     private async Task<int> RemoveMissingFilesAsync(
         string root,
         List<string> files,
+        IEnumerable<Document> known,
         CancellationToken cancellationToken)
     {
-        var existing = files.ToHashSet(StringComparer.Ordinal);
+        var existing = files.ToHashSet(PathComparer);
         var prefix = Path.EndsInDirectorySeparator(root) ? root : root + Path.DirectorySeparatorChar;
         var removed = 0;
 
-        foreach (var document in await repository.GetDocumentsAsync(cancellationToken))
+        foreach (var document in known)
         {
-            if (document.Path.StartsWith(prefix, StringComparison.Ordinal) && !existing.Contains(document.Path))
+            if (document.Path.StartsWith(prefix, PathComparison) && !existing.Contains(document.Path))
             {
                 await repository.DeleteAsync(document.Id, cancellationToken);
                 removed++;
