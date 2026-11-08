@@ -259,7 +259,7 @@ public sealed class IndexingServiceTests : IDisposable
 
         public int Count => _vectors.Count;
 
-        public IReadOnlySet<Guid> Ids => _vectors.Keys.ToHashSet();
+        public HashSet<Guid> Ids => _vectors.Keys.ToHashSet();
 
         public void Add(Guid chunkId, ReadOnlyMemory<float> vector) => _vectors[chunkId] = vector;
 
