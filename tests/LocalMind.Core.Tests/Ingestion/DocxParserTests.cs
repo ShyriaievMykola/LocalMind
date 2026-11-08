@@ -17,12 +17,11 @@ public class DocxParserTests
 
         var result = await new DocxParser().ParseAsync(content);
 
-        Assert.Contains("Заголовок", result.Text);
-        Assert.Contains("Абзац", result.Text);
-        Assert.Contains("Комірка 1,1", result.Text);
-        Assert.Contains("Комірка 2,2", result.Text);
-        Assert.Contains("Eng Test", result.Text);
-        Assert.Contains('\t', result.Text);
+        Assert.Equal(
+            "Заголовок\nАбзац\nСписок:\nПерший\nДругий\nТретій\nТаблиця:\n" +
+            "Комірка 1,1\tКомірка 1,2\nКомірка 2,1\tКомірка 2,2\nEng Test",
+            result.Text);
+        Assert.Contains("Перший", result.Text);
     }
 
     [Fact]
