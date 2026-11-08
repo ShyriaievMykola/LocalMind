@@ -153,19 +153,85 @@ public sealed class IndexingServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task CorruptedFile_GetsErrorStatusAndDoesNotStopIndexing()
+    public async Task ChunkerOrEmbedderFailure_MarksOnlyThatFileAsError()
     {
-        Write("broken.docx", "це не docx");
+        Write("chunker.txt", "збій-нарізки тут");
+        Write("embedder.txt", "збій-векторів тут");
         Write("good.txt", "звичайний текст");
-        var service = CreateService();
+        var service = CreateService(
+            embedder: new FailingEmbedder(_fakeEmbedder, "збій-векторів"),
+            chunker: new FailingChunker(CreateChunker(), "збій-нарізки"));
 
         await service.AddFolderAsync(_folder);
-        await WaitUntilAsync(() => service.Progress is { IsCompleted: true, Total: 2 });
+        await WaitUntilAsync(() => service.Progress is { IsCompleted: true, Total: 3 });
 
-        var documents = await _repository.GetDocumentsAsync();
-        Assert.Equal(DocumentStatus.Error, documents.Single(d => d.Path.EndsWith("broken.docx", StringComparison.Ordinal)).Status);
-        Assert.Equal(DocumentStatus.Indexed, documents.Single(d => d.Path.EndsWith("good.txt", StringComparison.Ordinal)).Status);
-        Assert.Equal(1, service.Progress.Failed);
+        var documents = (await _repository.GetDocumentsAsync()).ToDictionary(d => Path.GetFileName(d.Path));
+        Assert.Equal(DocumentStatus.Error, documents["chunker.txt"].Status);
+        Assert.Equal("Нарізка зламалась.", documents["chunker.txt"].Error);
+        Assert.Equal(DocumentStatus.Error, documents["embedder.txt"].Status);
+        Assert.Equal("Модель не відповідає.", documents["embedder.txt"].Error);
+        Assert.Equal(DocumentStatus.Indexed, documents["good.txt"].Status);
+        Assert.Equal(2, service.Progress.Failed);
+    }
+
+    [Fact]
+    public async Task LockedFile_IsRetriedThenMarkedAsError()
+    {
+        var path = Write("locked.txt", "текст");
+        var logger = new ListLogger();
+        var service = CreateService(logger: logger, retryDelay: TimeSpan.FromMilliseconds(50));
+
+        using (new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            await service.AddFolderAsync(_folder);
+            await WaitUntilAsync(() => service.Progress is { IsCompleted: true, Total: 1 });
+        }
+
+        var document = Assert.Single(await _repository.GetDocumentsAsync());
+        Assert.Equal(DocumentStatus.Error, document.Status);
+        Assert.False(string.IsNullOrWhiteSpace(document.Error));
+        Assert.Equal(3, logger.Entries.Count(e => e.Message.Contains("зайнятий", StringComparison.Ordinal)));
+
+        // Коли файл звільнився, повторна перевірка його проіндексує.
+        await service.RescanAsync();
+        await WaitUntilAsync(() => _repository.AllChunks.Count == 1);
+        Assert.Equal(DocumentStatus.Indexed, Assert.Single(await _repository.GetDocumentsAsync()).Status);
+    }
+
+    [Fact]
+    public async Task LockedFile_ReleasedDuringRetries_IsIndexed()
+    {
+        var path = Write("locked.txt", "текст");
+        var logger = new ListLogger();
+        var service = CreateService(logger: logger, retryDelay: TimeSpan.FromSeconds(1));
+        var lockStream = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+
+        try
+        {
+            await service.AddFolderAsync(_folder);
+            await WaitUntilAsync(() => logger.Entries.Any(e => e.Message.Contains("зайнятий", StringComparison.Ordinal)));
+        }
+        finally
+        {
+            await lockStream.DisposeAsync();
+        }
+
+        await WaitUntilAsync(() => service.Progress is { IsCompleted: true, Total: 1 });
+        Assert.Equal(DocumentStatus.Indexed, Assert.Single(await _repository.GetDocumentsAsync()).Status);
+    }
+
+    [Fact]
+    public async Task ThrowingProgressHandler_DoesNotStopIndexing()
+    {
+        Write("a.txt", "кава");
+        Write("b.txt", "чай");
+        var service = CreateService();
+        service.ProgressChanged += (_, _) => throw new InvalidOperationException("Збій обробника.");
+
+        await service.AddFolderAsync(_folder);
+
+        await WaitUntilAsync(() => service.Progress is { IsCompleted: true, Total: 2 });
+        Assert.Equal(2, _repository.AllChunks.Count);
     }
 
     [Fact]
@@ -213,19 +279,27 @@ public sealed class IndexingServiceTests : IDisposable
         Assert.IsType<IndexingService>(provider.GetRequiredService<IIndexingService>());
     }
 
-    private IndexingService CreateService(IEmbedder? embedder = null)
+    private IndexingService CreateService(
+        IEmbedder? embedder = null,
+        IChunker? chunker = null,
+        ILogger<IndexingService>? logger = null,
+        TimeSpan? retryDelay = null)
     {
         _service = new IndexingService(
             _parsers,
-            new FixedSizeChunker(Options.Create(new ChunkingOptions()), new FakeTokenCounter()),
+            chunker ?? CreateChunker(),
             embedder ?? _fakeEmbedder,
             _repository,
             _vectorIndex,
             new ChangeDetector(_repository),
             _watcher,
-            NullLogger<IndexingService>.Instance);
+            logger ?? NullLogger<IndexingService>.Instance,
+            retryDelay);
         return _service;
     }
+
+    private static FixedSizeChunker CreateChunker() =>
+        new(Options.Create(new ChunkingOptions()), new FakeTokenCounter());
 
     private string Write(string relativePath, string content)
     {
@@ -292,5 +366,51 @@ public sealed class IndexingServiceTests : IDisposable
             await _gate.Task.WaitAsync(cancellationToken);
             return await inner.EmbedAsync(texts, purpose, cancellationToken);
         }
+    }
+
+    /// <summary>Нарізка, що падає на тексті з маркером.</summary>
+    private sealed class FailingChunker(IChunker inner, string marker) : IChunker
+    {
+        public IReadOnlyList<Chunk> Split(Guid documentId, string text) =>
+            text.Contains(marker, StringComparison.Ordinal)
+                ? throw new InvalidOperationException("Нарізка зламалась.")
+                : inner.Split(documentId, text);
+    }
+
+    /// <summary>Embedder, що падає, якщо серед текстів є маркер.</summary>
+    private sealed class FailingEmbedder(IEmbedder inner, string marker) : IEmbedder
+    {
+        public string ModelName => inner.ModelName;
+
+        public int Dimensions => inner.Dimensions;
+
+        public int MaxTokens => inner.MaxTokens;
+
+        public Task<IReadOnlyList<ReadOnlyMemory<float>>> EmbedAsync(
+            IReadOnlyList<string> texts,
+            EmbeddingPurpose purpose,
+            CancellationToken cancellationToken = default) =>
+            texts.Any(t => t.Contains(marker, StringComparison.Ordinal))
+                ? throw new InvalidOperationException("Модель не відповідає.")
+                : inner.EmbedAsync(texts, purpose, cancellationToken);
+    }
+
+    /// <summary>Логер, що запам'ятовує повідомлення, — щоб порахувати повторні спроби.</summary>
+    private sealed class ListLogger : ILogger<IndexingService>
+    {
+        public ConcurrentQueue<(LogLevel Level, string Message)> Entries { get; } = new();
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter) =>
+            Entries.Enqueue((logLevel, formatter(state, exception)));
     }
 }
