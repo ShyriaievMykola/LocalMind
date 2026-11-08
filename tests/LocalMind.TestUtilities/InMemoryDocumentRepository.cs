@@ -90,6 +90,18 @@ public sealed class InMemoryDocumentRepository : IDocumentRepository
         }
     }
 
+    public Task<IReadOnlyList<Document>> GetDocumentsAsync(
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+
+        lock (_lock)
+        {
+            return Task.FromResult<IReadOnlyList<Document>>([.. _documents.Values.Where(d => ids.Contains(d.Id))]);
+        }
+    }
+
     public Task<Document?> GetDocumentAsync(Guid id, CancellationToken cancellationToken = default)
     {
         lock (_lock)
