@@ -17,11 +17,11 @@ public sealed class ParserRegistry
 
             foreach (var extension in parser.SupportedExtensions)
             {
-                if (!_parsers.TryAdd(extension, parser))
+                var normalizedExtension = extension.StartsWith('.') ? extension : $".{extension}";
+                if (!_parsers.TryAdd(normalizedExtension, parser))
                 {
-                    throw new InvalidOperationException($"Для розширення '{extension}' зареєстровано більше одного парсера.");
+                    throw new InvalidOperationException($"Для розширення '{normalizedExtension}' зареєстровано більше одного парсера.");
                 }
-
             }
         }
     }

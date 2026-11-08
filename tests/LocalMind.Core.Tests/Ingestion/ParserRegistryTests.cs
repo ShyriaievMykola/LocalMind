@@ -44,6 +44,18 @@ public class ParserRegistryTests
     }
 
     [Fact]
+    public void TryGetParser_ExtensionWithoutLeadingDot_ReturnsParser()
+    {
+        var parser = new TestParser("md");
+        var registry = new ParserRegistry([parser]);
+
+        var found = registry.TryGetParser("document.md", out var result);
+
+        Assert.True(found);
+        Assert.Same(parser, result);
+    }
+
+    [Fact]
     public void TryGetParser_FileWithoutExtension_ReturnsFalse()
     {
         var registry = new ParserRegistry([new TestParser(".md")]);
@@ -52,6 +64,40 @@ public class ParserRegistryTests
 
         Assert.False(found);
         Assert.Null(parser);
+    }
+
+    [Theory]
+    [InlineData("docs/subfolder/document.md")]
+    [InlineData("report.final.v2.docx")]
+    public void TryGetParser_PathWithDirectoriesOrMultiplePeriods_ReturnsParser(string filePath)
+    {
+        var parser = new TestParser(Path.GetExtension(filePath));
+        var registry = new ParserRegistry([parser]);
+
+        var found = registry.TryGetParser(filePath, out var result);
+
+        Assert.True(found);
+        Assert.Same(parser, result);
+    }
+
+    [Fact]
+    public void TryGetParser_NullFilePath_ThrowsArgumentNullException()
+    {
+        var registry = new ParserRegistry([new TestParser(".md")]);
+
+        Assert.Throws<ArgumentNullException>(() => registry.TryGetParser(null!, out _));
+    }
+
+    [Fact]
+    public void Constructor_NullParsers_ThrowsArgumentNullException()
+    {
+        Assert.Throws<ArgumentNullException>(() => new ParserRegistry(null!));
+    }
+
+    [Fact]
+    public void Constructor_NullParser_ThrowsArgumentNullException()
+    {
+        Assert.Throws<ArgumentNullException>(() => new ParserRegistry([null!]));
     }
 
     [Fact]
