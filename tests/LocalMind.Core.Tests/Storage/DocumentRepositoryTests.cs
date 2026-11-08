@@ -52,6 +52,19 @@ public sealed class DocumentRepositoryTests : IAsyncLifetime, IDisposable
     }
 
     [Fact]
+    public async Task GetDocuments_ByIds_ReturnsOnlyExistingRequested()
+    {
+        var wanted = TestData.Document("/notes/a.md");
+        var other = TestData.Document("/notes/b.md");
+        await _repository.SaveAsync(wanted, [], [], Model);
+        await _repository.SaveAsync(other, [], [], Model);
+
+        var documents = await _repository.GetDocumentsAsync([wanted.Id, Guid.NewGuid()]);
+
+        Assert.Equal(wanted, Assert.Single(documents));
+    }
+
+    [Fact]
     public async Task Save_ThenGetVectors_ReturnsSameVectors()
     {
         var document = TestData.Document();

@@ -1,3 +1,4 @@
+using LocalMind.Core.Abstractions;
 using LocalMind.Core.Errors;
 using LocalMind.Core.Models;
 using LocalMind.Search.Hybrid;
@@ -70,6 +71,24 @@ public sealed class SearchServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Search_LoadFailedHalfway_RetryGivesNoDuplicates()
+    {
+        await IndexAsync("/notes/a.md", "кава", "чай");
+        using var inner = new BruteForceIndex(_embedder.Dimensions);
+        using var service = new SearchService(_embedder, new FailsOnSecondAddOnce(inner), _repository);
+        var query = new SearchQuery("кава", SearchMode.Semantic);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.SearchAsync(query));
+        Assert.Equal(1, inner.Count);
+
+        var results = await service.SearchAsync(query);
+
+        Assert.Equal(2, results.Count);
+        Assert.Equal(2, results.Select(r => r.Chunk.Id).Distinct().Count());
+        Assert.Equal(2, inner.Count);
+    }
+
+    [Fact]
     public async Task Search_VectorOfDeletedChunk_IsSkipped()
     {
         var document = await IndexAsync("/notes/a.md", "кава");
@@ -109,5 +128,28 @@ public sealed class SearchServiceTests : IDisposable
         var vectors = await _embedder.EmbedAsync(texts, EmbeddingPurpose.Passage);
         await _repository.SaveAsync(document, chunks, vectors, _embedder.ModelName);
         return document;
+    }
+
+    private sealed class FailsOnSecondAddOnce(IVectorIndex inner) : IVectorIndex
+    {
+        private int _adds;
+
+        public int Dimensions => inner.Dimensions;
+
+        public int Count => inner.Count;
+
+        public void Add(Guid chunkId, ReadOnlyMemory<float> vector)
+        {
+            if (++_adds == 2)
+            {
+                throw new InvalidOperationException("Збій під час завантаження.");
+            }
+
+            inner.Add(chunkId, vector);
+        }
+
+        public bool Remove(Guid chunkId) => inner.Remove(chunkId);
+
+        public IReadOnlyList<ScoredChunk> Search(ReadOnlySpan<float> query, int k) => inner.Search(query, k);
     }
 }

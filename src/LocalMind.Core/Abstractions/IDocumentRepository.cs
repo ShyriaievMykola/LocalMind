@@ -18,6 +18,9 @@ public interface IDocumentRepository
     /// <summary>Усі документи бібліотеки.</summary>
     Task<IReadOnlyList<Document>> GetDocumentsAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>Документи за ідентифікаторами; відсутні ідентифікатори пропускаються.</summary>
+    Task<IReadOnlyList<Document>> GetDocumentsAsync(IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken = default);
+
     /// <summary>Документ за ідентифікатором або <see langword="null"/>.</summary>
     Task<Document?> GetDocumentAsync(Guid id, CancellationToken cancellationToken = default);
 

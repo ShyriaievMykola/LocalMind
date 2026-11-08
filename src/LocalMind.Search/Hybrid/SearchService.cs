@@ -36,14 +36,8 @@ public sealed class SearchService(IEmbedder embedder, IVectorIndex index, IDocum
         var chunks = (await repository.GetChunksAsync([.. scored.Select(s => s.ChunkId)], cancellationToken))
             .ToDictionary(c => c.Id);
 
-        var paths = new Dictionary<Guid, string>();
-        foreach (var documentId in chunks.Values.Select(c => c.DocumentId).Distinct())
-        {
-            if (await repository.GetDocumentAsync(documentId, cancellationToken) is { } document)
-            {
-                paths[documentId] = document.Path;
-            }
-        }
+        var paths = (await repository.GetDocumentsAsync([.. chunks.Values.Select(c => c.DocumentId).Distinct()], cancellationToken))
+            .ToDictionary(d => d.Id, d => d.Path);
 
         var results = new List<SearchResult>(scored.Count);
         foreach (var (chunkId, score) in scored)
@@ -75,6 +69,8 @@ public sealed class SearchService(IEmbedder embedder, IVectorIndex index, IDocum
                 return;
             }
 
+            // Якщо завантаження обірветься, наступний пошук пройде його заново:
+            // Add замінює вже доданий вектор, тому дублікатів не буде.
             await foreach (var (chunkId, vector) in repository.GetVectorsAsync(embedder.ModelName, cancellationToken))
             {
                 index.Add(chunkId, vector);

@@ -61,6 +61,20 @@ public sealed class DocumentRepository(IDbContextFactory<LocalMindDbContext> con
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<Document>> GetDocumentsAsync(
+        IReadOnlyCollection<Guid> ids,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+        var entities = await context.Documents.AsNoTracking()
+            .Where(d => ids.Contains(d.Id))
+            .ToListAsync(cancellationToken);
+        return [.. entities.Select(ToModel)];
+    }
+
+    /// <inheritdoc />
     public async Task<Document?> GetDocumentAsync(Guid id, CancellationToken cancellationToken = default)
     {
         await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
