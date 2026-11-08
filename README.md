@@ -99,8 +99,14 @@ dotnet run --project src/LocalMind.Cli -- search "що робити, якщо н
 dotnet run --project src/LocalMind.Server
 ```
 
-> Завантаження embedding-моделей (`scripts/download-models.*`) і запуск сервера через Docker
-> (`deploy/docker-compose.yml`) будуть описані тут, щойно з'являться.
+Embedding-модель `multilingual-e5-small` (близько 475 МБ, у Git не зберігається):
+
+```bash
+./scripts/download-models.sh     # Linux, macOS
+.\scripts\download-models.ps1    # Windows
+```
+
+> Запуск сервера через Docker (`deploy/docker-compose.yml`) буде описано тут, щойно з'явиться.
 
 ---
 

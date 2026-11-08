@@ -18,8 +18,8 @@ public class SearchConfigurationTests
     private static Dictionary<string, string?> ValidConfiguration() => new()
     {
         [$"{Embedding}:ModelName"] = "multilingual-e5-small",
-        [$"{Embedding}:ModelPath"] = "models/e5-small/model.onnx",
-        [$"{Embedding}:TokenizerPath"] = "models/e5-small/tokenizer.json",
+        [$"{Embedding}:ModelPath"] = "models/multilingual-e5-small/model.onnx",
+        [$"{Embedding}:TokenizerPath"] = "models/multilingual-e5-small/sentencepiece.bpe.model",
         [$"{Embedding}:Dimensions"] = "384",
     };
 
