@@ -1,5 +1,7 @@
 using LocalMind.Core.Abstractions;
 using LocalMind.Core.Configuration;
+using LocalMind.Core.Ingestion;
+using LocalMind.Core.Ingestion.Chunking;
 using LocalMind.Core.Ingestion.Parsers;
 using LocalMind.Core.Storage;
 using Microsoft.Data.Sqlite;
@@ -37,6 +39,11 @@ public static class ServiceCollectionExtensions
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IDocumentParser, PdfParser>());
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IDocumentParser, DocxParser>());
         services.TryAddSingleton<ParserRegistry>();
+        services.TryAddSingleton<IChunker>(provider =>
+            provider.GetRequiredService<IOptions<ChunkingOptions>>().Value.Strategy == ChunkingStrategy.Paragraph
+                ? ActivatorUtilities.CreateInstance<ParagraphChunker>(provider)
+                : ActivatorUtilities.CreateInstance<FixedSizeChunker>(provider));
+        services.TryAddSingleton<FolderIndexer>();
 
         services.AddOptions<StorageOptions>().Bind(configuration.GetSection(StorageOptions.SectionName));
         services.AddDbContextFactory<LocalMindDbContext>((provider, builder) =>
