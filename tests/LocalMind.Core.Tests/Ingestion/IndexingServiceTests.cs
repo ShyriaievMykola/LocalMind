@@ -153,6 +153,22 @@ public sealed class IndexingServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task CorruptedFile_GetsErrorStatusAndDoesNotStopIndexing()
+    {
+        Write("broken.docx", "це не docx");
+        Write("good.txt", "звичайний текст");
+        var service = CreateService();
+
+        await service.AddFolderAsync(_folder);
+        await WaitUntilAsync(() => service.Progress is { IsCompleted: true, Total: 2 });
+
+        var documents = await _repository.GetDocumentsAsync();
+        Assert.Equal(DocumentStatus.Error, documents.Single(d => d.Path.EndsWith("broken.docx", StringComparison.Ordinal)).Status);
+        Assert.Equal(DocumentStatus.Indexed, documents.Single(d => d.Path.EndsWith("good.txt", StringComparison.Ordinal)).Status);
+        Assert.Equal(1, service.Progress.Failed);
+    }
+
+    [Fact]
     public async Task ChunkerOrEmbedderFailure_MarksOnlyThatFileAsError()
     {
         Write("chunker.txt", "збій-нарізки тут");
