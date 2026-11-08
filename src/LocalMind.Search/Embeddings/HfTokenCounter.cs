@@ -1,10 +1,20 @@
 using LocalMind.Core.Abstractions;
+using LocalMind.Search.Configuration;
+using Microsoft.Extensions.Options;
 
 namespace LocalMind.Search.Embeddings;
 
-/// <summary>Рахує токени токенізатором моделі, тому chunker і модель бачать однакову кількість.</summary>
-public sealed class HfTokenCounter(ModelTokenizer tokenizer) : ITokenCounter
+/// <summary>
+/// Рахує токени так, як їх побачить модель у фрагменті документа: разом із префіксом і службовими токенами.
+/// Тому фрагмент у межах <see cref="EmbeddingModelOptions.MaxTokens"/> не обрізається під час обчислення вектора.
+/// </summary>
+public sealed class HfTokenCounter(ModelTokenizer tokenizer, IOptions<EmbeddingModelOptions> options) : ITokenCounter
 {
     /// <inheritdoc />
-    public int CountTokens(string text) => tokenizer.CountTokens(text);
+    public int CountTokens(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+
+        return text.Length == 0 ? 0 : tokenizer.CountTokens(options.Value.PassagePrefix + text);
+    }
 }
