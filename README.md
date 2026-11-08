@@ -86,8 +86,13 @@ dotnet run --project src/LocalMind.App
 Консольна утиліта:
 
 ```bash
-dotnet run --project src/LocalMind.Cli
+dotnet run --project src/LocalMind.Cli -- index ./notes
+dotnet run --project src/LocalMind.Cli -- search "що робити, якщо ноутбук зламався" --k 5
 ```
+
+Запускати з кореня репозиторію, бо шляхи до моделі в `src/LocalMind.Cli/appsettings.json` відносні.
+Спочатку треба завантажити модель (див. нижче). Повторний `index` оновлює лише змінені файли.
+Якщо частину файлів не вдалося обробити, `index` завершується з кодом 1, решта файлів при цьому індексується.
 
 Сервер бекапу (за замовчуванням `http://localhost:5133`):
 
