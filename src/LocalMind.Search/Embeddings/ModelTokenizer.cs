@@ -41,9 +41,13 @@ public sealed class ModelTokenizer
     }
 
     /// <summary>Номери токенів для моделі; довгий текст обрізається до <paramref name="maxTokens"/> токенів.</summary>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="maxTokens"/> не вміщує службові токени і хоча б один токен тексту.
+    /// </exception>
     public long[] Encode(string text, int maxTokens)
     {
         ArgumentNullException.ThrowIfNull(text);
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxTokens, SpecialTokenCount + 1);
 
         var pieces = EncodePieces(text);
         var pieceCount = Math.Min(pieces.Count, maxTokens - SpecialTokenCount);
