@@ -1,3 +1,4 @@
+using LocalMind.Core.Abstractions;
 using LocalMind.Core.Configuration;
 using LocalMind.Core.Ingestion.Chunking;
 using LocalMind.TestUtilities;
@@ -91,5 +92,47 @@ public class ChunkerTests
         var chunks = CreateChunker(1, 0).Split(DocumentId, text);
 
         Assert.Equal(WholeWordChunks, chunks.Select(chunk => chunk.Text));
+    }
+
+    [Fact]
+    public void Split_UsesLogarithmicTokenCounterCallsToFindChunkBoundary()
+    {
+        var text = string.Join(' ', Enumerable.Range(0, 1024).Select(index => $"word{index}"));
+        var tokenCounter = new CountingTokenCounter();
+        var chunker = new FixedSizeChunker(
+            Options.Create(new ChunkingOptions { ChunkSizeTokens = 64, OverlapPercent = 0 }),
+            tokenCounter);
+
+        var chunks = chunker.Split(DocumentId, text);
+
+        Assert.Equal(16, chunks.Count);
+        Assert.InRange(tokenCounter.CallCount, 1, chunks.Count * 11);
+    }
+
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(-1, 0)]
+    [InlineData(1, -1)]
+    [InlineData(1, 51)]
+    public void Constructor_InvalidOptions_ThrowsOptionsValidationException(int chunkSizeTokens, int overlapPercent)
+    {
+        var options = Options.Create(new ChunkingOptions
+        {
+            ChunkSizeTokens = chunkSizeTokens,
+            OverlapPercent = overlapPercent
+        });
+
+        Assert.Throws<OptionsValidationException>(() => new FixedSizeChunker(options, new FakeTokenCounter()));
+    }
+
+    private sealed class CountingTokenCounter : ITokenCounter
+    {
+        public int CallCount { get; private set; }
+
+        public int CountTokens(string text)
+        {
+            CallCount++;
+            return text.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
+        }
     }
 }

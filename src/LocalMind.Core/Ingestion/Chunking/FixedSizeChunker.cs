@@ -17,6 +17,15 @@ public sealed class FixedSizeChunker : IChunker
         ArgumentNullException.ThrowIfNull(tokenCounter);
 
         _options = options.Value;
+        var validationResult = new ChunkingOptionsValidator().Validate(Options.DefaultName, _options);
+        if (validationResult.Failed)
+        {
+            throw new OptionsValidationException(
+                Options.DefaultName,
+                typeof(ChunkingOptions),
+                validationResult.Failures);
+        }
+
         _tokenCounter = tokenCounter;
     }
 
@@ -37,20 +46,20 @@ public sealed class FixedSizeChunker : IChunker
         while (startWordIndex < words.Count)
         {
             var endWordIndex = startWordIndex;
-
-            for (var wordIndex = startWordIndex; wordIndex < words.Count; wordIndex++)
+            var low = startWordIndex;
+            var high = words.Count - 1;
+            while (low <= high)
             {
+                var wordIndex = low + (high - low) / 2;
                 var candidate = text[words[startWordIndex].Start..words[wordIndex].End];
                 if (_tokenCounter.CountTokens(candidate) > _options.ChunkSizeTokens)
                 {
-                    break;
+                    high = wordIndex - 1;
                 }
-
-                endWordIndex = wordIndex;
-
-                if (wordIndex == words.Count - 1)
+                else
                 {
-                    break;
+                    endWordIndex = wordIndex;
+                    low = wordIndex + 1;
                 }
             }
 
