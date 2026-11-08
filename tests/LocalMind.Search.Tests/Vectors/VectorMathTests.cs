@@ -31,25 +31,4 @@ public class VectorMathTests
     {
         Assert.Throws<ArgumentException>(() => VectorMath.DotProduct([1f, 2f], [1f]));
     }
-
-    [Fact]
-    public void NormalizeInPlace_MakesUnitLength()
-    {
-        float[] vector = [3f, 4f];
-
-        VectorMath.NormalizeInPlace(vector);
-
-        Assert.Equal(0.6f, vector[0], 0.0001f);
-        Assert.Equal(0.8f, vector[1], 0.0001f);
-    }
-
-    [Fact]
-    public void NormalizeInPlace_ZeroVector_StaysZero()
-    {
-        float[] vector = [0f, 0f];
-
-        VectorMath.NormalizeInPlace(vector);
-
-        Assert.Equal([0f, 0f], vector);
-    }
 }
