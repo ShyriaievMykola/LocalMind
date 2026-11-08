@@ -2,6 +2,8 @@ using LocalMind.Core.Abstractions;
 using LocalMind.Core.Configuration;
 using LocalMind.Search.Configuration;
 using LocalMind.Search.Embeddings;
+using LocalMind.Search.Hybrid;
+using LocalMind.Search.Vectors;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -43,6 +45,9 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<ModelTokenizer>();
         services.TryAddSingleton<ITokenCounter, HfTokenCounter>();
         services.TryAddSingleton<IEmbedder, OnnxEmbedder>();
+        services.TryAddSingleton<IVectorIndex>(provider =>
+            new BruteForceIndex(provider.GetRequiredService<IOptions<EmbeddingModelOptions>>().Value.Dimensions));
+        services.TryAddSingleton<ISearchService, SearchService>();
 
         return services;
     }

@@ -22,6 +22,20 @@ public class InMemoryDocumentRepositoryTests
     }
 
     [Fact]
+    public async Task GetDocuments_ByIds_ReturnsOnlyExistingRequested()
+    {
+        var repository = new InMemoryDocumentRepository();
+        var wanted = TestData.Document("/notes/a.md");
+        var other = TestData.Document("/notes/b.md");
+        await repository.SaveAsync(wanted, [], [], Model);
+        await repository.SaveAsync(other, [], [], Model);
+
+        var documents = await repository.GetDocumentsAsync([wanted.Id, Guid.NewGuid()]);
+
+        Assert.Equal(wanted, Assert.Single(documents));
+    }
+
+    [Fact]
     public async Task Save_ThenDocumentChunksAndVectorsAreAvailable()
     {
         var repository = new InMemoryDocumentRepository();
