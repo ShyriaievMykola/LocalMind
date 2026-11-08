@@ -116,7 +116,7 @@ public sealed partial class FolderIndexer(
         CancellationToken cancellationToken)
     {
         var existing = files.ToHashSet(StringComparer.Ordinal);
-        var prefix = Path.TrimEndingDirectorySeparator(root) + Path.DirectorySeparatorChar;
+        var prefix = Path.EndsInDirectorySeparator(root) ? root : root + Path.DirectorySeparatorChar;
         var removed = 0;
 
         foreach (var document in await repository.GetDocumentsAsync(cancellationToken))
