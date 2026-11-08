@@ -182,6 +182,33 @@ public sealed class DocumentRepositoryTests : IAsyncLifetime, IDisposable
         Assert.Equal("/notes", Assert.Single(await _repository.GetSourceFoldersAsync()));
     }
 
+    [Theory]
+    [InlineData("/")]
+    [InlineData(@"C:\")]
+    public async Task AddSourceFolder_Root_KeepsSeparator(string root)
+    {
+        await _repository.AddSourceFolderAsync(root);
+
+        Assert.Equal(root, Assert.Single(await _repository.GetSourceFoldersAsync()));
+    }
+
+    [Theory]
+    [InlineData("/", "/notes/a.md")]
+    [InlineData(@"C:\", @"C:\notes\a.md")]
+    public async Task RemoveSourceFolder_Root_RemovesDocumentsInsideIt(string root, string filePath)
+    {
+        await _repository.AddSourceFolderAsync(root);
+        var document = TestData.Document(filePath);
+        var chunks = TestData.Chunks(document.Id, "1");
+        await _repository.SaveAsync(document, chunks, Vectors(1), Model);
+
+        var removed = await _repository.RemoveSourceFolderAsync(root);
+
+        Assert.Equal(chunks[0].Id, Assert.Single(removed));
+        Assert.Empty(await _repository.GetSourceFoldersAsync());
+        Assert.Empty(await _repository.GetDocumentsAsync());
+    }
+
     [Fact]
     public async Task RemoveSourceFolder_RemovesOnlyItsDocuments()
     {

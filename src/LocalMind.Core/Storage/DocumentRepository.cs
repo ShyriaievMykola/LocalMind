@@ -224,13 +224,17 @@ public sealed class DocumentRepository(IDbContextFactory<LocalMindDbContext> con
         return model;
     }
 
-    /// <summary>Шлях папки без роздільника в кінці: <c>/notes/</c> і <c>/notes</c> — одна папка.</summary>
-    private static string NormalizeFolder(string path) => path.TrimEnd('/', '\\');
+    /// <summary>
+    /// Шлях папки без роздільника в кінці: <c>/notes/</c> і <c>/notes</c> — одна папка.
+    /// Корінь (<c>/</c>, <c>C:\</c>) лишається без змін, бо без роздільника він означав би інший шлях.
+    /// </summary>
+    private static string NormalizeFolder(string path) => Path.TrimEndingDirectorySeparator(path);
 
+    /// <summary>Чи лежить файл у папці; шлях кореня вже закінчується роздільником.</summary>
     private static bool IsInsideFolder(string filePath, string folder) =>
         filePath.Length > folder.Length
         && filePath.StartsWith(folder, StringComparison.Ordinal)
-        && filePath[folder.Length] is '/' or '\\';
+        && (folder[^1] is '/' or '\\' || filePath[folder.Length] is '/' or '\\');
 
     private static Document ToModel(DocumentEntity entity) =>
         new(entity.Id, entity.Path, entity.ContentHash, entity.Status, entity.IndexedAt, entity.Error);
