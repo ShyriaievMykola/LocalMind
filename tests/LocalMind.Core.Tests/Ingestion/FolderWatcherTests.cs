@@ -153,13 +153,17 @@ public sealed class FolderWatcherTests : IDisposable
     [Fact]
     public async Task Unwatch_DiscardsPendingChanges()
     {
-        _watcher.Watch(_folder);
+        // Довгий debounce: зміна гарантовано ще чекає таймера, коли викликаємо Unwatch,
+        // навіть якщо машина CI пригальмує.
+        using var watcher = new FolderWatcher(new ParserRegistry([new MarkdownParser()]), TimeSpan.FromMinutes(1));
+        watcher.Watch(_folder);
         await File.WriteAllTextAsync(Path.Combine(_folder, "note.md"), "текст");
-        await Task.Delay(100);
+        await WaitUntilAsync(() => watcher.PendingCount > 0);
 
-        _watcher.Unwatch(_folder);
+        watcher.Unwatch(_folder);
 
-        Assert.Empty(await ReadForAsync(_quietPeriod));
+        Assert.Equal(0, watcher.PendingCount);
+        Assert.False(watcher.Changes.TryRead(out _));
     }
 
     [Fact]
@@ -248,5 +252,20 @@ public sealed class FolderWatcherTests : IDisposable
         }
 
         return received;
+    }
+  
+    /// <summary>Чекає, поки умова стане істинною, але не довше за таймаут.</summary>
+    private static async Task WaitUntilAsync(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow + _waitTimeout;
+        while (!condition())
+        {
+            if (DateTime.UtcNow > deadline)
+            {
+                Assert.Fail("Умова не виконалася за відведений час.");
+            }
+
+            await Task.Delay(50);
+        }
     }
 }

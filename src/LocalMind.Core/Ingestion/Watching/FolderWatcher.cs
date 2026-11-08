@@ -45,6 +45,18 @@ public sealed class FolderWatcher : IDisposable
 
     /// <summary>Черга змін для служби індексації. Після <see cref="Dispose"/> черга завершується.</summary>
     public ChannelReader<FolderChange> Changes => _channel.Reader;
+  
+    /// <summary>Скільки змін ще чекають завершення debounce (для тестів).</summary>
+    internal int PendingCount
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _pending.Count;
+            }
+        }
+    }
 
     /// <summary>Починає стежити за папкою і всіма її підпапками; повторний виклик нічого не змінює.</summary>
     /// <exception cref="DirectoryNotFoundException">Папки не існує.</exception>
