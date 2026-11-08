@@ -8,6 +8,34 @@ namespace LocalMind.Core.Tests.Ingestion;
 
 public class DocxParserTests
 {
+    private readonly string _testDataPath = Path.Combine(AppContext.BaseDirectory, "TestData");
+
+    [Fact]
+    public async Task ParseAsync_SampleFixture_ExtractsCyrillicLatinAndTableText()
+    {
+        await using var content = OpenFixture("sample.docx");
+
+        var result = await new DocxParser().ParseAsync(content);
+
+        Assert.Equal(
+            "Заголовок\nАбзац\nСписок:\nПерший\nДругий\nТретій\nТаблиця:\n" +
+            "Комірка 1,1\tКомірка 1,2\nКомірка 2,1\tКомірка 2,2\nEng Test",
+            result.Text);
+        Assert.Contains("Перший", result.Text);
+    }
+
+    [Fact]
+    public async Task ParseAsync_CorruptedFixture_ThrowsDocumentParseException()
+    {
+        await using var content = OpenFixture("corrupted.docx");
+
+        var exception = await Assert.ThrowsAsync<DocumentParseException>(
+            () => new DocxParser().ParseAsync(content));
+
+        Assert.Contains("DOCX", exception.Message);
+        Assert.NotNull(exception.InnerException);
+    }
+
     [Fact]
     public async Task ParseAsync_ExtractsParagraphsHeadingsListsTablesAndTitle()
     {
@@ -153,6 +181,11 @@ public class DocxParserTests
 
         content.Position = 0;
         return content;
+    }
+
+    private FileStream OpenFixture(string fileName)
+    {
+        return File.OpenRead(Path.Combine(_testDataPath, fileName));
     }
 
     private sealed class NonSeekableReadStream(byte[] buffer) : MemoryStream(buffer)
