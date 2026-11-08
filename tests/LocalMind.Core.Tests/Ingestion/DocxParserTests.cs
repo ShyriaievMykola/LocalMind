@@ -8,6 +8,35 @@ namespace LocalMind.Core.Tests.Ingestion;
 
 public class DocxParserTests
 {
+    private readonly string _testDataPath = Path.Combine(AppContext.BaseDirectory, "TestData");
+
+    [Fact]
+    public async Task ParseAsync_SampleFixture_ExtractsCyrillicLatinAndTableText()
+    {
+        await using var content = OpenFixture("sample.docx");
+
+        var result = await new DocxParser().ParseAsync(content);
+
+        Assert.Contains("Заголовок", result.Text);
+        Assert.Contains("Абзац", result.Text);
+        Assert.Contains("Комірка 1,1", result.Text);
+        Assert.Contains("Комірка 2,2", result.Text);
+        Assert.Contains("Eng Test", result.Text);
+        Assert.Contains('\t', result.Text);
+    }
+
+    [Fact]
+    public async Task ParseAsync_CorruptedFixture_ThrowsDocumentParseException()
+    {
+        await using var content = OpenFixture("corrupted.docx");
+
+        var exception = await Assert.ThrowsAsync<DocumentParseException>(
+            () => new DocxParser().ParseAsync(content));
+
+        Assert.Contains("DOCX", exception.Message);
+        Assert.NotNull(exception.InnerException);
+    }
+
     [Fact]
     public async Task ParseAsync_ExtractsParagraphsHeadingsListsTablesAndTitle()
     {
@@ -153,6 +182,11 @@ public class DocxParserTests
 
         content.Position = 0;
         return content;
+    }
+
+    private FileStream OpenFixture(string fileName)
+    {
+        return File.OpenRead(Path.Combine(_testDataPath, fileName));
     }
 
     private sealed class NonSeekableReadStream(byte[] buffer) : MemoryStream(buffer)
