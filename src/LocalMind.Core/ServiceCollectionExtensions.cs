@@ -3,6 +3,7 @@ using LocalMind.Core.Configuration;
 using LocalMind.Core.Ingestion;
 using LocalMind.Core.Ingestion.Chunking;
 using LocalMind.Core.Ingestion.Parsers;
+using LocalMind.Core.Ingestion.Watching;
 using LocalMind.Core.Storage;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -44,6 +45,9 @@ public static class ServiceCollectionExtensions
                 ? ActivatorUtilities.CreateInstance<ParagraphChunker>(provider)
                 : ActivatorUtilities.CreateInstance<FixedSizeChunker>(provider));
         services.TryAddSingleton<FolderIndexer>();
+        services.TryAddSingleton<ChangeDetector>();
+        services.TryAddSingleton<FolderWatcher>();
+        services.TryAddSingleton<IIndexingService, IndexingService>();
 
         services.AddOptions<StorageOptions>().Bind(configuration.GetSection(StorageOptions.SectionName));
         services.AddDbContextFactory<LocalMindDbContext>((provider, builder) =>
