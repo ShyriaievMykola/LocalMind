@@ -3,6 +3,10 @@
   <!-- Embeddings (ONNX), векторний пошук, BM25, hybrid (RRF). -->
 
   <ItemGroup>
+    <PackageReference Include="System.Numerics.Tensors" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\LocalMind.Core\LocalMind.Core.csproj" />
   </ItemGroup>
 
