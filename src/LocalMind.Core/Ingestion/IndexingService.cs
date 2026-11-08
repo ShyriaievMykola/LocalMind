@@ -1,6 +1,5 @@
 using System.Threading.Channels;
 using LocalMind.Core.Abstractions;
-using LocalMind.Core.Errors;
 using LocalMind.Core.Ingestion.Parsers;
 using LocalMind.Core.Ingestion.Watching;
 using LocalMind.Core.Models;
@@ -25,6 +24,18 @@ public sealed partial class IndexingService : IIndexingService, IDisposable
 
     /// <summary>Скільки чекати завершення фонових циклів під час <see cref="Dispose"/>.</summary>
     private static readonly TimeSpan ShutdownTimeout = TimeSpan.FromSeconds(5);
+    
+    /// <summary>Пауза між повторними спробами прочитати зайнятий файл за замовчуванням.</summary>
+    public static readonly TimeSpan DefaultRetryDelay = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>Скільки разів повторювати читання файла, зайнятого іншим процесом.</summary>
+    private const int MaxRetries = 3;
+
+    /// <summary>
+    /// Хеш для документа, файл якого так і не вдалося прочитати: нулі не збігаються з хешем жодного вмісту,
+    /// тому наступна перевірка спробує проіндексувати файл знову.
+    /// </summary>
+    private static readonly string UnknownContentHash = new('0', Document.ContentHashLength);
 
     private readonly ParserRegistry _parsers;
     private readonly IChunker _chunker;
@@ -34,6 +45,7 @@ public sealed partial class IndexingService : IIndexingService, IDisposable
     private readonly ChangeDetector _changeDetector;
     private readonly FolderWatcher _watcher;
     private readonly ILogger<IndexingService> _logger;
+    private readonly TimeSpan _retryDelay;
 
     private readonly Channel<string> _queue = Channel.CreateUnbounded<string>();
     private readonly Lock _lock = new();
@@ -59,7 +71,8 @@ public sealed partial class IndexingService : IIndexingService, IDisposable
         IVectorIndex vectorIndex,
         ChangeDetector changeDetector,
         FolderWatcher watcher,
-        ILogger<IndexingService> logger)
+        ILogger<IndexingService> logger,
+        TimeSpan? retryDelay = null)
     {
         ArgumentNullException.ThrowIfNull(parsers);
         ArgumentNullException.ThrowIfNull(chunker);
@@ -77,7 +90,10 @@ public sealed partial class IndexingService : IIndexingService, IDisposable
         _vectorIndex = vectorIndex;
         _changeDetector = changeDetector;
         _watcher = watcher;
-        _logger = logger;
+        _logger = logger;       
+        var delay = retryDelay ?? DefaultRetryDelay;
+        ArgumentOutOfRangeException.ThrowIfLessThan(delay, TimeSpan.Zero, nameof(retryDelay));
+        _retryDelay = delay;
 
         _processing = Task.Run(() => ProcessQueueAsync(_shutdown.Token));
         _watching = Task.Run(() => ConsumeWatcherAsync(_shutdown.Token));
@@ -334,25 +350,30 @@ public sealed partial class IndexingService : IIndexingService, IDisposable
         RaiseProgress(progress);
     }
 
-    /// <summary>Обробляє один файл; помилка не зупиняє індексацію решти.</summary>
+    /// <summary>
+    /// Обробляє один файл. Файл, зайнятий іншим процесом, читається повторно до <see cref="MaxRetries"/> разів;
+    /// будь-яка інша помилка (парсер, нарізка, embeddings, сховище) не зупиняє індексацію решти —
+    /// документ отримує статус <see cref="DocumentStatus.Error"/> з причиною.
+    /// </summary>
     /// <returns><see langword="false"/>, якщо файл не вдалося проіндексувати.</returns>
     private async Task<bool> ProcessFileAsync(string path, CancellationToken cancellationToken)
     {
+        FileChange? change = null;
         try
         {
-            var change = await _changeDetector.DetectAsync(path, cancellationToken);
-            switch (change.Kind)
+            for (var attempt = 1; ; attempt++)
             {
-                case FileChangeKind.New:
-                case FileChangeKind.Modified:
-                    return await IndexFileAsync(change, cancellationToken);
-
-                case FileChangeKind.Deleted when change.StoredDocument is not null:
-                    RemoveVectors(await _repository.DeleteAsync(change.StoredDocument.Id, cancellationToken));
+                try
+                {
+                    change = await _changeDetector.DetectAsync(path, cancellationToken);
+                    await ApplyChangeAsync(change, cancellationToken);
                     return true;
-
-                default:
-                    return true;
+                }
+                catch (IOException exception) when (IsFileBusy(exception) && attempt <= MaxRetries)
+                {
+                    LogFileBusy(_logger, path, attempt, MaxRetries);
+                    await Task.Delay(_retryDelay, cancellationToken);
+                }
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -362,16 +383,32 @@ public sealed partial class IndexingService : IIndexingService, IDisposable
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            LogFileFailed(_logger, path, exception.Message);
+            LogFileFailed(_logger, path, exception);
+            await SaveErrorAsync(path, change, exception.Message, cancellationToken);
             return false;
         }
     }
 
-    private async Task<bool> IndexFileAsync(FileChange change, CancellationToken cancellationToken)
+    private async Task ApplyChangeAsync(FileChange change, CancellationToken cancellationToken)
+    {
+        switch (change.Kind)
+        {
+            case FileChangeKind.New:
+            case FileChangeKind.Modified:
+                await IndexFileAsync(change, cancellationToken);
+                break;
+
+            case FileChangeKind.Deleted when change.StoredDocument is not null:
+                RemoveVectors(await _repository.DeleteAsync(change.StoredDocument.Id, cancellationToken));
+                break;
+        }
+    }
+
+    private async Task IndexFileAsync(FileChange change, CancellationToken cancellationToken)
     {
         if (!_parsers.TryGetParser(change.Path, out var parser) || parser is null)
         {
-            return true;
+            return;
         }
 
         // Той самий файл, записаний в іншому регістрі, має замінити стару версію, а не стати другим документом.
@@ -381,25 +418,16 @@ public sealed partial class IndexingService : IIndexingService, IDisposable
 
         ParsedDocument parsed;
         long length;
-        try
+        await using (var stream = new FileStream(
+            change.Path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.ReadWrite | FileShare.Delete,
+            bufferSize: 81_920,
+            FileOptions.Asynchronous))
         {
-            await using var stream = new FileStream(
-                change.Path,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.ReadWrite | FileShare.Delete,
-                bufferSize: 81_920,
-                FileOptions.Asynchronous);
-
             length = stream.Length;
             parsed = await parser.ParseAsync(stream, cancellationToken);
-        }
-        catch (DocumentParseException exception)
-        {
-            LogFileFailed(_logger, change.Path, exception.Message);
-            var failed = new Document(id, path, hash, DocumentStatus.Error, DateTimeOffset.UtcNow, exception.Message);
-            await SaveAsync(failed, [], [], cancellationToken);
-            return false;
         }
 
         var chunks = parsed.HasText ? _chunker.Split(id, parsed.Text) : [];
@@ -407,15 +435,49 @@ public sealed partial class IndexingService : IIndexingService, IDisposable
         {
             var status = length == 0 ? DocumentStatus.Empty : DocumentStatus.NoText;
             await SaveAsync(new Document(id, path, hash, status, DateTimeOffset.UtcNow), [], [], cancellationToken);
-            return true;
+            return;
         }
 
         // Батчі всередині embedder-а: він сам ділить набір на частини розміру з налаштувань моделі.
         var vectors = await _embedder.EmbedAsync([.. chunks.Select(c => c.Text)], EmbeddingPurpose.Passage, cancellationToken);
         var document = new Document(id, path, hash, DocumentStatus.Indexed, DateTimeOffset.UtcNow);
         await SaveAsync(document, chunks, vectors, cancellationToken);
-        return true;
     }
+
+    /// <summary>Зберігає документ зі статусом Error і причиною — щоб користувач бачив, що файл не проіндексовано.</summary>
+    private async Task SaveErrorAsync(string path, FileChange? change, string reason, CancellationToken cancellationToken)
+    {
+        // Файл видалено або він не змінився — зберігати помилку нема для чого.
+        if (change is { Kind: not (FileChangeKind.New or FileChangeKind.Modified) })
+        {
+            return;
+        }
+
+        var document = new Document(
+            Guid.NewGuid(),
+            change?.StoredDocument?.Path ?? path,
+            change?.ContentHash ?? UnknownContentHash,
+            DocumentStatus.Error,
+            DateTimeOffset.UtcNow,
+            string.IsNullOrWhiteSpace(reason) ? "Невідома помилка." : reason);
+
+        try
+        {
+            await SaveAsync(document, [], [], cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // Скасовано — статус збережемо під час наступної перевірки.
+        }
+        catch (Exception exception)
+        {
+            LogErrorNotSaved(_logger, path, exception);
+        }
+    }
+
+    /// <summary>Файл зайнятий іншим процесом: це <see cref="IOException"/>, але не «файл чи папку не знайдено».</summary>
+    private static bool IsFileBusy(IOException exception) =>
+        exception is not (FileNotFoundException or DirectoryNotFoundException);
 
     /// <summary>Зберігає документ в одній транзакції і синхронізує векторний індекс.</summary>
     private async Task SaveAsync(
@@ -478,7 +540,18 @@ public sealed partial class IndexingService : IIndexingService, IDisposable
         return progress;
     }
 
-    private void RaiseProgress(IndexingProgress progress) => ProgressChanged?.Invoke(this, progress);
+    private void RaiseProgress(IndexingProgress progress)
+    {
+        try
+        {
+            ProgressChanged?.Invoke(this, progress);
+        }
+        catch (Exception exception)
+        {
+            // Помилка в обробнику (наприклад, в UI) не повинна зупиняти індексацію.
+            LogProgressHandlerFailed(_logger, exception);
+        }
+    }
 
     /// <summary>Чи лежить шлях у відстежуваній папці; викликається під <see cref="_lock"/>.</summary>
     private bool IsTracked(string path) => _folders.Any(folder => IsInside(path, folder));
@@ -494,8 +567,17 @@ public sealed partial class IndexingService : IIndexingService, IDisposable
         || (path.StartsWith(folder, PathComparison)
             && (folder[^1] is '/' or '\\' || path[folder.Length] is '/' or '\\'));
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Файл не проіндексовано: {Path}. {Reason}")]
-    private static partial void LogFileFailed(ILogger logger, string path, string reason);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Файл не проіндексовано: {Path}")]
+    private static partial void LogFileFailed(ILogger logger, string path, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Файл зайнятий іншим процесом, повтор {Attempt} з {MaxRetries}: {Path}")]
+    private static partial void LogFileBusy(ILogger logger, string path, int attempt, int maxRetries);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Не вдалося зберегти статус помилки для {Path}")]
+    private static partial void LogErrorNotSaved(ILogger logger, string path, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Обробник ProgressChanged завершився з помилкою")]
+    private static partial void LogProgressHandlerFailed(ILogger logger, Exception exception);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Папку не знайдено, її документи залишено без змін: {Path}")]
     private static partial void LogFolderMissing(ILogger logger, string path);
