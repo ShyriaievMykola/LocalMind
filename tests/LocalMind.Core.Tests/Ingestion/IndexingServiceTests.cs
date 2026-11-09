@@ -90,7 +90,12 @@ public sealed class IndexingServiceTests : IDisposable
 
         var stopwatch = Stopwatch.StartNew();
         service.CancelPending();
+        service.CancelPending();
         await WaitUntilAsync(() => service.Progress is { IsCompleted: true, CurrentFile: null });
+
+        // Скасований файл врахований рівно один раз: оброблено = всього, без переповнення,
+        // навіть після повторного CancelPending.
+        Assert.Equal(new IndexingProgress(1, 1), service.Progress);
 
         Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(2));
         Assert.Empty(await _repository.GetDocumentsAsync());
