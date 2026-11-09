@@ -169,7 +169,9 @@ public sealed partial class IndexingService : IIndexingService, IDisposable
             _queued.Clear();
             _current?.Cancel();
 
-            // Залишається лише поточний файл — він завершиться найближчим часом.
+            // Інваріант: _total = _processed + (поточний файл ? 1 : 0) + файли в черзі.
+            // Черга тепер порожня, тож лишається лише поточний файл. Коли він завершиться, Finish зробить
+            // _processed++ і лічильник стане рівно _total: поточний файл уже врахований у «+ 1».
             _total = _processed + (_current is null ? 0 : 1);
             progress = UpdateProgress();
         }
