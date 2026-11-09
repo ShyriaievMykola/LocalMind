@@ -84,16 +84,20 @@ public sealed class FolderWatcherTests : IDisposable
     [Fact]
     public async Task SeriesOfSaves_ReportsSingleChange()
     {
+        // Довгий debounce: навіть якщо машина CI пригальмує між подіями, усі вони вкладуться в одне вікно.
+        var debounce = TimeSpan.FromSeconds(3);
+        using var watcher = new FolderWatcher(new ParserRegistry([new MarkdownParser()]), debounce);
         var path = Path.Combine(_folder, "note.md");
-        _watcher.Watch(_folder);
+        watcher.Watch(_folder);
 
         for (var i = 1; i <= 5; i++)
         {
             await File.WriteAllTextAsync(path, new string('x', i));
         }
 
-        await ReadUntilAsync("note.md");
-        var later = await ReadForAsync(_quietPeriod);
+        var first = await ReadUntilAsync(watcher, "note.md");
+        var later = await ReadForAsync(watcher, debounce + TimeSpan.FromSeconds(1));
+        Assert.Single(first, c => IsFile(c, "note.md"));
         Assert.DoesNotContain(later, c => IsFile(c, "note.md"));
     }
 
@@ -241,7 +245,9 @@ public sealed class FolderWatcherTests : IDisposable
         change.Kind == FolderChangeKind.FileChanged && Path.GetFileName(change.Path) == fileName;
 
     /// <summary>Читає чергу, доки не надійдуть події для всіх імен; повертає все прочитане.</summary>
-    private async Task<List<FolderChange>> ReadUntilAsync(params string[] names)
+    private Task<List<FolderChange>> ReadUntilAsync(params string[] names) => ReadUntilAsync(_watcher, names);
+
+    private static async Task<List<FolderChange>> ReadUntilAsync(FolderWatcher watcher, params string[] names)
     {
         var received = new List<FolderChange>();
         var missing = names.ToHashSet();
@@ -251,7 +257,7 @@ public sealed class FolderWatcherTests : IDisposable
         {
             while (missing.Count > 0)
             {
-                var change = await _watcher.Changes.ReadAsync(cts.Token);
+                var change = await watcher.Changes.ReadAsync(cts.Token);
                 received.Add(change);
                 missing.Remove(Path.GetFileName(change.Path));
             }
@@ -265,7 +271,9 @@ public sealed class FolderWatcherTests : IDisposable
     }
 
     /// <summary>Збирає все, що надійде в чергу протягом вказаного часу.</summary>
-    private async Task<List<FolderChange>> ReadForAsync(TimeSpan duration)
+    private Task<List<FolderChange>> ReadForAsync(TimeSpan duration) => ReadForAsync(_watcher, duration);
+
+    private static async Task<List<FolderChange>> ReadForAsync(FolderWatcher watcher, TimeSpan duration)
     {
         var received = new List<FolderChange>();
         using var cts = new CancellationTokenSource(duration);
@@ -274,7 +282,7 @@ public sealed class FolderWatcherTests : IDisposable
         {
             while (true)
             {
-                received.Add(await _watcher.Changes.ReadAsync(cts.Token));
+                received.Add(await watcher.Changes.ReadAsync(cts.Token));
             }
         }
         catch (OperationCanceledException)
