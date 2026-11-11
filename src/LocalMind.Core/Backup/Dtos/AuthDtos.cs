@@ -28,3 +28,8 @@ public sealed record TokenResponse(
     DateTimeOffset AccessTokenExpiresAt,
     string RefreshToken,
     DateTimeOffset RefreshTokenExpiresAt);
+
+/// <summary>Поточний користувач — відповідь на <c>GET /api/v1/auth/me</c>.</summary>
+/// <param name="Id">Ідентифікатор користувача на сервері.</param>
+/// <param name="Email">Email.</param>
+public sealed record UserInfo(string Id, string Email);

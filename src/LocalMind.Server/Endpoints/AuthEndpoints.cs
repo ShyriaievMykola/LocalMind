@@ -1,4 +1,6 @@
+using System.Security.Claims;
 using LocalMind.Core.Backup.Dtos;
+using LocalMind.Server.Auth;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Identity;
 
@@ -16,6 +18,7 @@ public static class AuthEndpoints
         var auth = api.MapGroup("/auth").WithTags("Auth");
         auth.MapPost("/register", RegisterAsync);
         auth.MapPost("/login", LoginAsync);
+        auth.MapGet("/me", MeAsync).RequireAuthorization();
         return api;
     }
 
@@ -51,9 +54,9 @@ public static class AuthEndpoints
             .ToDictionary(g => g.Key, g => g.Select(e => e.Description).ToArray()));
     }
 
-    private static async Task<Results<NoContent, ProblemHttpResult>> LoginAsync(
+    private static async Task<Results<Ok<TokenResponse>, ProblemHttpResult>> LoginAsync(
         LoginRequest request, UserManager<IdentityUser> users, SignInManager<IdentityUser> signIn,
-        IPasswordHasher<IdentityUser> hasher)
+        IPasswordHasher<IdentityUser> hasher, JwtTokenService tokens)
     {
         var user = string.IsNullOrWhiteSpace(request.Email) ? null : await users.FindByEmailAsync(request.Email.Trim());
         if (user is null)
@@ -66,7 +69,24 @@ public static class AuthEndpoints
         var result = await signIn.CheckPasswordSignInAsync(user, request.Password ?? string.Empty, lockoutOnFailure: true);
 
         // Заблокований обліковий запис дає ту саму відповідь — інакше блокування підтверджує, що email існує.
-        return result.Succeeded ? TypedResults.NoContent() : Unauthorized();
+        if (!result.Succeeded)
+        {
+            return Unauthorized();
+        }
+
+        var (accessToken, expiresAt) = tokens.CreateAccessToken(user);
+
+        // Refresh-токен з'явиться в SV-05 (#79).
+        return TypedResults.Ok(new TokenResponse(accessToken, expiresAt, string.Empty, expiresAt));
+    }
+
+    private static async Task<Results<Ok<UserInfo>, UnauthorizedHttpResult>> MeAsync(
+        ClaimsPrincipal principal, UserManager<IdentityUser> users)
+    {
+        var user = principal.Identity?.Name is { } id ? await users.FindByIdAsync(id) : null;
+        return user is null
+            ? TypedResults.Unauthorized()
+            : TypedResults.Ok(new UserInfo(user.Id, user.Email ?? string.Empty));
     }
 
     private static ProblemHttpResult Unauthorized() =>
