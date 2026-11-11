@@ -120,4 +120,101 @@ public sealed class SettingsViewModelTests
         Assert.Equal(30m, viewModel.DefaultTopK);
         Assert.Equal("/models/model.onnx", viewModel.ModelPath);
     }
+
+    [Fact]
+    public void Constructor_OffersAllThemesAndSearchModes()
+    {
+        var viewModel = _settings.CreateViewModel();
+
+        Assert.Equal([ThemePreference.System, ThemePreference.Light, ThemePreference.Dark], viewModel.Themes);
+        Assert.Equal([SearchMode.Semantic, SearchMode.Keyword, SearchMode.Hybrid], viewModel.SearchModes);
+    }
+
+    [Fact]
+    public async Task Save_AllNumbersInvalid_ListsEveryError()
+    {
+        var viewModel = _settings.CreateViewModel();
+        viewModel.DefaultTopK = null;
+        viewModel.ChunkSizeTokens = 2.5m;
+        viewModel.OverlapPercent = null;
+
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        Assert.Equal(3, viewModel.Errors.Count);
+        Assert.Empty(_settings.Saved);
+    }
+
+    [Theory]
+    [InlineData(3_000_000_000)]
+    [InlineData(-3_000_000_000)]
+    public async Task Save_NumberOutsideIntRange_ShowsError(long value)
+    {
+        var viewModel = _settings.CreateViewModel();
+        viewModel.ChunkSizeTokens = value;
+
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        Assert.True(viewModel.HasErrors);
+        Assert.Empty(_settings.Saved);
+    }
+
+    [Fact]
+    public async Task Save_ModelPathChanged_TrimsItAndExplainsReindexing()
+    {
+        var viewModel = _settings.CreateViewModel();
+        viewModel.ModelPath = "  /other/model.onnx  ";
+
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        Assert.Equal("/other/model.onnx", Assert.Single(_settings.Saved).ModelPath);
+        Assert.Contains("приберіть папку", viewModel.SavedMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Save_OverlapChanged_ExplainsReindexing()
+    {
+        var viewModel = _settings.CreateViewModel();
+        viewModel.OverlapPercent = 20;
+
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        Assert.Contains("приберіть папку", viewModel.SavedMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Save_AfterError_ClearsErrorsAndShowsSavedMessage()
+    {
+        _settings.ValidationErrors.Add("помилка");
+        var viewModel = _settings.CreateViewModel();
+        await viewModel.SaveCommand.ExecuteAsync(null);
+        Assert.True(viewModel.HasErrors);
+
+        _settings.ValidationErrors.Clear();
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        Assert.False(viewModel.HasErrors);
+        Assert.NotNull(viewModel.SavedMessage);
+    }
+
+    [Fact]
+    public async Task Reset_ClearsErrorsAndSavedMessage()
+    {
+        var viewModel = _settings.CreateViewModel();
+        viewModel.DefaultTopK = null;
+        await viewModel.SaveCommand.ExecuteAsync(null);
+        Assert.True(viewModel.HasErrors);
+
+        viewModel.ResetCommand.Execute(null);
+
+        Assert.False(viewModel.HasErrors);
+        Assert.Equal(10m, viewModel.DefaultTopK);
+
+        viewModel.Theme = ThemePreference.Dark;
+        await viewModel.SaveCommand.ExecuteAsync(null);
+        Assert.NotNull(viewModel.SavedMessage);
+
+        viewModel.ResetCommand.Execute(null);
+
+        Assert.Null(viewModel.SavedMessage);
+    }
 }
