@@ -33,7 +33,7 @@ public static class AuthEndpoints
             });
         }
 
-        var email = request.Email.Trim();
+        var email = EmailFormatValidator.Normalize(request.Email);
         var user = new IdentityUser { UserName = email, Email = email };
         var result = await users.CreateAsync(user, request.Password);
         if (result.Succeeded)
@@ -58,7 +58,7 @@ public static class AuthEndpoints
         LoginRequest request, UserManager<IdentityUser> users, SignInManager<IdentityUser> signIn,
         IPasswordHasher<IdentityUser> hasher, JwtTokenService tokens)
     {
-        var user = string.IsNullOrWhiteSpace(request.Email) ? null : await users.FindByEmailAsync(request.Email.Trim());
+        var user = string.IsNullOrWhiteSpace(request.Email) ? null : await users.FindByEmailAsync(EmailFormatValidator.Normalize(request.Email));
         if (user is null)
         {
             // Хешуємо й для неіснуючого користувача, щоб час відповіді не видавав, чи є такий email.

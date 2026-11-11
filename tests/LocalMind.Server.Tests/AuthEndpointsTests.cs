@@ -139,6 +139,37 @@ public sealed class AuthEndpointsTests(LocalMindServerFactory factory) : IClassF
         }
     }
 
+    [Theory]
+    [InlineData("a b@example.com")]
+    [InlineData("<script>@example.com")]
+    [InlineData("Ім'я <user@example.com>")]
+    [InlineData("user@localhost")]
+    [InlineData("user@example.com")]
+    public async Task Register_MalformedEmail_Returns400(string email)
+    {
+        using var client = factory.CreateClient();
+
+        using var response = await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest(email, StrongPassword));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Register_SameEmailInNfcAndNfd_Returns409()
+    {
+        using var client = factory.CreateClient();
+        var nfc = $"й-{Guid.NewGuid():N}@example.com".Normalize(NormalizationForm.FormC);
+        var nfd = nfc.Normalize(NormalizationForm.FormD);
+
+        using var first = await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest(nfc, StrongPassword));
+        using var second = await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest(nfd, StrongPassword));
+        using var login = await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest(nfd, StrongPassword));
+
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+        Assert.True(login.IsSuccessStatusCode);
+    }
+
     [Fact]
     public async Task Register_CyrillicEmail_Returns201()
     {
