@@ -14,7 +14,7 @@ namespace LocalMind.App.Services;
 /// </summary>
 internal sealed partial class CoreStartup(
     IServiceProvider services,
-    SearchService search,
+    ISearchService search,
     IIndexingService indexing,
     IOptions<EmbeddingModelOptions> modelOptions,
     CoreStatus status,
@@ -41,7 +41,11 @@ internal sealed partial class CoreStartup(
                 missing is null,
                 missing is null ? null : $"Файл моделі не знайдено: {missing}. Запустіть scripts/download-models.");
 
-            await search.LoadVectorsAsync(stoppingToken);
+            // Підмінений ISearchService (фейк у тестах) сам вирішує, коли вантажити дані.
+            if (search is SearchService searchService)
+            {
+                await searchService.LoadVectorsAsync(stoppingToken);
+            }
 
             // Без моделі кожен файл отримав би статус «помилка», тому перевірку папок відкладаємо до її появи.
             if (missing is null)

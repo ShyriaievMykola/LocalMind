@@ -43,8 +43,8 @@ public static class AppHost
         builder.Services.AddSingleton<CoreStatus>();
         builder.Services.AddHostedService<CoreStartup>();
 
-        // ViewModel-і — Transient: кожне відкриття сторінки отримує новий екземпляр.
-        builder.Services.AddTransient<MainViewModel>();
+        // Корінь вікна живе весь час роботи застосунку. Сторінки — Transient (див. docs/architecture.md, 3.5).
+        builder.Services.AddSingleton<MainViewModel>();
 
         return builder;
     }

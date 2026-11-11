@@ -122,8 +122,8 @@ Cli ──┘
 (зокрема `IndexingService`).
 
 **Налаштування** — `src/LocalMind.App/appsettings.json`, змінні оточення (`LocalMind__Storage__DatabasePath=...`),
-аргументи командного рядка. Відносні шляхи до моделі шукаються від папки застосунку і вгору — у розробці знаходиться
-`models/` у корені репозиторію. Порожній або відносний шлях до БД — у теці даних користувача (див. розділ 6).
+аргументи командного рядка. Відносні шляхи до моделі шукаються поруч із програмою, а при запуску з репозиторію — у його корені
+(`models/`, куди кладе `scripts/download-models`). Порожній або відносний шлях до БД — у теці даних користувача (див. розділ 6).
 
 **Як додати сторінку**
 
@@ -134,14 +134,22 @@ Cli ──┘
    Доступні: `ISearchService`, `IIndexingService`, `IDocumentRepository`, `CoreStatus`, `ILogger<T>`, `IOptions<...>`.
 2. `Views/SearchView.axaml` (+ `.axaml.cs`) — `UserControl` з `x:DataType="vm:SearchViewModel"`.
    `ViewLocator` сам знаходить View за назвою: `...ViewModels.XxxViewModel` → `...Views.XxxView`.
-3. Зареєструвати VM в `AppHost.CreateBuilder`: `builder.Services.AddTransient<SearchViewModel>();`.
+3. Зареєструвати VM в `AppHost.CreateBuilder`: `builder.Services.AddTransient<SearchViewModel>();`
+   (`MainViewModel` — синглтон, бо живе весь час роботи вікна).
    Контейнер перевіряється під час збирання (`ValidateOnBuild`) — забута залежність одразу дасть помилку.
 4. Показати: батьківська VM отримує `SearchViewModel` через конструктор (або `IServiceProvider`) і кладе в
    властивість, до якої прив'язаний `ContentControl`.
 
+**Перед зверненням до сервісів** дивіться `CoreStatus.Stage`: при `Failed` (недоступна БД, некоректні налаштування)
+сервіси з DI резолвляться, але кинуть виняток при першому використанні — покажіть `CoreStatus.Error`.
+Дочекатися кінця запуску: `await status.Completion`.
+
 **Потоки.** `IIndexingService.ProgressChanged` і `CoreStatus.Changed` приходять з фонового потоку — оновлюйте
-властивості через `Dispatcher.UIThread.Post(...)` (приклад — `MainViewModel`). Якщо VM живе менше за застосунок,
-відпишіться від подій синглтонів, інакше VM не звільниться. Довгі виклики (`SearchAsync`, `AddFolderAsync`) — через
+властивості через `Dispatcher.UIThread.Post(...)` (приклад — `MainViewModel`).
+
+**Підписки.** Синглтон тримає обробник події, а з ним і VM. Сторінка, що підписується на `CoreStatus.Changed` чи
+`ProgressChanged`, має відписатися, коли її закривають (метод на кшталт `Close()`, який викликає батьківська VM).
+Не робіть Transient-VM `IDisposable`: контейнер тримає такі об'єкти до завершення застосунку. Довгі виклики (`SearchAsync`, `AddFolderAsync`) — через
 `async`-команди `[RelayCommand]` з `CancellationToken`.
 
 ### 3.6. Backup (`Core/Backup`)
