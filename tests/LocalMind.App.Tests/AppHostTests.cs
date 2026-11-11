@@ -2,11 +2,13 @@ using LocalMind.App.Services;
 using LocalMind.App.ViewModels;
 using LocalMind.Core.Abstractions;
 using LocalMind.Core.Configuration;
+using LocalMind.Core.Models;
 using LocalMind.Search.Configuration;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 
 namespace LocalMind.App.Tests;
 
@@ -17,6 +19,26 @@ public sealed class AppHostTests : IDisposable
     private readonly string _folder = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
 
     public AppHostTests() => Directory.CreateDirectory(_folder);
+
+    [Fact]
+    public async Task Start_InvalidSearchOptions_WindowViewModelStillResolves()
+    {
+        var builder = AppHost.CreateBuilder([]);
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            [$"{SearchOptions.SectionName}:{nameof(SearchOptions.DefaultTopK)}"] = "0",
+        });
+        using var host = builder.Build();
+
+        await Assert.ThrowsAsync<OptionsValidationException>(() => host.StartAsync());
+        // Program.Main перетворює помилку ValidateOnStart на стан ядра й відкриває вікно.
+        host.Services.GetRequiredService<CoreStatus>().SetFailed("Некоректні налаштування");
+
+        var navigation = host.Services.GetRequiredService<MainViewModel>();
+        var search = Assert.IsType<SearchViewModel>(navigation.CurrentPage);
+        Assert.Equal(SearchQuery.DefaultTopK, search.TopK);
+        Assert.Contains("Некоректні налаштування", navigation.StatusText, StringComparison.Ordinal);
+    }
 
     [Fact]
     public void Build_ValidatesContainer_AndResolvesServicesForViewModels()
@@ -37,7 +59,7 @@ public sealed class AppHostTests : IDisposable
     {
         var builder = AppHost.CreateBuilder([]);
         // Підміна доводить, що навігація отримує VM з контейнера, а не створює їх через new.
-        var search = new SearchViewModel();
+        var search = new FakeSearchService().CreateViewModel();
         var library = new LibraryViewModel();
         var settings = new SettingsViewModel();
         builder.Services.AddSingleton(search);
