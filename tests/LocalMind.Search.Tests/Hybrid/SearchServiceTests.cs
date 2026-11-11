@@ -1,4 +1,5 @@
 using LocalMind.Core.Abstractions;
+using LocalMind.Core.Errors;
 using LocalMind.Core.Models;
 using LocalMind.Search.Configuration;
 using LocalMind.Search.Hybrid;
@@ -169,6 +170,32 @@ public sealed class SearchServiceTests : IDisposable
         Assert.Empty(_embedder.Calls);
     }
 
+    [Fact]
+    public async Task Hybrid_ModelUnavailable_ReturnsKeywordResults()
+    {
+        await IndexAsync("/notes/a.md", "кава зранку", "чай увечері");
+        using var index = new BruteForceIndex(_embedder.Dimensions);
+        using var service = new SearchService(
+            new MissingModelEmbedder(_embedder), index, _keywordIndex, _repository, Options.Create(new SearchOptions()));
+
+        var results = await service.SearchAsync(new SearchQuery("кава", SearchMode.Hybrid));
+
+        Assert.Equal("кава зранку", Assert.Single(results).Chunk.Text);
+        Assert.Equal(1.0 / 61, results[0].Score, precision: 10);
+    }
+
+    [Fact]
+    public async Task Semantic_ModelUnavailable_Throws()
+    {
+        await IndexAsync("/notes/a.md", "кава");
+        using var index = new BruteForceIndex(_embedder.Dimensions);
+        using var service = new SearchService(
+            new MissingModelEmbedder(_embedder), index, _keywordIndex, _repository, Options.Create(new SearchOptions()));
+
+        await Assert.ThrowsAsync<LocalMindException>(
+            () => service.SearchAsync(new SearchQuery("кава", SearchMode.Semantic)));
+    }
+
     [Theory]
     [InlineData(SearchMode.Keyword)]
     [InlineData(SearchMode.Semantic)]
@@ -203,6 +230,22 @@ public sealed class SearchServiceTests : IDisposable
         var vectors = await _embedder.EmbedAsync(texts, EmbeddingPurpose.Passage);
         await _repository.SaveAsync(document, chunks, vectors, _embedder.ModelName);
         return document;
+    }
+
+    /// <summary>Модель із тією ж назвою, що й у БД, але файлу немає — як <c>OnnxEmbedder</c> без моделі.</summary>
+    private sealed class MissingModelEmbedder(IEmbedder inner) : IEmbedder
+    {
+        public string ModelName => inner.ModelName;
+
+        public int Dimensions => inner.Dimensions;
+
+        public int MaxTokens => inner.MaxTokens;
+
+        public Task<IReadOnlyList<ReadOnlyMemory<float>>> EmbedAsync(
+            IReadOnlyList<string> texts,
+            EmbeddingPurpose purpose,
+            CancellationToken cancellationToken = default) =>
+            throw new LocalMindException("Файл моделі не знайдено.");
     }
 
     private sealed class FailsOnSecondAddOnce(IVectorIndex inner) : IVectorIndex

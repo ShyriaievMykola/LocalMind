@@ -263,7 +263,8 @@ Generated_Code/
 # to a newer Visual Studio version. Backup files are not needed,
 # because we have git ;-)
 _UpgradeReport_Files/
-Backup*/
+# Лише в корені: інакше правило ловить src/LocalMind.Core/Backup/.
+/Backup*/
 UpgradeLog*.XML
 UpgradeLog*.htm
 ServiceFabricBackup/
@@ -493,3 +494,6 @@ eval/datasets/corpus/
 *.db-wal
 coverage/
 TestResults/
+
+# Бекапи користувачів, які зберігає локальний сервер
+src/LocalMind.Server/backups/

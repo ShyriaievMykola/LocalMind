@@ -1,0 +1,7 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:LocalMind.App.ViewModels"
+             x:Class="LocalMind.App.Views.LibraryView"
+             x:DataType="vm:LibraryViewModel">
+  <TextBlock Text="Бібліотека" FontSize="24" FontWeight="SemiBold" />
+</UserControl>

@@ -2,11 +2,13 @@ using LocalMind.App.Services;
 using LocalMind.App.ViewModels;
 using LocalMind.Core.Abstractions;
 using LocalMind.Core.Configuration;
+using LocalMind.Core.Models;
 using LocalMind.Search.Configuration;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 
 namespace LocalMind.App.Tests;
 
@@ -19,6 +21,26 @@ public sealed class AppHostTests : IDisposable
     public AppHostTests() => Directory.CreateDirectory(_folder);
 
     [Fact]
+    public async Task Start_InvalidSearchOptions_WindowViewModelStillResolves()
+    {
+        var builder = AppHost.CreateBuilder([]);
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            [$"{SearchOptions.SectionName}:{nameof(SearchOptions.DefaultTopK)}"] = "0",
+        });
+        using var host = builder.Build();
+
+        await Assert.ThrowsAsync<OptionsValidationException>(() => host.StartAsync());
+        // Program.Main перетворює помилку ValidateOnStart на стан ядра й відкриває вікно.
+        host.Services.GetRequiredService<CoreStatus>().SetFailed("Некоректні налаштування");
+
+        var navigation = host.Services.GetRequiredService<MainViewModel>();
+        var search = Assert.IsType<SearchViewModel>(navigation.CurrentPage);
+        Assert.Equal(SearchQuery.DefaultTopK, search.TopK);
+        Assert.Contains("Некоректні налаштування", navigation.StatusText, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Build_ValidatesContainer_AndResolvesServicesForViewModels()
     {
         using var host = BuildHost(Path.Combine(_folder, "app.db"));
@@ -27,6 +49,31 @@ public sealed class AppHostTests : IDisposable
         Assert.NotNull(host.Services.GetRequiredService<IIndexingService>());
         Assert.NotNull(host.Services.GetRequiredService<IDocumentRepository>());
         Assert.NotNull(host.Services.GetRequiredService<MainViewModel>());
+        Assert.NotSame(host.Services.GetRequiredService<SearchViewModel>(), host.Services.GetRequiredService<SearchViewModel>());
+        Assert.NotSame(host.Services.GetRequiredService<LibraryViewModel>(), host.Services.GetRequiredService<LibraryViewModel>());
+        Assert.NotSame(host.Services.GetRequiredService<SettingsViewModel>(), host.Services.GetRequiredService<SettingsViewModel>());
+    }
+
+    [Fact]
+    public void Build_NavigationUsesRegisteredPages_WithExpectedLifetimes()
+    {
+        var builder = AppHost.CreateBuilder([]);
+        // Підміна доводить, що навігація отримує VM з контейнера, а не створює їх через new.
+        var search = new FakeSearchService().CreateViewModel();
+        var library = new LibraryViewModel();
+        var settings = new SettingsViewModel();
+        builder.Services.AddSingleton(search);
+        builder.Services.AddSingleton(library);
+        builder.Services.AddSingleton(settings);
+        using var host = builder.Build();
+
+        var navigation = host.Services.GetRequiredService<MainViewModel>();
+
+        Assert.Same(navigation, host.Services.GetRequiredService<MainViewModel>());
+        Assert.Collection(navigation.NavigationItems,
+            item => Assert.Same(search, item.Page),
+            item => Assert.Same(library, item.Page),
+            item => Assert.Same(settings, item.Page));
     }
 
     [Fact]

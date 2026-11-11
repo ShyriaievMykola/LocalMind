@@ -1,0 +1,62 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:LocalMind.App.ViewModels"
+             xmlns:models="using:LocalMind.Core.Models"
+             xmlns:converters="using:LocalMind.App.Converters"
+             x:Class="LocalMind.App.Views.SearchView"
+             x:DataType="vm:SearchViewModel">
+  <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*" RowSpacing="12">
+    <TextBlock Text="Пошук" FontSize="24" FontWeight="SemiBold" />
+
+    <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+      <TextBox Text="{Binding QueryText, Mode=TwoWay}" PlaceholderText="Пошук у нотатках"
+               AutomationProperties.Name="Пошуковий запит">
+        <TextBox.KeyBindings>
+          <KeyBinding Gesture="Enter" Command="{Binding SearchCommand}" />
+        </TextBox.KeyBindings>
+      </TextBox>
+      <!-- Кнопка залишається доступною під час пошуку: новий запит скасовує попередній. -->
+      <Button Grid.Column="1" Content="Знайти" Command="{Binding SearchCommand}" />
+    </Grid>
+
+    <WrapPanel Grid.Row="2" Orientation="Horizontal">
+      <StackPanel Margin="0,0,16,0" Spacing="4">
+        <TextBlock Text="Режим пошуку" />
+        <ComboBox ItemsSource="{Binding Modes}" SelectedItem="{Binding SelectedMode, Mode=TwoWay}"
+                  MinWidth="160" AutomationProperties.Name="Режим пошуку" />
+      </StackPanel>
+      <StackPanel Spacing="4">
+        <TextBlock Text="Кількість результатів" />
+        <NumericUpDown Value="{Binding TopK, Mode=TwoWay}" Minimum="1" Maximum="2147483647"
+                       Increment="1" FormatString="0" ParsingNumberStyle="Integer" MinWidth="160"
+                       AutomationProperties.Name="Кількість результатів" />
+      </StackPanel>
+    </WrapPanel>
+
+    <TextBlock Grid.Row="3" Text="Шукаю…" IsVisible="{Binding IsSearching}" />
+    <TextBlock Grid.Row="4" Text="{Binding ErrorMessage}" IsVisible="{Binding HasError}"
+               TextWrapping="Wrap" AutomationProperties.Name="Помилка пошуку" />
+
+    <ListBox Grid.Row="5" ItemsSource="{Binding Results}" Background="Transparent" BorderThickness="0"
+             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+             AutomationProperties.Name="Результати пошуку">
+      <ListBox.Styles>
+        <Style Selector="ListBoxItem">
+          <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        </Style>
+      </ListBox.Styles>
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="models:SearchResult">
+          <StackPanel Spacing="6" Margin="4,8">
+            <TextBlock Text="{Binding DocumentPath, Converter={x:Static converters:PathConverters.FileName}}"
+                       FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+            <TextBlock Text="{Binding DocumentPath}" TextTrimming="CharacterEllipsis"
+                       ToolTip.Tip="{Binding DocumentPath}" />
+            <TextBlock Text="{Binding Score, StringFormat='Оцінка: {0:G4}'}" />
+            <TextBlock Text="{Binding Chunk.Text}" TextWrapping="Wrap" />
+          </StackPanel>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+  </Grid>
+</UserControl>
