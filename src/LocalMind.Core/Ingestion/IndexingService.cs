@@ -16,11 +16,6 @@ namespace LocalMind.Core.Ingestion;
 /// </summary>
 public sealed partial class IndexingService : IIndexingService, IDisposable
 {
-    // Windows і macOS за замовчуванням не розрізняють регістр у шляхах, Linux розрізняє.
-    private static readonly bool IgnorePathCase = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS();
-    private static readonly StringComparer PathComparer = IgnorePathCase ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
-    private static readonly StringComparison PathComparison = IgnorePathCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-
     /// <summary>Усі файли папки й підпапок; недоступні підпапки пропускаються без винятку.</summary>
     private static readonly EnumerationOptions AllFiles = new() { RecurseSubdirectories = true, IgnoreInaccessible = true };
 
@@ -52,8 +47,8 @@ public sealed partial class IndexingService : IIndexingService, IDisposable
 
     private readonly Channel<string> _queue = Channel.CreateUnbounded<string>();
     private readonly Lock _lock = new();
-    private readonly HashSet<string> _queued = new(PathComparer);
-    private readonly HashSet<string> _folders = new(PathComparer);
+    private readonly HashSet<string> _queued = new(FilePaths.Comparer);
+    private readonly HashSet<string> _folders = new(FilePaths.Comparer);
     private readonly CancellationTokenSource _shutdown = new();
     private readonly Task _processing;
     private readonly Task _watching;
@@ -234,7 +229,7 @@ public sealed partial class IndexingService : IIndexingService, IDisposable
             : [];
 
         var documents = await _repository.GetDocumentsAsync(cancellationToken);
-        paths.AddRange(documents.Select(d => d.Path).Where(p => IsInside(p, path)));
+        paths.AddRange(documents.Select(d => d.Path).Where(p => FilePaths.IsSameOrInside(p, path)));
 
         Enqueue(paths);
     }
@@ -563,18 +558,13 @@ public sealed partial class IndexingService : IIndexingService, IDisposable
     }
 
     /// <summary>Чи лежить шлях у відстежуваній папці; викликається під <see cref="_lock"/>.</summary>
-    private bool IsTracked(string path) => _folders.Any(folder => IsInside(path, folder));
+    private bool IsTracked(string path) => _folders.Any(folder => FilePaths.IsSameOrInside(path, folder));
 
     private static string NormalizeFolder(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
         return Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
     }
-
-    private static bool IsInside(string path, string folder) =>
-        path.Equals(folder, PathComparison)
-        || (path.StartsWith(folder, PathComparison)
-            && (folder[^1] is '/' or '\\' || path[folder.Length] is '/' or '\\'));
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Файл не проіндексовано: {Path}")]
     private static partial void LogFileFailed(ILogger logger, string path, Exception exception);

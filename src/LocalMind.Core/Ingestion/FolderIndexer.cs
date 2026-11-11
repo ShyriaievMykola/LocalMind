@@ -22,12 +22,6 @@ public sealed partial class FolderIndexer(
     IOptions<IngestionOptions>? ingestionOptions = null)
 {
     private readonly IngestionOptions _limits = ingestionOptions?.Value ?? new IngestionOptions();
-
-    // Windows і macOS за замовчуванням не розрізняють регістр у шляхах, Linux розрізняє.
-    private static readonly bool IgnorePathCase = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS();
-    private static readonly StringComparer PathComparer = IgnorePathCase ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
-    private static readonly StringComparison PathComparison = IgnorePathCase ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-
     /// <summary>Індексує всі підтримувані файли папки та її підпапок.</summary>
     /// <param name="folder">Шлях до папки.</param>
     /// <param name="progress">Отримує стан після кожного файла.</param>
@@ -54,8 +48,8 @@ public sealed partial class FolderIndexer(
             .ToList();
 
         var known = (await repository.GetDocumentsAsync(cancellationToken))
-            .DistinctBy(d => d.Path, PathComparer)
-            .ToDictionary(d => d.Path, PathComparer);
+            .DistinctBy(d => d.Path, FilePaths.Comparer)
+            .ToDictionary(d => d.Path, FilePaths.Comparer);
 
         var result = new FolderIndexingResult();
         for (var i = 0; i < files.Count; i++)
@@ -151,13 +145,13 @@ public sealed partial class FolderIndexer(
         IEnumerable<Document> known,
         CancellationToken cancellationToken)
     {
-        var existing = files.ToHashSet(PathComparer);
+        var existing = files.ToHashSet(FilePaths.Comparer);
         var prefix = Path.EndsInDirectorySeparator(root) ? root : root + Path.DirectorySeparatorChar;
         var removed = 0;
 
         foreach (var document in known)
         {
-            if (document.Path.StartsWith(prefix, PathComparison) && !existing.Contains(document.Path))
+            if (document.Path.StartsWith(prefix, FilePaths.Comparison) && !existing.Contains(document.Path))
             {
                 await repository.DeleteAsync(document.Id, cancellationToken);
                 removed++;

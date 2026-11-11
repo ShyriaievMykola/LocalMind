@@ -41,7 +41,10 @@ public static class AppHost
             options.DatabasePath = AppPaths.ResolveDatabase(options.DatabasePath));
 
         builder.Services.AddSingleton<CoreStatus>();
+        builder.Services.AddSingleton<IThemeService, ThemeService>();
         builder.Services.AddHostedService<CoreStartup>();
+        builder.Services.AddSingleton<IFileLauncher, SystemFileLauncher>();
+        builder.Services.AddSingleton<ResultCardFactory>();
 
         // Корінь вікна живе весь час роботи застосунку. Сторінки — Transient (див. docs/architecture.md, 3.5).
         builder.Services.AddSingleton<MainViewModel>();
