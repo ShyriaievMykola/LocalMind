@@ -35,6 +35,7 @@ public static class AesGcmCipher
     }
 
     /// <summary>Розшифровує конверт і перевіряє тег.</summary>
+    /// <exception cref="ArgumentException">Порожній пароль.</exception>
     /// <exception cref="BackupDecryptionException">Неправильний пароль або дані змінено.</exception>
     public static byte[] Decrypt(EncryptedEnvelope envelope, ReadOnlySpan<char> password)
     {
@@ -61,7 +62,7 @@ public static class AesGcmCipher
 
     /// <summary>
     /// Шифрує потік у потік. AES-GCM у .NET не потоковий, тому вхід повністю читається в пам'ять —
-    /// розмір бекапу обмежений лімітом сервера (DR-014).
+    /// розмір бекапу обмежений лімітом сервера (DR-014). PBKDF2 (~0,5 с) іде в пулі потоків, не блокуючи UI.
     /// </summary>
     /// <exception cref="ArgumentException">Порожній пароль.</exception>
     public static async Task EncryptAsync(Stream input, Stream output, string password, CancellationToken cancellationToken = default)
@@ -73,7 +74,7 @@ public static class AesGcmCipher
         var plaintext = await ReadAllAsync(input, cancellationToken).ConfigureAwait(false);
         try
         {
-            var envelope = Encrypt(plaintext, password);
+            var envelope = await Task.Run(() => Encrypt(plaintext, password), cancellationToken).ConfigureAwait(false);
             await output.WriteAsync(envelope.ToBytes(), cancellationToken).ConfigureAwait(false);
         }
         finally
@@ -83,6 +84,7 @@ public static class AesGcmCipher
     }
 
     /// <summary>Розшифровує потік у потік. Якщо перевірка тегу не пройшла, у вихід нічого не пишеться.</summary>
+    /// <exception cref="ArgumentException">Порожній пароль.</exception>
     /// <exception cref="BackupDecryptionException">Неправильний пароль, дані змінено або не формат LocalMind.</exception>
     public static async Task DecryptAsync(Stream input, Stream output, string password, CancellationToken cancellationToken = default)
     {
@@ -91,7 +93,8 @@ public static class AesGcmCipher
         ArgumentNullException.ThrowIfNull(password);
 
         var data = await ReadAllAsync(input, cancellationToken).ConfigureAwait(false);
-        var plaintext = Decrypt(EncryptedEnvelope.Parse(data), password);
+        var plaintext = await Task.Run(() => Decrypt(EncryptedEnvelope.Parse(data), password), cancellationToken)
+            .ConfigureAwait(false);
         try
         {
             await output.WriteAsync(plaintext, cancellationToken).ConfigureAwait(false);
