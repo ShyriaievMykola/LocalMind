@@ -35,7 +35,9 @@ public sealed partial class SearchViewModel : ViewModelBase
         _cards = cards;
         // Після помилки ValidateOnStart хост уже повідомив CoreStatus.Failed.
         // Повторне читання невалідних Options не повинно завадити відкриттю вікна.
-        TopK = status.Stage == CoreStage.Failed ? SearchQuery.DefaultTopK : options.Value.DefaultTopK;
+        var defaults = status.Stage == CoreStage.Failed ? new SearchOptions() : options.Value;
+        TopK = defaults.DefaultTopK;
+        SelectedMode = defaults.DefaultMode;
     }
 
     public IReadOnlyList<SearchMode> Modes { get; } = Array.AsReadOnly<SearchMode>([

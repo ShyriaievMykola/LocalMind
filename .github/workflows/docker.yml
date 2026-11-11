@@ -1,0 +1,80 @@
+name: Docker
+
+# Збірка образу сервера й smoke-тест контейнера. Лише для змін, що можуть його зламати.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/LocalMind.Server/**"
+      - "src/LocalMind.Core/**"
+      - "deploy/**"
+      - "Directory.Build.props"
+      - "Directory.Packages.props"
+      - "global.json"
+      - ".dockerignore"
+      - ".github/workflows/docker.yml"
+  pull_request:
+    paths:
+      - "src/LocalMind.Server/**"
+      - "src/LocalMind.Core/**"
+      - "deploy/**"
+      - "Directory.Build.props"
+      - "Directory.Packages.props"
+      - "global.json"
+      - ".dockerignore"
+      - ".github/workflows/docker.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    name: build & smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build image
+        run: docker build -f src/LocalMind.Server/Dockerfile -t localmind-server .
+
+      # Без ключа JWT сервер не повинен стартувати (DR-017).
+      - name: Container refuses to start without signing key
+        run: |
+          if docker run --rm localmind-server; then
+            echo "::error::Контейнер запустився без Jwt__SigningKey"
+            exit 1
+          fi
+
+      - name: Run with test key
+        run: |
+          key="$(openssl rand -base64 48)"
+          echo "::add-mask::$key"
+          docker run -d --name server -p 8080:8080 -e "Jwt__SigningKey=$key" localmind-server
+
+      - name: Health check returns 200
+        run: |
+          for i in $(seq 1 30); do
+            code="$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/v1/health || true)"
+            if [ "$code" = "200" ]; then
+              echo "health: 200"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::/api/v1/health не відповів 200 за 30 с (останній код: $code)"
+          exit 1
+
+      - name: Container runs as non-root
+        run: |
+          uid="$(docker exec server id -u)"
+          echo "uid=$uid"
+          test "$uid" != "0"
+
+      - name: Container logs
+        if: failure()
+        run: docker logs server || true
