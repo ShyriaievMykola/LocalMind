@@ -11,6 +11,9 @@ services:
     environment:
       # Обов'язковий: без ключа сервер не стартує, а compose не запускає контейнер.
       Jwt__SigningKey: ${LOCALMIND_JWT_KEY:?Задайте LOCALMIND_JWT_KEY у deploy/.env (див. deploy/.env.example)}
+      # Початковий адміністратор (необов'язково): обидва поля або жодного. Створюється лише якщо такого email ще немає.
+      Admin__Email: ${LOCALMIND_ADMIN_EMAIL:-}
+      Admin__Password: ${LOCALMIND_ADMIN_PASSWORD:-}
       # Адреса reverse proxy в мережі Docker: лише від нього довіряємо X-Forwarded-For/Proto.
       ReverseProxy__KnownNetworks__0: ${LOCALMIND_PROXY_NETWORK:-172.16.0.0/12}
       # Дозволені імена хоста (Host); "*" — будь-які. localhost додається завжди: healthcheck стукає на нього,
