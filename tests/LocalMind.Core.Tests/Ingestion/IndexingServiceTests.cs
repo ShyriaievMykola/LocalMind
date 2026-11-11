@@ -219,8 +219,10 @@ public sealed class IndexingServiceTests : IDisposable
         Assert.Equal(DocumentStatus.Indexed, Assert.Single(await _repository.GetDocumentsAsync()).Status);
     }
 
-    [Fact]
-    public async Task LockedFile_ReleasedDuringRetries_IsIndexed()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LockedFile_ReleasedDuringRetries_IsIndexed(bool rescanDuringRetry)
     {
         var path = Write("locked.txt", "текст");
         var logger = new ListLogger();
@@ -231,13 +233,23 @@ public sealed class IndexingServiceTests : IDisposable
         {
             await service.AddFolderAsync(_folder);
             await WaitUntilAsync(() => logger.Entries.Any(e => e.Message.Contains("зайнятий", StringComparison.Ordinal)));
+
+            if (rescanDuringRetry)
+            {
+                // Повторне повідомлення спостерігача ставить поточний файл у чергу ще раз.
+                _watcher.OnWatcherError(_folder);
+                await WaitUntilAsync(() => service.Progress.Total >= 2);
+            }
         }
         finally
         {
             await lockStream.DisposeAsync();
         }
 
-        await WaitUntilAsync(() => service.Progress is { IsCompleted: true, Total: 1 });
+        // Спостерігач може повторно поставити файл у чергу, зокрема на macOS.
+        // Чекаємо завершення всієї роботи, а не рівно одного елемента черги.
+        await WaitUntilAsync(() => service.Progress is { IsCompleted: true, Total: >= 1 });
+        Assert.Equal(0, service.Progress.Failed);
         Assert.Equal(DocumentStatus.Indexed, Assert.Single(await _repository.GetDocumentsAsync()).Status);
     }
 
