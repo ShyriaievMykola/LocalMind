@@ -30,13 +30,14 @@ builder.Services
         options.Password.RequireNonAlphanumeric = false;
         options.User.RequireUniqueEmail = true;
 
-        // Логін = email, а email перевіряє окремий валідатор; так проходять і кириличні адреси.
+        // Логін = email, а email перевіряє EmailFormatValidator; так проходять і кириличні адреси.
         options.User.AllowedUserNameCharacters = string.Empty;
         options.Lockout.MaxFailedAccessAttempts = 5;
         options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
     })
     .AddErrorDescriber<UkrainianIdentityErrorDescriber>()
     .AddPasswordValidator<EmailNotInPasswordValidator>()
+    .AddUserValidator<EmailFormatValidator>()
     .AddSignInManager()
     .AddEntityFrameworkStores<ServerDbContext>();
 
