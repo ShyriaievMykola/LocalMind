@@ -235,7 +235,9 @@ public sealed class IndexingServiceTests : IDisposable
     {
         var path = Write("locked.txt", "текст");
         var logger = new ListLogger();
-        var service = CreateService(logger: logger, retryDelay: TimeSpan.FromSeconds(1));
+        // Повідомлення спостерігача проходить через debounce, а в _watcher він годинний: потрібен живий.
+        var watcher = rescanDuringRetry ? LiveWatcher() : null;
+        var service = CreateService(logger: logger, retryDelay: TimeSpan.FromSeconds(1), watcher: watcher);
         var lockStream = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
 
         try
@@ -243,10 +245,10 @@ public sealed class IndexingServiceTests : IDisposable
             await service.AddFolderAsync(_folder);
             await WaitUntilAsync(() => logger.Entries.Any(e => e.Message.Contains("зайнятий", StringComparison.Ordinal)));
 
-            if (rescanDuringRetry)
+            if (watcher is not null)
             {
                 // Повторне повідомлення спостерігача ставить поточний файл у чергу ще раз.
-                _watcher.OnWatcherError(_folder);
+                watcher.OnWatcherError(_folder);
                 await WaitUntilAsync(() => service.Progress.Total >= 2);
             }
         }
@@ -289,6 +291,29 @@ public sealed class IndexingServiceTests : IDisposable
         Assert.Empty(await _repository.GetDocumentsAsync());
         Assert.Equal(0, _vectorIndex.Count);
         Assert.Empty(await service.GetFoldersAsync());
+    }
+
+    [Fact]
+    public async Task RemoveFolder_OtherCase_FollowsOsRule()
+    {
+        Write("note.txt", "текст");
+        var service = CreateService();
+        await service.AddFolderAsync(_folder);
+        await WaitUntilAsync(() => service.Progress is { IsCompleted: true, Total: 1 });
+
+        await service.RemoveFolderAsync(_folder.ToUpperInvariant());
+
+        if (FilePaths.IgnoreCase)
+        {
+            Assert.Empty(await _repository.GetDocumentsAsync());
+            Assert.Equal(0, _vectorIndex.Count);
+            Assert.Empty(await service.GetFoldersAsync());
+        }
+        else
+        {
+            Assert.Single(await _repository.GetDocumentsAsync());
+            Assert.Single(await service.GetFoldersAsync());
+        }
     }
 
     [Fact]

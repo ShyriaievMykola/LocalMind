@@ -4,6 +4,7 @@ using LocalMind.App.ViewModels;
 using LocalMind.Core.Abstractions;
 using LocalMind.Core.Models;
 using LocalMind.Search.Configuration;
+using LocalMind.TestUtilities;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
@@ -32,6 +33,7 @@ internal sealed class FakeSearchService : ISearchService
         }
 
         return new SearchViewModel(this, status, Options.Create(new SearchOptions { DefaultTopK = defaultTopK }),
-            NullLogger<SearchViewModel>.Instance);
+            NullLogger<SearchViewModel>.Instance,
+            new ResultCardFactory(new InMemoryDocumentRepository(), new FakeFileLauncher(), NullLogger<ResultCardViewModel>.Instance));
     }
 }
