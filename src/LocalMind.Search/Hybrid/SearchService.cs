@@ -9,7 +9,8 @@ namespace LocalMind.Search.Hybrid;
 /// <summary>
 /// Пошук по бібліотеці в режимах <see cref="SearchMode.Keyword"/> (FTS5, BM25), <see cref="SearchMode.Semantic"/>
 /// (embeddings) і <see cref="SearchMode.Hybrid"/> (обидва, злиті <see cref="ReciprocalRankFusion"/>).
-/// Keyword працює і без моделі. Вектори зі сховища завантажуються в індекс під час першого семантичного пошуку.
+/// Keyword працює і без моделі. Вектори зі сховища завантажуються в індекс під час першого семантичного пошуку
+/// або заздалегідь через <see cref="LoadVectorsAsync"/>.
 /// </summary>
 public sealed class SearchService(
     IEmbedder embedder,
@@ -49,7 +50,7 @@ public sealed class SearchService(
 
     private async Task<IReadOnlyList<ScoredChunk>> SemanticAsync(string text, int k, CancellationToken cancellationToken)
     {
-        await EnsureVectorsLoadedAsync(cancellationToken);
+        await LoadVectorsAsync(cancellationToken);
         if (index.Count == 0)
         {
             return [];
@@ -91,7 +92,11 @@ public sealed class SearchService(
     /// <inheritdoc />
     public void Dispose() => _loadLock.Dispose();
 
-    private async Task EnsureVectorsLoadedAsync(CancellationToken cancellationToken)
+    /// <summary>
+    /// Завантажує вектори зі сховища в індекс, якщо цього ще не зроблено. Хост викликає під час запуску,
+    /// щоб перший пошук не чекав; повторні виклики нічого не роблять.
+    /// </summary>
+    public async Task LoadVectorsAsync(CancellationToken cancellationToken = default)
     {
         if (_isLoaded)
         {
