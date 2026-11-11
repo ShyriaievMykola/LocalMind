@@ -8,7 +8,7 @@ namespace LocalMind.Server.Tests;
 public sealed class ServerSkeletonTests(LocalMindServerFactory factory)
     : IClassFixture<LocalMindServerFactory>
 {
-    // Лише ASCII: кирилицю JSON-серіалізатор екранує в XXXX, і перевірка пройшла б навіть при витоку.
+    // Лише ASCII: кирилицю JSON-серіалізатор екранує в escape-послідовності, і перевірка пройшла б навіть при витоку.
     private const string Secret = "LEAK-MARKER-7f3a9c";
 
     [Fact]
