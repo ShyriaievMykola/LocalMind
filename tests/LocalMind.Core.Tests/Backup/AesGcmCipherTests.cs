@@ -120,4 +120,48 @@ public sealed class AesGcmCipherTests
     {
         Assert.Throws<ArgumentException>(() => AesGcmCipher.Encrypt(Plaintext, ""));
     }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(null)]
+    public async Task StreamMethods_EmptyPassword_ThrowArgumentException(string? password)
+    {
+        using var input = new MemoryStream(Plaintext);
+        using var output = new MemoryStream();
+
+        await Assert.ThrowsAnyAsync<ArgumentException>(() => AesGcmCipher.EncryptAsync(input, output, password!));
+        await Assert.ThrowsAnyAsync<ArgumentException>(() => AesGcmCipher.DecryptAsync(input, output, password!));
+        Assert.Equal(0, output.Length);
+    }
+
+    [Fact]
+    public void Parse_AnyTruncation_ThrowsBackupDecryptionException()
+    {
+        var bytes = AesGcmCipher.Encrypt([], Password).ToBytes();
+
+        for (var length = 0; length < bytes.Length; length++)
+        {
+            var truncated = bytes.AsMemory(0, length);
+            Assert.Throws<BackupDecryptionException>(() => EncryptedEnvelope.Parse(truncated));
+        }
+    }
+
+    [Fact]
+    public async Task EncryptDecryptAsync_LargeNonSeekableStream_RoundTrips()
+    {
+        var data = new byte[300_000];
+        Random.Shared.NextBytes(data);
+        using var encrypted = new MemoryStream();
+        await AesGcmCipher.EncryptAsync(new NonSeekableStream(data), encrypted, Password);
+        using var decrypted = new MemoryStream();
+
+        await AesGcmCipher.DecryptAsync(new NonSeekableStream(encrypted.ToArray()), decrypted, Password);
+
+        Assert.Equal(data, decrypted.ToArray());
+    }
+
+    private sealed class NonSeekableStream(byte[] data) : MemoryStream(data)
+    {
+        public override bool CanSeek => false;
+    }
 }
