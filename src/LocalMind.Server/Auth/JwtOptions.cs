@@ -25,6 +25,14 @@ public sealed class JwtOptions : IValidatableObject
     [Range(typeof(TimeSpan), "00:01:00", "01:00:00")]
     public TimeSpan AccessTokenLifetime { get; set; } = TimeSpan.FromMinutes(15);
 
+    /// <summary>Строк дії refresh-токена (і максимальна тривалість простою сесії).</summary>
+    [Range(typeof(TimeSpan), "01:00:00", "90.00:00:00")]
+    public TimeSpan RefreshTokenLifetime { get; set; } = TimeSpan.FromDays(14);
+
+    /// <summary>Абсолютна тривалість сесії від входу за паролем: ротація не продовжує її безмежно.</summary>
+    [Range(typeof(TimeSpan), "01:00:00", "365.00:00:00")]
+    public TimeSpan SessionMaxLifetime { get; set; } = TimeSpan.FromDays(30);
+
     /// <inheritdoc />
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {

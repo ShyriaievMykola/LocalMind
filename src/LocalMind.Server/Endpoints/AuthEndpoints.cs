@@ -6,10 +6,11 @@ using Microsoft.AspNetCore.Identity;
 
 namespace LocalMind.Server.Endpoints;
 
-/// <summary>Реєстрація і вхід (SV-03).</summary>
+/// <summary>Реєстрація, вхід (SV-03), оновлення токенів і вихід (SV-05).</summary>
 public static class AuthEndpoints
 {
     internal const string InvalidCredentials = "Неправильний email або пароль.";
+    internal const string InvalidRefreshToken = "Сесія недійсна або завершилась. Увійдіть знову.";
 
     public static RouteGroupBuilder MapAuthEndpoints(this RouteGroupBuilder api)
     {
@@ -18,6 +19,8 @@ public static class AuthEndpoints
         var auth = api.MapGroup("/auth").WithTags("Auth");
         auth.MapPost("/register", RegisterAsync);
         auth.MapPost("/login", LoginAsync);
+        auth.MapPost("/refresh", RefreshAsync);
+        auth.MapPost("/logout", LogoutAsync);
         auth.MapGet("/me", MeAsync).RequireAuthorization();
         return api;
     }
@@ -56,7 +59,8 @@ public static class AuthEndpoints
 
     private static async Task<Results<Ok<TokenResponse>, ProblemHttpResult>> LoginAsync(
         LoginRequest request, UserManager<IdentityUser> users, SignInManager<IdentityUser> signIn,
-        IPasswordHasher<IdentityUser> hasher, JwtTokenService tokens)
+        IPasswordHasher<IdentityUser> hasher, JwtTokenService tokens, RefreshTokenService refresh,
+        CancellationToken cancellationToken)
     {
         var user = string.IsNullOrWhiteSpace(request.Email) ? null : await users.FindByEmailAsync(EmailFormatValidator.Normalize(request.Email));
         if (user is null)
@@ -80,10 +84,35 @@ public static class AuthEndpoints
             return Unauthorized();
         }
 
-        var (accessToken, expiresAt) = tokens.CreateAccessToken(user);
+        var (refreshToken, refreshExpiresAt) = await refresh.IssueAsync(user, cancellationToken);
+        return TypedResults.Ok(CreateResponse(tokens, user, refreshToken, refreshExpiresAt));
+    }
 
-        // Refresh-токен з'явиться в SV-05 (#79).
-        return TypedResults.Ok(new TokenResponse(accessToken, expiresAt, string.Empty, expiresAt));
+    private static async Task<Results<Ok<TokenResponse>, ProblemHttpResult>> RefreshAsync(
+        RefreshRequest request, RefreshTokenService refresh, JwtTokenService tokens, CancellationToken cancellationToken)
+    {
+        var rotated = await refresh.RotateAsync(request.RefreshToken ?? string.Empty, cancellationToken);
+        if (rotated is not { } r)
+        {
+            return TypedResults.Problem(statusCode: StatusCodes.Status401Unauthorized, title: InvalidRefreshToken);
+        }
+
+        return TypedResults.Ok(CreateResponse(tokens, r.User, r.Token, r.ExpiresAt));
+    }
+
+    private static async Task<NoContent> LogoutAsync(
+        LogoutRequest request, RefreshTokenService refresh, CancellationToken cancellationToken)
+    {
+        // Завжди 204: відповідь не підказує, чи був токен чинним.
+        await refresh.RevokeAsync(request.RefreshToken ?? string.Empty, cancellationToken);
+        return TypedResults.NoContent();
+    }
+
+    private static TokenResponse CreateResponse(
+        JwtTokenService tokens, IdentityUser user, string refreshToken, DateTimeOffset refreshExpiresAt)
+    {
+        var (accessToken, expiresAt) = tokens.CreateAccessToken(user);
+        return new TokenResponse(accessToken, expiresAt, refreshToken, refreshExpiresAt);
     }
 
     private static async Task<Results<Ok<UserInfo>, ChallengeHttpResult>> MeAsync(
