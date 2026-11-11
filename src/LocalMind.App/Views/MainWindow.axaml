@@ -37,10 +37,34 @@
                         Margin="24" />
       </Grid>
 
-      <Border Grid.Row="1" Padding="16,8">
-        <TextBlock Text="{Binding StatusText}" TextTrimming="CharacterEllipsis"
-                   ToolTip.Tip="{Binding StatusText}"
-                   AutomationProperties.Name="Стан ядра" />
+      <!-- Рядок стану: стан ядра (коли індексації немає або з ядром проблема), прогрес і «Скасувати». -->
+      <Border Grid.Row="1" Padding="16,8" BorderBrush="{DynamicResource Lm.Brush.Border}" BorderThickness="0,1,0,0">
+        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="12" RowSpacing="4">
+          <TextBlock Text="{Binding StatusText}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                     ToolTip.Tip="{Binding StatusText}" AutomationProperties.Name="Стан ядра">
+            <TextBlock.IsVisible>
+              <MultiBinding Converter="{x:Static BoolConverters.Or}">
+                <Binding Path="Indexing.IsIdle" />
+                <Binding Path="HasStatusProblem" />
+              </MultiBinding>
+            </TextBlock.IsVisible>
+          </TextBlock>
+
+          <Grid Grid.Row="1" ColumnDefinitions="Auto,200,*" ColumnSpacing="12" VerticalAlignment="Center"
+                IsVisible="{Binding Indexing.IsIndexing}">
+            <TextBlock Text="{Binding Indexing.ProgressText}" VerticalAlignment="Center"
+                       AutomationProperties.Name="Прогрес індексації" />
+            <ProgressBar Grid.Column="1" Minimum="0" Maximum="1" Value="{Binding Indexing.Fraction}"
+                         Foreground="{DynamicResource Lm.Brush.Accent}" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="2" Classes="muted" Text="{Binding Indexing.CurrentFileName}"
+                       TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                       ToolTip.Tip="{Binding Indexing.Progress.CurrentFile}" />
+          </Grid>
+
+          <Button Grid.Column="1" Grid.RowSpan="2" VerticalAlignment="Center"
+                  Content="{Binding Indexing.CancelText}" Command="{Binding Indexing.CancelCommand}"
+                  IsVisible="{Binding Indexing.IsIndexing}" AutomationProperties.Name="Скасувати індексацію" />
+        </Grid>
       </Border>
     </Grid>
 

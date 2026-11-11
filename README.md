@@ -107,7 +107,44 @@ Embedding-модель `multilingual-e5-small` (близько 475 МБ, у Git 
 .\scripts\download-models.ps1    # Windows
 ```
 
-> Запуск сервера через Docker (`deploy/docker-compose.yml`) буде описано тут, щойно з'явиться.
+### Сервер бекапу в Docker
+
+Потрібні Docker і Docker Compose. З кореня репозиторію:
+
+```bash
+cp deploy/.env.example deploy/.env
+```
+
+У `deploy/.env` впишіть ключ підпису JWT (`openssl rand -base64 48`); файл у Git не потрапляє. Без ключа
+контейнер не запуститься. Далі:
+
+```bash
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
+```
+
+Сервер слухає `127.0.0.1:8080` (HTTP) і перевіряється на `/api/v1/health`. База й бекапи лежать у двох томах Docker
+(`localmind-db`, `localmind-backups`) і переживають перезапуск та оновлення образу. Секретів в образі немає: ключ
+передається лише змінною середовища `Jwt__SigningKey`.
+
+**HTTPS.** Сервер усередині контейнера працює по HTTP, а TLS має завершувати reverse proxy на тому ж хості
+(Caddy, nginx, Traefik). Клієнт бекапу приймає лише `https://` (HTTP дозволено тільки для localhost). Проксі повинен
+передавати `X-Forwarded-For` і `X-Forwarded-Proto`. Сервер довіряє цим заголовкам лише від адрес із
+`ReverseProxy__KnownProxies__N` (IP) і `ReverseProxy__KnownNetworks__N` (CIDR); у `docker-compose.yml` за
+замовчуванням довірена мережа Docker `172.16.0.0/12`, змінюється через `LOCALMIND_PROXY_NETWORK`. Без цього всі
+клієнти виглядали б як одна IP, і rate limiting (DR-032) блокував би їх разом. Приклад для Caddy:
+
+```text
+backup.example.com {
+    reverse_proxy 127.0.0.1:8080
+}
+```
+
+Це вся приватна мережа Docker, тож будь-який інший контейнер у ній міг би підробити ці заголовки: якщо в мережі є
+не лише проксі, звузьте `LOCALMIND_PROXY_NETWORK` до його адреси (`/32`). Сервер бере лише останню адресу в ланцюжку
+`X-Forwarded-For` (`ForwardLimit = 1`): якщо перед ним стоять два проксі (наприклад, CDN і nginx), клієнтом вважатиметься
+найближчий із них, і ліміт запитів стане спільним для всіх. Якщо проксі працює на хості, а не в мережі Docker, його запити приходять з адреси шлюзу мережі Docker (зазвичай
+`172.17.0.1`): тоді задайте `LOCALMIND_PROXY_NETWORK=172.17.0.1/32`. Також вкажіть свій домен у
+`LOCALMIND_ALLOWED_HOSTS`.
 
 ---
 

@@ -16,12 +16,14 @@ public static class AuthEndpoints
     {
         ArgumentNullException.ThrowIfNull(api);
 
-        var auth = api.MapGroup("/auth").WithTags("Auth").RequireRateLimiting(AuthRateLimitOptions.PolicyName);
-        auth.MapPost("/register", RegisterAsync);
-        auth.MapPost("/login", LoginAsync);
-        auth.MapPost("/refresh", RefreshAsync);
-        auth.MapPost("/logout", LogoutAsync);
-        auth.MapGet("/me", MeAsync).RequireAuthorization();
+        var auth = api.MapGroup("/auth").WithTags("Auth");
+
+        // Реєстрація й вхід — під суворим лімітом (перебір паролів і email), решта — під м'якшим.
+        auth.MapPost("/register", RegisterAsync).RequireRateLimiting(AuthRateLimitOptions.PolicyName);
+        auth.MapPost("/login", LoginAsync).RequireRateLimiting(AuthRateLimitOptions.PolicyName);
+        auth.MapPost("/refresh", RefreshAsync).RequireRateLimiting(AuthRateLimitOptions.SessionPolicyName);
+        auth.MapPost("/logout", LogoutAsync).RequireRateLimiting(AuthRateLimitOptions.SessionPolicyName);
+        auth.MapGet("/me", MeAsync).RequireAuthorization().RequireRateLimiting(AuthRateLimitOptions.SessionPolicyName);
         return api;
     }
 

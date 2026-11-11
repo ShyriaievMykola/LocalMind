@@ -85,14 +85,15 @@ public sealed partial class LibraryViewModel : ViewModelBase
 
     public string SummaryText => $"Документів: {DocumentCount}, з помилками: {ErrorCount}";
 
-    /// <summary>Прогрес поточної індексації; <see langword="null"/>, коли черга порожня.</summary>
+    /// <summary>
+    /// Прогрес поточної індексації; <see langword="null"/>, коли черга порожня. Сторінці він потрібен,
+    /// щоб оновити список після завершення; сам прогрес показує рядок стану (<see cref="IndexingProgressViewModel"/>).
+    /// </summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsIndexing), nameof(ProgressText))]
+    [NotifyPropertyChangedFor(nameof(IsIndexing))]
     public partial IndexingProgress? Progress { get; private set; }
 
     public bool IsIndexing => Progress is not null;
-
-    public string? ProgressText => Progress is { } progress ? $"Індексація: {progress.Processed} з {progress.Total}" : null;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasError))]
