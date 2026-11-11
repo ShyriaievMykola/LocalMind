@@ -1,13 +1,12 @@
 using System.Net;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace LocalMind.Server.Tests;
 
-public sealed class ServerSkeletonTests(WebApplicationFactory<Program> factory)
-    : IClassFixture<WebApplicationFactory<Program>>
+public sealed class ServerSkeletonTests(LocalMindServerFactory factory)
+    : IClassFixture<LocalMindServerFactory>
 {
     private const string Secret = "секретна-деталь-винятку";
 
