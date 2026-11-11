@@ -166,6 +166,31 @@ public class SearchConfigurationTests
     }
 
     [Fact]
+    public void ChunkSizeNotAbovePrefixReserve_FailsChunkingValidation()
+    {
+        var values = ValidConfiguration();
+        values[$"{Embedding}:PassagePrefix"] = "passage: ";
+        values[$"{Chunking}:ChunkSizeTokens"] = "11"; // 2 службові + 9 байтів префікса
+        using var provider = BuildProvider(values);
+
+        var exception = Assert.Throws<OptionsValidationException>(
+            () => provider.GetRequiredService<IOptions<ChunkingOptions>>().Value);
+
+        Assert.Contains("резерв", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ChunkSizeJustAbovePrefixReserve_IsValid()
+    {
+        var values = ValidConfiguration();
+        values[$"{Embedding}:PassagePrefix"] = "passage: ";
+        values[$"{Chunking}:ChunkSizeTokens"] = "12";
+        using var provider = BuildProvider(values);
+
+        Assert.Equal(12, provider.GetRequiredService<IOptions<ChunkingOptions>>().Value.ChunkSizeTokens);
+    }
+
+    [Fact]
     public void EmbeddingValidator_NullPrefix_Fails()
     {
         var options = new EmbeddingModelOptions
