@@ -10,6 +10,9 @@ public sealed class SearchOptions
 
     /// <summary>Кількість результатів, якщо в запиті не вказано інше.</summary>
     public int DefaultTopK { get; set; } = SearchQuery.DefaultTopK;
+    
+    /// <summary>Режим, обраний на сторінці пошуку за замовчуванням.</summary>
+    public SearchMode DefaultMode { get; set; } = SearchMode.Hybrid;
 
     /// <summary>
     /// Скільки кандидатів брати з кожного індексу (keyword і semantic) перед злиттям у hybrid-режимі.

@@ -23,6 +23,9 @@ public partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop && Services is not null)
         {
             GlobalExceptionHandler.Install(Services.GetRequiredService<UnhandledErrorReporter>());
+
+            // Збережена тема — до показу вікна, щоб воно не блимнуло іншою темою.
+            Services.GetRequiredService<IThemeService>().Apply(Services.GetRequiredService<IUserSettingsService>().Current.Theme);
             desktop.MainWindow = new MainWindow
             {
                 DataContext = Services.GetRequiredService<MainViewModel>(),
