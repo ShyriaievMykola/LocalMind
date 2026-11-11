@@ -1,0 +1,13 @@
+**/bin/
+**/obj/
+.git/
+.github/
+.vs/
+.env
+**/*.user
+models/
+eval/
+docs/
+tests/
+*.db
+*.db-*

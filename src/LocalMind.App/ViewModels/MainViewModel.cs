@@ -9,16 +9,25 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 {
     private readonly CoreStatus _status;
     private readonly SearchViewModel _search;
+    private readonly LibraryViewModel _library;
     private bool _disposed;
 
-    public MainViewModel(CoreStatus status, SearchViewModel search, LibraryViewModel library, SettingsViewModel settings)
+    public MainViewModel(
+        CoreStatus status,
+        SearchViewModel search,
+        LibraryViewModel library,
+        SettingsViewModel settings,
+        IndexingProgressViewModel indexing)
     {
         ArgumentNullException.ThrowIfNull(status);
         ArgumentNullException.ThrowIfNull(search);
         ArgumentNullException.ThrowIfNull(library);
         ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(indexing);
 
         _search = search;
+        _library = library;
+        Indexing = indexing;
 
         NavigationItems = Array.AsReadOnly<NavigationItem>([
             new("Пошук", search),
@@ -32,6 +41,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         UpdateStatus();
     }
 
+    /// <summary>Прогрес індексації для рядка стану.</summary>
+    public IndexingProgressViewModel Indexing { get; }
     public IReadOnlyList<NavigationItem> NavigationItems { get; }
 
     [ObservableProperty]
@@ -42,12 +53,18 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
     [ObservableProperty]
     public partial string StatusText { get; private set; } = string.Empty;
+    
+    /// <summary>Ядро не готове або працює без моделі — такий стан видно навіть під час індексації.</summary>
+    [ObservableProperty]
+    public partial bool HasStatusProblem { get; private set; }
 
     public void Dispose()
     {
         _disposed = true;
         _status.Changed -= OnStatusChanged;
         _search.Close();
+        _library.Close();
+        Indexing.Close();
     }
 
     private void OnStatusChanged(object? sender, EventArgs args) => Dispatcher.UIThread.Post(() =>
@@ -58,7 +75,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         }
     });
 
-    private void UpdateStatus() =>
+    private void UpdateStatus()
+    {
         StatusText = _status.Stage switch
         {
             CoreStage.Starting => "Запуск…",
@@ -66,4 +84,6 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             _ when !_status.IsModelAvailable => $"Готово, але без моделі. {_status.ModelError}",
             _ => "Готово.",
         };
+        HasStatusProblem = _status.Stage != CoreStage.Ready || !_status.IsModelAvailable;
+    }
 }

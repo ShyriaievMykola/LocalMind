@@ -32,6 +32,7 @@ public sealed class LocalMindServerFactory : WebApplicationFactory<Program>
 
         // Тести шлють багато auth-запитів з однієї адреси; сам ліміт перевіряє окремий тест.
         builder.UseSetting("RateLimiting:AuthPermitLimit", "100000");
+        builder.UseSetting("RateLimiting:SessionPermitLimit", "100000");
     }
 
     protected override void Dispose(bool disposing)
