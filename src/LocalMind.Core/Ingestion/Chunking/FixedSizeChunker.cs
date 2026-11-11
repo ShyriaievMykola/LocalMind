@@ -5,7 +5,11 @@ using Microsoft.Extensions.Options;
 
 namespace LocalMind.Core.Ingestion.Chunking;
 
-/// <summary>Ріже текст на фрагменти заданого розміру в токенах із перекриттям.</summary>
+/// <summary>
+/// Ріже текст на фрагменти заданого розміру в токенах із перекриттям. Слова не розриваються,
+/// крім слова, яке саме не вміщується у фрагмент (довге посилання, base64): його ріжемо по символах,
+/// інакше модель мовчки обрізала б кінець.
+/// </summary>
 public sealed class FixedSizeChunker : IChunker
 {
     private readonly ChunkingOptions _options;
@@ -46,6 +50,7 @@ public sealed class FixedSizeChunker : IChunker
         while (startWordIndex < words.Count)
         {
             var endWordIndex = startWordIndex;
+            var fits = false;
             var low = startWordIndex;
             var high = words.Count - 1;
             while (low <= high)
@@ -59,8 +64,19 @@ public sealed class FixedSizeChunker : IChunker
                 else
                 {
                     endWordIndex = wordIndex;
+                    fits = true;
                     low = wordIndex + 1;
                 }
+            }
+
+            if (!fits)
+            {
+                // Решта слова стає першим словом наступного фрагмента; перекриття тут не потрібне.
+                var word = words[startWordIndex];
+                var cut = FindLongestFittingEnd(text, word);
+                chunks.Add(new Chunk(Guid.NewGuid(), documentId, chunks.Count, text[word.Start..cut], word.Start));
+                words[startWordIndex] = word with { Start = cut };
+                continue;
             }
 
             var firstWord = words[startWordIndex];
@@ -96,6 +112,33 @@ public sealed class FixedSizeChunker : IChunker
 
         return chunks;
     }
+
+    /// <summary>Кінець найдовшого початку слова, що вміщується у фрагмент; щонайменше один символ.</summary>
+    private int FindLongestFittingEnd(string text, WordRange word)
+    {
+        var end = NextCharEnd(text, word.Start);
+        var low = end + 1;
+        var high = word.End - 1;
+        while (low <= high)
+        {
+            var middle = low + (high - low) / 2;
+            if (_tokenCounter.CountTokens(text[word.Start..middle]) > _options.ChunkSizeTokens)
+            {
+                high = middle - 1;
+            }
+            else
+            {
+                end = middle;
+                low = middle + 1;
+            }
+        }
+
+        // Не розриваємо сурогатну пару (емодзі, рідкісні ієрогліфи): мінімальний кінець пару вже не розриває.
+        return end < word.End && char.IsLowSurrogate(text[end]) ? end - 1 : end;
+    }
+
+    private static int NextCharEnd(string text, int index) =>
+        char.IsHighSurrogate(text[index]) && index + 1 < text.Length ? index + 2 : index + 1;
 
     private static List<WordRange> GetWords(string text)
     {

@@ -135,4 +135,36 @@ public class ChunkerTests
             return text.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
         }
     }
+
+    [Fact]
+    public void Split_WordLongerThanChunk_IsCutByCharactersWithoutLosingText()
+    {
+        const string text = "ab abcdefghij cd";
+        var options = Options.Create(new ChunkingOptions { ChunkSizeTokens = 4, OverlapPercent = 0 });
+        var chunker = new FixedSizeChunker(options, new CharTokenCounter());
+
+        var chunks = chunker.Split(DocumentId, text);
+
+        Assert.Equal(["ab", "abcd", "efgh", "ij", "cd"], chunks.Select(c => c.Text));
+        Assert.All(chunks, c => Assert.Equal(c.Text, text.Substring(c.StartOffset, c.Text.Length)));
+        Assert.Equal(Enumerable.Range(0, chunks.Count), chunks.Select(c => c.Ordinal));
+    }
+
+    [Fact]
+    public void Split_LongWordWithSurrogatePairs_DoesNotBreakPairs()
+    {
+        const string text = "😀😀😀"; // 6 UTF-16 символів
+        var options = Options.Create(new ChunkingOptions { ChunkSizeTokens = 3, OverlapPercent = 0 });
+        var chunker = new FixedSizeChunker(options, new CharTokenCounter());
+
+        var chunks = chunker.Split(DocumentId, text);
+
+        Assert.Equal(["😀", "😀", "😀"], chunks.Select(c => c.Text));
+    }
+
+    /// <summary>Токен — символ UTF-16 (разом із пробілами): довге слово не вміщується у фрагмент.</summary>
+    private sealed class CharTokenCounter : ITokenCounter
+    {
+        public int CountTokens(string text) => text.Length;
+    }
 }

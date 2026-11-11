@@ -80,4 +80,32 @@ public class PdfParserTests
         Assert.Equal(string.Empty, result.Text);
         Assert.Null(result.Title);
     }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ParseAsync_FileLargerThanLimit_ThrowsDocumentParseException(bool seekable)
+    {
+        var parser = new PdfParser(maxFileSizeBytes: 16);
+        using var fixture = OpenFixture("sample.pdf");
+        using Stream stream = seekable ? fixture : new NonSeekableStream(fixture);
+
+        var exception = await Assert.ThrowsAsync<DocumentParseException>(() => parser.ParseAsync(stream));
+
+        Assert.Contains("завеликий", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private sealed class NonSeekableStream(Stream inner) : Stream
+    {
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override int Read(byte[] buffer, int offset, int count) => inner.Read(buffer, offset, count);
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
 }

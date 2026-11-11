@@ -42,7 +42,7 @@ public sealed class PdfParser : IDocumentParser
 
             if (content.Length > _maxFileSizeBytes)
             {
-                throw new InvalidOperationException($"Розмір файлу перевищує максимально допустимий ліміт ({_maxFileSizeBytes} байт).");
+                throw TooLarge();
             }
         }
 
@@ -53,7 +53,7 @@ public sealed class PdfParser : IDocumentParser
 
             if (memoryStream.Length > _maxFileSizeBytes)
             {
-                throw new InvalidOperationException($"Розмір файлу перевищує максимально допустимий ліміт ({_maxFileSizeBytes} байт).");
+                throw TooLarge();
             }
 
             cancellationToken.ThrowIfCancellationRequested();
@@ -110,4 +110,7 @@ public sealed class PdfParser : IDocumentParser
             throw new DocumentParseException("Файл пошкоджений або не відповідає формату PDF.", ex);
         }
     }
+
+    private DocumentParseException TooLarge() =>
+        new($"Файл завеликий: більше {_maxFileSizeBytes} байт.");
 }
