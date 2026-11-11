@@ -50,7 +50,7 @@ public static class AuthEndpoints
         }
 
         return TypedResults.ValidationProblem(result.Errors
-            .GroupBy(e => e.Code.Contains("Password", StringComparison.Ordinal) ? "password" : "email")
+            .GroupBy(e => e.Code.StartsWith("Password", StringComparison.Ordinal) ? "password" : "email")
             .ToDictionary(g => g.Key, g => g.Select(e => e.Description).ToArray()));
     }
 
@@ -68,7 +68,13 @@ public static class AuthEndpoints
 
         var result = await signIn.CheckPasswordSignInAsync(user, request.Password ?? string.Empty, lockoutOnFailure: true);
 
-        // Заблокований обліковий запис дає ту саму відповідь — інакше блокування підтверджує, що email існує.
+        if (result.IsLockedOut)
+        {
+            // Для заблокованого акаунта Identity не хешує пароль — хешуємо самі, щоб і час, і тіло відповіді
+            // були такими самими, як для неправильного пароля чи неіснуючого email.
+            hasher.VerifyHashedPassword(DummyUser, DummyHash.Value, request.Password ?? string.Empty);
+        }
+
         if (!result.Succeeded)
         {
             return Unauthorized();

@@ -12,6 +12,9 @@ builder.Services.AddProblemDetails();
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks();
 
+// Кривий JSON → 400 і в Development (за замовчуванням там кидається виняток, який став би 500).
+builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = false);
+
 var connectionString = builder.Configuration.GetConnectionString("Server")
     ?? throw new InvalidOperationException("Не задано рядок підключення ConnectionStrings:Server.");
 builder.Services.AddDbContext<ServerDbContext>(options => options.UseSqlite(connectionString));
@@ -41,9 +44,14 @@ builder.Services
         options.Password.RequireUppercase = false;
         options.Password.RequireNonAlphanumeric = false;
         options.User.RequireUniqueEmail = true;
+
+        // Логін = email, а email перевіряє окремий валідатор; так проходять і кириличні адреси.
+        options.User.AllowedUserNameCharacters = string.Empty;
         options.Lockout.MaxFailedAccessAttempts = 5;
         options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
     })
+    .AddErrorDescriber<UkrainianIdentityErrorDescriber>()
+    .AddPasswordValidator<EmailNotInPasswordValidator>()
     .AddSignInManager()
     .AddEntityFrameworkStores<ServerDbContext>();
 
@@ -77,7 +85,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 var api = app.MapGroup("/api/v1");
-api.MapHealthChecks("/health");
+api.MapHealthChecks("/health").WithMetadata(new HttpMethodMetadata([HttpMethods.Get, HttpMethods.Head]));
 api.MapAuthEndpoints();
 
 await app.RunAsync();

@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text;
 
 namespace LocalMind.Core.Backup.Crypto;
 
@@ -17,7 +18,10 @@ public static class KeyDerivation
     /// <summary>Нова криптографічно випадкова сіль.</summary>
     public static byte[] CreateSalt() => RandomNumberGenerator.GetBytes(SaltSize);
 
-    /// <summary>Виводить 256-бітний ключ. Однакові пароль і сіль завжди дають однаковий ключ.</summary>
+    /// <summary>
+    /// Виводить 256-бітний ключ. Однакові пароль і сіль завжди дають однаковий ключ.
+    /// Пароль нормалізується в Unicode NFC: та сама фраза, введена на macOS (часто NFD) і Windows, дає той самий ключ.
+    /// </summary>
     /// <exception cref="ArgumentException">Порожній пароль або сіль неправильного розміру.</exception>
     public static byte[] DeriveKey(ReadOnlySpan<char> password, ReadOnlySpan<byte> salt)
     {
@@ -31,6 +35,8 @@ public static class KeyDerivation
             throw new ArgumentException($"Сіль має бути {SaltSize} байт.", nameof(salt));
         }
 
-        return Rfc2898DeriveBytes.Pbkdf2(password, salt, Iterations, HashAlgorithmName.SHA256, KeySize);
+        var text = password.ToString();
+        var normalized = text.IsNormalized(NormalizationForm.FormC) ? text : text.Normalize(NormalizationForm.FormC);
+        return Rfc2898DeriveBytes.Pbkdf2(normalized, salt, Iterations, HashAlgorithmName.SHA256, KeySize);
     }
 }
