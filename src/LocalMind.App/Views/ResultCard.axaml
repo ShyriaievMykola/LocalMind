@@ -1,0 +1,24 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:LocalMind.App.ViewModels"
+             xmlns:controls="using:LocalMind.App.Controls"
+             x:Class="LocalMind.App.Views.ResultCard"
+             x:DataType="vm:ResultCardViewModel">
+  <Border Classes="card" Margin="4,8">
+    <StackPanel Spacing="8">
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+        <TextBlock Text="{Binding FileName}" FontWeight="SemiBold"
+                   TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding DocumentPath}" />
+        <TextBlock Grid.Column="1" Classes="muted" Text="{Binding Score, StringFormat='Оцінка: {0:G4}'}" />
+      </Grid>
+      <TextBlock Classes="muted" Text="{Binding RelativePath}" TextTrimming="CharacterEllipsis"
+                 ToolTip.Tip="{Binding DocumentPath}" />
+      <controls:HighlightedSnippet Snippet="{Binding Snippet}" TextWrapping="Wrap"
+                                   MaxLines="8" TextTrimming="CharacterEllipsis" />
+      <Button Content="Відкрити джерело" Command="{Binding OpenSourceCommand}"
+              AutomationProperties.Name="{Binding FileName, StringFormat='Відкрити джерело: {0}'}" />
+      <TextBlock Classes="error" Text="{Binding ErrorMessage}" IsVisible="{Binding HasError}"
+                 TextWrapping="Wrap" AutomationProperties.Name="Помилка відкриття файла" />
+    </StackPanel>
+  </Border>
+</UserControl>

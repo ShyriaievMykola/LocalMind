@@ -16,7 +16,7 @@ public static class AuthEndpoints
     {
         ArgumentNullException.ThrowIfNull(api);
 
-        var auth = api.MapGroup("/auth").WithTags("Auth");
+        var auth = api.MapGroup("/auth").WithTags("Auth").RequireRateLimiting(AuthRateLimitOptions.PolicyName);
         auth.MapPost("/register", RegisterAsync);
         auth.MapPost("/login", LoginAsync);
         auth.MapPost("/refresh", RefreshAsync);
@@ -25,7 +25,7 @@ public static class AuthEndpoints
         return api;
     }
 
-    private static async Task<Results<Created, ValidationProblem, ProblemHttpResult>> RegisterAsync(
+    private static async Task<Results<Created, ValidationProblem>> RegisterAsync(
         RegisterRequest request, UserManager<IdentityUser> users)
     {
         if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrEmpty(request.Password))
@@ -39,17 +39,13 @@ public static class AuthEndpoints
         var email = EmailFormatValidator.Normalize(request.Email);
         var user = new IdentityUser { UserName = email, Email = email };
         var result = await users.CreateAsync(user, request.Password);
-        if (result.Succeeded)
-        {
-            return TypedResults.Created();
-        }
 
-        if (result.Errors.Any(e => e.Code is nameof(IdentityErrorDescriber.DuplicateEmail)
+        // Зайнятий email дає ту саму відповідь, що й успішна реєстрація: інакше реєстрація дозволяла б
+        // перевіряти, чи є в сервері такий користувач (DR-032). Пароль Identity перевіряє раніше, ніж унікальність.
+        if (result.Succeeded || result.Errors.All(e => e.Code is nameof(IdentityErrorDescriber.DuplicateEmail)
             or nameof(IdentityErrorDescriber.DuplicateUserName)))
         {
-            return TypedResults.Problem(
-                statusCode: StatusCodes.Status409Conflict,
-                title: "Обліковий запис із таким email уже існує.");
+            return TypedResults.Created();
         }
 
         return TypedResults.ValidationProblem(result.Errors

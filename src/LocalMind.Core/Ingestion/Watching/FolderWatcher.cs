@@ -23,7 +23,7 @@ public sealed class FolderWatcher : IDisposable
     private readonly TimeSpan _debounce;
     private readonly Channel<FolderChange> _channel = Channel.CreateUnbounded<FolderChange>();
     private readonly Lock _lock = new();
-    private readonly Dictionary<string, FileSystemWatcher> _watchers = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, FileSystemWatcher> _watchers = new(FilePaths.Comparer);
     private readonly Dictionary<FolderChange, Timer> _pending = [];
     private bool _disposed;
 
@@ -103,7 +103,7 @@ public sealed class FolderWatcher : IDisposable
         {
             _watchers.Remove(path, out watcher);
 
-            foreach (var change in _pending.Keys.Where(c => IsInside(c.Path, path)).ToList())
+            foreach (var change in _pending.Keys.Where(c => FilePaths.IsSameOrInside(c.Path, path)).ToList())
             {
                 if (_pending.Remove(change, out var timer))
                 {
@@ -230,7 +230,7 @@ public sealed class FolderWatcher : IDisposable
         lock (_lock)
         {
             // Подія могла прийти від спостерігача, якого щойно прибрали через Unwatch.
-            if (_disposed || !_watchers.Keys.Any(folder => IsInside(change.Path, folder)))
+            if (_disposed || !_watchers.Keys.Any(folder => FilePaths.IsSameOrInside(change.Path, folder)))
             {
                 return;
             }
@@ -266,10 +266,4 @@ public sealed class FolderWatcher : IDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(folder);
         return Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder));
     }
-
-    /// <summary>Чи збігається шлях з папкою або лежить усередині неї.</summary>
-    private static bool IsInside(string path, string folder) =>
-        path.Equals(folder, StringComparison.Ordinal)
-        || (path.StartsWith(folder, StringComparison.Ordinal)
-            && (folder[^1] is '/' or '\\' || path[folder.Length] is '/' or '\\'));
 }

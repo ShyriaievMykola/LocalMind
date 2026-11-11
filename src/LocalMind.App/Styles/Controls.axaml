@@ -1,0 +1,89 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- Стилі елементів за замовчуванням: усі кольори — з Lm.Brush.*, без жорстких значень. -->
+
+  <Style Selector="Window">
+    <Setter Property="Background" Value="{DynamicResource Lm.Brush.Background}" />
+    <Setter Property="Foreground" Value="{DynamicResource Lm.Brush.Text}" />
+    <Setter Property="FontFamily" Value="{DynamicResource Lm.Font.Ui}" />
+    <Setter Property="FontSize" Value="{DynamicResource Lm.FontSize.Body}" />
+  </Style>
+
+  <Style Selector="TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource Lm.Brush.Text}" />
+  </Style>
+  <Style Selector="TextBlock.muted">
+    <Setter Property="Foreground" Value="{DynamicResource Lm.Brush.TextMuted}" />
+  </Style>
+  <Style Selector="TextBlock.heading">
+    <Setter Property="FontSize" Value="{DynamicResource Lm.FontSize.Heading}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="TextBlock.error">
+    <Setter Property="Foreground" Value="{DynamicResource Lm.Brush.Error}" />
+  </Style>
+  <!-- Підсвітка збігу в картці результату: фон + текст підібрані окремо для світлої і темної теми. -->
+  <Style Selector="TextBlock.highlight">
+    <Setter Property="Background" Value="{DynamicResource Lm.Brush.HighlightBackground}" />
+    <Setter Property="Foreground" Value="{DynamicResource Lm.Brush.HighlightForeground}" />
+  </Style>
+  <Style Selector="Run.highlight">
+    <Setter Property="Background" Value="{DynamicResource Lm.Brush.HighlightBackground}" />
+    <Setter Property="Foreground" Value="{DynamicResource Lm.Brush.HighlightForeground}" />
+  </Style>
+
+  <Style Selector="Border.card">
+    <Setter Property="Background" Value="{DynamicResource Lm.Brush.BackgroundSecondary}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Lm.Brush.Border}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{DynamicResource Lm.Radius.Card}" />
+    <Setter Property="Padding" Value="{DynamicResource Lm.Padding.Card}" />
+  </Style>
+  <Style Selector="Border.sidebar">
+    <Setter Property="Background" Value="{DynamicResource Lm.Brush.BackgroundSidebar}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Lm.Brush.Border}" />
+    <Setter Property="BorderThickness" Value="0,0,1,0" />
+  </Style>
+
+  <Style Selector="Button">
+    <Setter Property="Background" Value="{DynamicResource Lm.Brush.BackgroundActive}" />
+    <Setter Property="Foreground" Value="{DynamicResource Lm.Brush.Text}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Lm.Brush.BorderStrong}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource Lm.Radius.Control}" />
+    <Setter Property="Padding" Value="{DynamicResource Lm.Padding.Control}" />
+  </Style>
+  <Style Selector="Button:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Lm.Brush.BackgroundHover}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Lm.Brush.BorderStrong}" />
+    <Setter Property="Foreground" Value="{DynamicResource Lm.Brush.Text}" />
+  </Style>
+  <Style Selector="Button.accent">
+    <Setter Property="Background" Value="{DynamicResource Lm.Brush.Accent}" />
+    <Setter Property="Foreground" Value="{DynamicResource Lm.Brush.OnAccent}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Lm.Brush.Accent}" />
+  </Style>
+  <Style Selector="Button.accent:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Lm.Brush.AccentHover}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Lm.Brush.AccentHover}" />
+    <Setter Property="Foreground" Value="{DynamicResource Lm.Brush.OnAccent}" />
+  </Style>
+  <Style Selector="Button.accent:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource Lm.Brush.AccentPressed}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Lm.Brush.AccentPressed}" />
+    <Setter Property="Foreground" Value="{DynamicResource Lm.Brush.OnAccent}" />
+  </Style>
+
+  <Style Selector="TextBox">
+    <Setter Property="Background" Value="{DynamicResource Lm.Brush.BackgroundSecondary}" />
+    <Setter Property="Foreground" Value="{DynamicResource Lm.Brush.Text}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Lm.Brush.Border}" />
+    <Setter Property="CaretBrush" Value="{DynamicResource Lm.Brush.Text}" />
+    <Setter Property="SelectionBrush" Value="{DynamicResource Lm.Brush.Accent}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource Lm.Radius.Control}" />
+  </Style>
+  <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+    <Setter Property="BorderBrush" Value="{DynamicResource Lm.Brush.Accent}" />
+  </Style>
+
+</Styles>
