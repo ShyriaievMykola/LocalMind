@@ -6,6 +6,7 @@ using LocalMind.Server.Storage;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace LocalMind.Server.Endpoints;
 
@@ -31,7 +32,7 @@ public static class BackupEndpoints
 
     private static async Task<Results<Created<BackupInfo>, ProblemHttpResult, ChallengeHttpResult>> UploadAsync(
         HttpContext context, ClaimsPrincipal principal, ServerDbContext db, FileSystemBlobStore store,
-        TimeProvider time, CancellationToken cancellationToken)
+        IOptions<BlobStoreOptions> options, TimeProvider time, CancellationToken cancellationToken)
     {
         // Токен ще чинний, а користувача видалено — інакше впали б на зовнішньому ключі з 500.
         var userId = UserId(principal);
@@ -43,6 +44,16 @@ public static class BackupEndpoints
         if (context.Request.ContentLength > store.MaxBytes)
         {
             return TooLarge(store);
+        }
+
+        var quota = options.Value;
+        var own = db.Snapshots.Where(s => s.UserId == userId);
+        var usedCount = await own.CountAsync(cancellationToken);
+        var usedBytes = await own.SumAsync(s => s.SizeBytes, cancellationToken);
+        if (usedCount >= quota.MaxBackupsPerUser
+            || usedBytes + (context.Request.ContentLength ?? 0) > quota.MaxTotalBytesPerUser)
+        {
+            return QuotaExceeded(quota);
         }
 
         // Ліміт Kestrel за замовчуванням (30 МБ) замінюємо своїм; точний контроль — під час запису.
@@ -61,6 +72,14 @@ public static class BackupEndpoints
         catch (Exception ex) when (ex is BlobTooLargeException or BadHttpRequestException { StatusCode: 413 })
         {
             return TooLarge(store);
+        }
+
+        // Без Content-Length розмір відомий лише після запису. Паралельні завантаження можуть разом трохи
+        // перевищити квоту — це прийнятно: мета квоти — не дати заповнити диск, а не точний облік (DR-032).
+        if (usedBytes + size > quota.MaxTotalBytesPerUser)
+        {
+            store.Delete(id);
+            return QuotaExceeded(quota);
         }
 
         var snapshot = new SnapshotEntity
@@ -139,4 +158,9 @@ public static class BackupEndpoints
     private static ProblemHttpResult TooLarge(FileSystemBlobStore store) => TypedResults.Problem(
         statusCode: StatusCodes.Status413PayloadTooLarge,
         title: $"Бекап перевищує допустимий розмір ({store.MaxBytes / (1024 * 1024)} МБ).");
+
+    private static ProblemHttpResult QuotaExceeded(BlobStoreOptions quota) => TypedResults.Problem(
+        statusCode: StatusCodes.Status409Conflict,
+        title: "Вичерпано місце для бекапів. Видаліть старі бекапи.",
+        detail: $"Ліміт: {quota.MaxBackupsPerUser} бекапів і {quota.MaxTotalBytesPerUser / (1024 * 1024)} МБ разом.");
 }

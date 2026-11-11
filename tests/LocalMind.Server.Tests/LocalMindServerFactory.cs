@@ -29,6 +29,9 @@ public sealed class LocalMindServerFactory : WebApplicationFactory<Program>
         builder.UseSetting("ConnectionStrings:Server", _connectionString);
         builder.UseSetting("Jwt:SigningKey", SigningKey);
         builder.UseSetting("Storage:RootPath", StorageRoot);
+
+        // Тести шлють багато auth-запитів з однієї адреси; сам ліміт перевіряє окремий тест.
+        builder.UseSetting("RateLimiting:AuthPermitLimit", "100000");
     }
 
     protected override void Dispose(bool disposing)
