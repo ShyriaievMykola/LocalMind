@@ -27,6 +27,9 @@ builder.Services.AddOptions<JwtOptions>()
     .ValidateOnStart();
 builder.Services.AddSingleton<JwtTokenService>();
 builder.Services.AddScoped<RefreshTokenService>();
+builder.Services.AddSingleton<RefreshTokenCleanupService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<RefreshTokenCleanupService>());
+builder.Services.AddAuthRateLimiting();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();
 builder.Services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
     .Configure<IOptions<JwtOptions>, IHostEnvironment>((bearer, jwt, environment) =>
@@ -94,6 +97,7 @@ else
 app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 var api = app.MapGroup("/api/v1");
 api.MapHealthChecks("/health").WithMetadata(new HttpMethodMetadata([HttpMethods.Get, HttpMethods.Head]));
