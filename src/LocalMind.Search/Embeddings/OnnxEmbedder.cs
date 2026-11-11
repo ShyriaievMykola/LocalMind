@@ -17,7 +17,7 @@ public sealed class OnnxEmbedder : IEmbedder, IDisposable
 
     private readonly EmbeddingModelOptions _options;
     private readonly ModelTokenizer _tokenizer;
-    private readonly Lazy<InferenceSession> _session;
+    private readonly LoadOnce<InferenceSession> _session;
 
     public OnnxEmbedder(IOptions<EmbeddingModelOptions> options, ModelTokenizer tokenizer)
     {
@@ -26,7 +26,7 @@ public sealed class OnnxEmbedder : IEmbedder, IDisposable
 
         _options = options.Value;
         _tokenizer = tokenizer;
-        _session = new Lazy<InferenceSession>(LoadSession);
+        _session = new LoadOnce<InferenceSession>(LoadSession);
     }
 
     /// <inheritdoc />
@@ -141,6 +141,15 @@ public sealed class OnnxEmbedder : IEmbedder, IDisposable
                 $"Файл моделі не знайдено: {_options.ModelPath}. Запустіть scripts/download-models.");
         }
 
-        return new InferenceSession(_options.ModelPath);
+        try
+        {
+            return new InferenceSession(_options.ModelPath);
+        }
+        catch (OnnxRuntimeException ex)
+        {
+            // Найчастіше — обірване завантаження: файл є, але неповний.
+            throw new LocalMindException(
+                $"Файл моделі пошкоджений: {_options.ModelPath}. Запустіть scripts/download-models ще раз.", ex);
+        }
     }
 }

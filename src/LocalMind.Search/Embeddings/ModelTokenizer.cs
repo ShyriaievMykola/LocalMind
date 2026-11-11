@@ -23,14 +23,14 @@ public sealed class ModelTokenizer
     internal const int SpecialTokenCount = 2;
 
     private readonly EmbeddingModelOptions _options;
-    private readonly Lazy<SentencePieceTokenizer> _tokenizer;
+    private readonly LoadOnce<SentencePieceTokenizer> _tokenizer;
 
     public ModelTokenizer(IOptions<EmbeddingModelOptions> options)
     {
         ArgumentNullException.ThrowIfNull(options);
 
         _options = options.Value;
-        _tokenizer = new Lazy<SentencePieceTokenizer>(Load);
+        _tokenizer = new LoadOnce<SentencePieceTokenizer>(Load);
     }
 
     /// <summary>Кількість токенів разом зі службовими; 0 для порожнього тексту.</summary>
@@ -75,7 +75,17 @@ public sealed class ModelTokenizer
                 $"Файл токенізатора не знайдено: {_options.TokenizerPath}. Запустіть scripts/download-models.");
         }
 
-        using var stream = File.OpenRead(_options.TokenizerPath);
-        return SentencePieceTokenizer.Create(stream, false, false);
+        try
+        {
+            using var stream = File.OpenRead(_options.TokenizerPath);
+            return SentencePieceTokenizer.Create(stream, false, false);
+        }
+#pragma warning disable CA1031 // Бібліотека кидає різні типи на пошкоджений файл; усі вони для нас означають одне.
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+#pragma warning restore CA1031
+        {
+            throw new LocalMindException(
+                $"Файл токенізатора пошкоджений: {_options.TokenizerPath}. Запустіть scripts/download-models ще раз.", ex);
+        }
     }
 }

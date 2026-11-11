@@ -27,6 +27,7 @@ public sealed partial class SearchService(
     private readonly ILogger _logger = logger ?? NullLogger<SearchService>.Instance;
     private readonly SemaphoreSlim _loadLock = new(1, 1);
     private volatile bool _isLoaded;
+    private int _semanticUnavailableLogged;
 
     /// <inheritdoc />
     public async Task<IReadOnlyList<SearchResult>> SearchAsync(SearchQuery query, CancellationToken cancellationToken = default)
@@ -53,12 +54,18 @@ public sealed partial class SearchService(
         try
         {
             semantic = await SemanticAsync(query.Text, candidates, cancellationToken);
+            Volatile.Write(ref _semanticUnavailableLogged, 0);
         }
         catch (LocalMindException ex)
         {
             // Модель недоступна (файлу немає, не та розмірність): keyword-частина вже є, тож пошук не валимо.
             // Оцінки лишаються в шкалі RRF, як і в звичайному Hybrid.
-            LogSemanticUnavailable(_logger, ex);
+            // Попередження — раз, поки модель недоступна, а не на кожен запит.
+            if (Interlocked.Exchange(ref _semanticUnavailableLogged, 1) == 0)
+            {
+                LogSemanticUnavailable(_logger, ex);
+            }
+
             semantic = [];
         }
 
