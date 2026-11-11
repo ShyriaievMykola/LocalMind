@@ -30,6 +30,9 @@ public sealed class EmbeddingModelOptionsValidator : IValidateOptions<EmbeddingM
             errors.Add($"{Section}:TokenizerPath не вказано.");
         }
 
+        CheckHash(options.ModelSha256, nameof(EmbeddingModelOptions.ModelSha256), errors);
+        CheckHash(options.TokenizerSha256, nameof(EmbeddingModelOptions.TokenizerSha256), errors);
+
         if (options.Dimensions <= 0)
         {
             errors.Add($"{Section}:Dimensions має бути більше 0 (зараз {options.Dimensions}).");
@@ -53,5 +56,13 @@ public sealed class EmbeddingModelOptionsValidator : IValidateOptions<EmbeddingM
         }
 
         return errors.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(errors);
+    }
+
+    private static void CheckHash(string? hash, string name, List<string> errors)
+    {
+        if (!string.IsNullOrEmpty(hash) && !(hash.Length == 64 && hash.All(char.IsAsciiHexDigit)))
+        {
+            errors.Add($"{EmbeddingModelOptions.SectionName}:{name} має бути SHA-256 з 64 hex-символів або порожнім.");
+        }
     }
 }

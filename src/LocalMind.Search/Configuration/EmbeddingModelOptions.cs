@@ -18,6 +18,16 @@ public sealed class EmbeddingModelOptions
     /// <summary>Шлях до файла токенізатора.</summary>
     public string TokenizerPath { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Очікуваний SHA-256 файла моделі (64 hex-символи, регістр не важливий) — той самий, що в
+    /// <c>scripts/download-models</c>. Файл з іншим хешем не завантажується. Порожній рядок — не перевіряти
+    /// (для експериментальних моделей, чиї хеші ще не зафіксовано).
+    /// </summary>
+    public string ModelSha256 { get; set; } = string.Empty;
+
+    /// <summary>Очікуваний SHA-256 файла токенізатора; порожній рядок — не перевіряти.</summary>
+    public string TokenizerSha256 { get; set; } = string.Empty;
+
     /// <summary>Розмірність векторів моделі.</summary>
     public int Dimensions { get; set; }
 
