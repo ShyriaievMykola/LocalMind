@@ -41,7 +41,7 @@ public sealed class SearchViewModelTests
         var call = Assert.Single(_search.Calls);
         Assert.Equal(new SearchQuery("нотатка", mode, 3), call.Query);
         Assert.True(call.Token.CanBeCanceled);
-        Assert.Equal(results, viewModel.Results);
+        Assert.Equal(results, viewModel.Results.Select(card => card.Result));
         Assert.False(viewModel.IsSearching);
         Assert.Null(viewModel.ErrorMessage);
     }
@@ -171,7 +171,7 @@ public sealed class SearchViewModelTests
             await first.WaitAsync(Timeout);
         }
 
-        Assert.Same(expected, Assert.Single(viewModel.Results));
+        Assert.Same(expected, Assert.Single(viewModel.Results).Result);
         Assert.False(viewModel.IsSearching);
         Assert.Null(viewModel.ErrorMessage);
     }
@@ -202,7 +202,7 @@ public sealed class SearchViewModelTests
         pending.SetException(new LocalMindException("Застаріла помилка"));
         await first.WaitAsync(Timeout);
 
-        Assert.Same(expected, Assert.Single(viewModel.Results));
+        Assert.Same(expected, Assert.Single(viewModel.Results).Result);
         Assert.Null(viewModel.ErrorMessage);
         Assert.False(viewModel.IsSearching);
     }

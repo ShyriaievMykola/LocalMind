@@ -1,0 +1,28 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="using:System">
+
+  <!-- Відступи, радіуси і шрифти — спільні для всіх сторінок. -->
+
+  <sys:Double x:Key="Lm.Spacing.XS">4</sys:Double>
+  <sys:Double x:Key="Lm.Spacing.S">8</sys:Double>
+  <sys:Double x:Key="Lm.Spacing.M">12</sys:Double>
+  <sys:Double x:Key="Lm.Spacing.L">16</sys:Double>
+  <sys:Double x:Key="Lm.Spacing.XL">24</sys:Double>
+
+  <Thickness x:Key="Lm.Padding.Page">24</Thickness>
+  <Thickness x:Key="Lm.Padding.Card">12</Thickness>
+  <Thickness x:Key="Lm.Padding.Control">10,6</Thickness>
+
+  <CornerRadius x:Key="Lm.Radius.Control">6</CornerRadius>
+  <CornerRadius x:Key="Lm.Radius.Card">8</CornerRadius>
+
+  <FontFamily x:Key="Lm.Font.Ui">avares://Avalonia.Fonts.Inter/Assets#Inter, Segoe UI, sans-serif</FontFamily>
+  <FontFamily x:Key="Lm.Font.Mono">Cascadia Mono, Consolas, Menlo, monospace</FontFamily>
+
+  <sys:Double x:Key="Lm.FontSize.Small">12</sys:Double>
+  <sys:Double x:Key="Lm.FontSize.Body">14</sys:Double>
+  <sys:Double x:Key="Lm.FontSize.Heading">20</sys:Double>
+  <sys:Double x:Key="Lm.FontSize.Title">26</sys:Double>
+
+</ResourceDictionary>
