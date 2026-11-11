@@ -5,6 +5,7 @@ using LocalMind.Core.Ingestion.Chunking;
 using LocalMind.Core.Ingestion.Parsers;
 using LocalMind.Core.Ingestion.Watching;
 using LocalMind.Core.Storage;
+using LocalMind.Core.Storage.FullText;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -61,6 +62,7 @@ public static class ServiceCollectionExtensions
             builder.UseSqlite(connection.ToString());
         });
         services.TryAddSingleton<IDocumentRepository, DocumentRepository>();
+        services.TryAddSingleton<IKeywordIndex, Fts5KeywordIndex>();
 
         return services;
     }
