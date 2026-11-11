@@ -8,7 +8,7 @@ public sealed class MainViewModelTests
 {
     private readonly CoreStatus _status = new(NullLogger<CoreStatus>.Instance);
     private readonly SearchViewModel _search = new FakeSearchService().CreateViewModel();
-    private readonly LibraryViewModel _library = new();
+    private readonly LibraryViewModel _library = new FakeIndexingService().CreateViewModel();
     private readonly SettingsViewModel _settings = new();
 
     [Fact]
@@ -34,6 +34,17 @@ public sealed class MainViewModelTests
         Assert.True(cancellation.IsCancellationRequested);
         Assert.False(search.IsSearching);
         Assert.Null(search.ErrorMessage);
+    }
+
+    [Fact]
+    public void Dispose_StopsLibraryUpdates()
+    {
+        var indexing = new FakeIndexingService();
+        var viewModel = new MainViewModel(_status, _search, indexing.CreateViewModel(), _settings);
+
+        viewModel.Dispose();
+
+        Assert.False(indexing.HasSubscribers);
     }
 
     [Fact]
