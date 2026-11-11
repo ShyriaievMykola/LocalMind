@@ -10,6 +10,10 @@ namespace LocalMind.Server.Auth;
 /// </summary>
 public sealed class EmailFormatValidator : IUserValidator<IdentityUser>
 {
+    /// <summary>Межі RFC 5321: уся адреса до 254 символів, локальна частина до 64.</summary>
+    private const int MaxLength = 254;
+    private const int MaxLocalPartLength = 64;
+
     /// <summary>Email без зайвих пробілів у Unicode NFC — щоб «й» у NFC і NFD не давала два різні акаунти.</summary>
     public static string Normalize(string email)
     {
@@ -20,6 +24,8 @@ public sealed class EmailFormatValidator : IUserValidator<IdentityUser>
     /// <summary>Чи є рядок простою адресою <c>local@domain</c> без імені, пробілів і службових символів.</summary>
     public static bool IsValid(string? email) =>
         !string.IsNullOrEmpty(email)
+        && email.Length <= MaxLength
+        && email.IndexOf('@', StringComparison.Ordinal) is > 0 and <= MaxLocalPartLength
         && !email.Any(c => char.IsWhiteSpace(c) || char.IsControl(c) || c is '<' or '>' or '"' or '(' or ')' or ',' or ';')
         && MailAddress.TryCreate(email, out var address)
         && string.Equals(address.Address, email, StringComparison.Ordinal)
