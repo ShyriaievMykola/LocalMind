@@ -41,7 +41,9 @@ public sealed class RestoreService(IDbContextFactory<LocalMindDbContext> context
             databasePath = BackupService.DatabasePath(context);
         }
 
-        var tempPath = Path.Combine(Path.GetDirectoryName(databasePath)!, $".restore-{Guid.NewGuid():N}.tmp");
+        var directory = Path.GetDirectoryName(databasePath)!;
+        var tempPath = Path.Combine(directory, $".restore-{Guid.NewGuid():N}.tmp");
+        var previousPath = Path.Combine(directory, $".restore-{Guid.NewGuid():N}.bak");
         try
         {
             try
@@ -57,18 +59,40 @@ public sealed class RestoreService(IDbContextFactory<LocalMindDbContext> context
 
             // Пул тримає файл бази відкритим — без цього заміна на Windows не вдасться.
             SqliteConnection.ClearAllPools();
-            File.Move(tempPath, databasePath, overwrite: true);
+            if (File.Exists(databasePath))
+            {
+                // Поточна база лишається як .bak, доки відновлена не пройде міграції.
+                File.Replace(tempPath, databasePath, previousPath);
+            }
+            else
+            {
+                File.Move(tempPath, databasePath);
+            }
+
+            try
+            {
+                // Бекап міг бути зроблений старішою версією застосунку.
+                var migrated = await contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+                await using (migrated.ConfigureAwait(false))
+                {
+                    await migrated.Database.MigrateAsync(cancellationToken).ConfigureAwait(false);
+                }
+            }
+            catch (Exception ex)
+            {
+                SqliteConnection.ClearAllPools();
+                if (File.Exists(previousPath))
+                {
+                    File.Move(previousPath, databasePath, overwrite: true);
+                }
+
+                throw new LocalMindException("Не вдалося оновити схему відновленої бази — повернуто попередню базу.", ex);
+            }
         }
         finally
         {
             File.Delete(tempPath);
-        }
-
-        // Бекап міг бути зроблений старішою версією застосунку.
-        var migrated = await contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-        await using (migrated.ConfigureAwait(false))
-        {
-            await migrated.Database.MigrateAsync(cancellationToken).ConfigureAwait(false);
+            File.Delete(previousPath);
         }
     }
 
@@ -91,6 +115,16 @@ public sealed class RestoreService(IDbContextFactory<LocalMindDbContext> context
                 if (await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is not "ok")
                 {
                     throw new LocalMindException("Бекап містить пошкоджену базу — відновлення скасовано.");
+                }
+
+                // Будь-яка валідна SQLite пройшла б integrity_check; порожня чи чужа база стерла б бібліотеку.
+                command.CommandText = """
+                    SELECT count(*) FROM sqlite_master
+                    WHERE type = 'table' AND name IN ('__EFMigrationsHistory', 'Documents', 'SourceFolders')
+                    """;
+                if (await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is not 3L)
+                {
+                    throw new LocalMindException("Бекап не є базою LocalMind — відновлення скасовано.");
                 }
             }
         }

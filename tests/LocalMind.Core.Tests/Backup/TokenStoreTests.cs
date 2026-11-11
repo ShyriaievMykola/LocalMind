@@ -51,6 +51,23 @@ public sealed class TokenStoreTests : IDisposable
     }
 
     [Fact]
+    public void Dpapi_MissingDirectory_LoadAndClearDoNotThrow()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var path = Path.Combine(Path.GetTempPath(), "localmind-token-tests", Guid.NewGuid().ToString("N"), "session.bin");
+        var store = new DpapiTokenStore(path);
+
+        Assert.Null(store.Load());
+        store.Clear();
+        Assert.Null(new DpapiTokenStore(path).Load());
+        new DpapiTokenStore(path).Clear();
+    }
+
+    [Fact]
     public void Dpapi_ClearDeletesFile()
     {
         if (!OperatingSystem.IsWindows())

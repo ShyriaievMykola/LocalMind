@@ -106,6 +106,40 @@ public sealed class BackupRestoreTests : IAsyncLifetime
         Assert.Equal(["localmind.db"], Directory.GetFiles(_directory).Select(Path.GetFileName));
     }
 
+    [Fact]
+    public async Task Restore_ValidButForeignSqlite_KeepsCurrentDatabase()
+    {
+        var foreign = Path.Combine(_directory, "foreign.sqlite");
+        await using (var connection = new SqliteConnection($"Data Source={foreign};Pooling=False"))
+        {
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+            command.CommandText = "CREATE TABLE Other (Id INTEGER PRIMARY KEY)";
+            await command.ExecuteNonQueryAsync();
+        }
+
+        var encrypted = AesGcmCipher.Encrypt(await File.ReadAllBytesAsync(foreign), Password).ToBytes();
+        File.Delete(foreign);
+        var before = await ReadDatabaseAsync();
+
+        await Assert.ThrowsAsync<LocalMindException>(
+            () => _restore.RestoreFromEnvelopeAsync(encrypted, Password, default));
+
+        Assert.Equal(before, await ReadDatabaseAsync());
+        Assert.Equal(["localmind.db"], Directory.GetFiles(_directory).Select(Path.GetFileName));
+    }
+
+    [Fact]
+    public async Task Restore_Success_LeavesNoBackupFiles()
+    {
+        var encrypted = await _backup.CreateEncryptedSnapshotAsync(Password, default);
+
+        await _restore.RestoreFromEnvelopeAsync(encrypted, Password, default);
+
+        SqliteConnection.ClearAllPools();
+        Assert.DoesNotContain(Directory.GetFiles(_directory), f => Path.GetFileName(f).StartsWith(".restore-", StringComparison.Ordinal));
+    }
+
     private async Task<byte[]> ReadDatabaseAsync()
     {
         SqliteConnection.ClearAllPools();

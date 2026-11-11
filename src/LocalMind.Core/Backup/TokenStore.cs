@@ -110,7 +110,7 @@ public sealed class DpapiTokenStore(string filePath) : ITokenStore
     {
         lock (_lock)
         {
-            File.Delete(filePath);
+            TryDelete(filePath);
             _cached = null;
             _loaded = true;
         }
@@ -118,14 +118,20 @@ public sealed class DpapiTokenStore(string filePath) : ITokenStore
 
     private TokenResponse? ReadFile()
     {
-        if (!File.Exists(filePath))
+        byte[] protectedBytes;
+        try
         {
+            protectedBytes = File.ReadAllBytes(filePath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Файла чи теки немає, або файл недоступний — вважаємо, що сесії немає.
             return null;
         }
 
         try
         {
-            var json = ProtectedData.Unprotect(File.ReadAllBytes(filePath), Entropy, DataProtectionScope.CurrentUser);
+            var json = ProtectedData.Unprotect(protectedBytes, Entropy, DataProtectionScope.CurrentUser);
             try
             {
                 return JsonSerializer.Deserialize<TokenResponse>(json);
@@ -138,8 +144,21 @@ public sealed class DpapiTokenStore(string filePath) : ITokenStore
         catch (Exception ex) when (ex is CryptographicException or JsonException)
         {
             // Пошкоджений файл або чужий обліковий запис Windows — сесії просто немає.
-            File.Delete(filePath);
+            TryDelete(filePath);
             return null;
+        }
+    }
+
+    /// <summary>Видаляє файл сесії; відсутність файла чи теки — не помилка.</summary>
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (DirectoryNotFoundException)
+        {
+            // Теки немає — і файла теж.
         }
     }
 }

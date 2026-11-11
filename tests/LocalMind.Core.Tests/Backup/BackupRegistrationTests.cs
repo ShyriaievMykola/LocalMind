@@ -26,12 +26,33 @@ public sealed class BackupRegistrationTests
     [Theory]
     [InlineData("http://backup.example.com/")]
     [InlineData("ftp://backup.example.com/")]
-    [InlineData("")]
-    public void AddLocalMindBackup_InsecureOrMissingUrl_FailsValidation(string url)
+    public void AddLocalMindBackup_InsecureUrl_FailsValidation(string url)
     {
         using var provider = Build(url);
 
         Assert.Throws<OptionsValidationException>(() => provider.GetRequiredService<IOptions<BackupClientOptions>>().Value);
+    }
+
+    [Fact]
+    public async Task AddLocalMindBackup_NoUrl_StartsAndReportsNotConfigured()
+    {
+        using var provider = Build("");
+
+        Assert.Null(provider.GetRequiredService<IOptions<BackupClientOptions>>().Value.ServerUrl);
+        var client = provider.GetRequiredService<BackupApiClient>();
+        var error = await Assert.ThrowsAsync<LocalMind.Core.Errors.BackupApiException>(
+            () => client.LoginAsync("a@example.com", "пароль"));
+        Assert.Contains("не налаштовано", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AddLocalMindBackup_UrlWithPath_KeepsPrefix()
+    {
+        using var provider = Build("https://host.example.com/localmind");
+
+        var http = provider.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(BackupApiClient));
+
+        Assert.Equal(new Uri("https://host.example.com/localmind/"), http.BaseAddress);
     }
 
     private static ServiceProvider Build(string url)
