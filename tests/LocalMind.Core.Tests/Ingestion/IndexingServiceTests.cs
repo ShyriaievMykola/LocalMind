@@ -245,8 +245,9 @@ public sealed class IndexingServiceTests : IDisposable
 
             if (rescanDuringRetry)
             {
-                // Повторне повідомлення спостерігача ставить поточний файл у чергу ще раз.
-                _watcher.OnWatcherError(_folder);
+                // Звичайний тестовий watcher має debounce на годину (#99), тому запускаємо
+                // повторне сканування напряму: поточний файл знову потрапить у чергу.
+                await service.RescanAsync();
                 await WaitUntilAsync(() => service.Progress.Total >= 2);
             }
         }
