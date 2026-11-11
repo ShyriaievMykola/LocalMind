@@ -1,0 +1,8 @@
+{"id": "q01", "text": "режим WAL SQLite", "type": "exact"}
+{"id": "q02", "text": "температура води для еспресо", "type": "exact"}
+{"id": "q03", "text": "git rebase", "type": "exact"}
+{"id": "q04", "text": "як зробити, щоб напій із кавових зерен не був гірким", "type": "paraphrase"}
+{"id": "q05", "text": "що робити, щоб легше заснути", "type": "paraphrase"}
+{"id": "q06", "text": "пошук за змістом, а не за збігом слів", "type": "paraphrase"}
+{"id": "q07", "text": "how to cook ukrainian beetroot soup", "type": "crossLingual"}
+{"id": "q08", "text": "порівняння векторів за косинусною подібністю", "type": "crossLingual"}
