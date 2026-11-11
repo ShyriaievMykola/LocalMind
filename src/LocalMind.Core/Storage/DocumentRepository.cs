@@ -260,11 +260,19 @@ public sealed class DocumentRepository(IDbContextFactory<LocalMindDbContext> con
     /// Кандидати на той самий шлях. SQLite порівнює рядки побайтово, а його <c>NOCASE</c> і <c>lower()</c> знають лише
     /// латиницю — кириличні шляхи так не зрівняти. Тому, коли регістр не важливий, відбираємо за довжиною
     /// (зміна регістру її не змінює), а точне порівняння робимо в пам'яті за <see cref="FilePaths"/>.
+    /// SQLite <c>length()</c> рахує символи Unicode, а не UTF-16 одиниці, тому й тут рахуємо руни: інакше шлях
+    /// з емодзі ніколи не знайшовся б.
     /// </summary>
-    private static IQueryable<DocumentEntity> SamePathQuery(IQueryable<DocumentEntity> documents, string path) =>
-        FilePaths.IgnoreCase
-            ? documents.Where(d => d.Path.Length == path.Length)
-            : documents.Where(d => d.Path == path);
+    private static IQueryable<DocumentEntity> SamePathQuery(IQueryable<DocumentEntity> documents, string path)
+    {
+        if (!FilePaths.IgnoreCase)
+        {
+            return documents.Where(d => d.Path == path);
+        }
+
+        var length = path.EnumerateRunes().Count();
+        return documents.Where(d => d.Path.Length == length);
+    }
 
     private static Document ToModel(DocumentEntity entity) =>
         new(entity.Id, entity.Path, entity.ContentHash, entity.Status, entity.IndexedAt, entity.Error);

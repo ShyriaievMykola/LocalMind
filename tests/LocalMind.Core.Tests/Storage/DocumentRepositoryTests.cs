@@ -243,6 +243,21 @@ public sealed class DocumentRepositoryTests : IAsyncLifetime, IDisposable
     }
 
     [Fact]
+    public async Task DocumentPath_OutsideBmp_FoundAndReplaced()
+    {
+        var path = "/нотатки/📝 план 𝄞.md";
+        var first = TestData.Document(path);
+        await _repository.SaveAsync(first, [], [], Model);
+
+        Assert.Equal(first, await _repository.GetDocumentByPathAsync(path));
+
+        var second = TestData.Document(path);
+        await _repository.SaveAsync(second, [], [], Model);
+
+        Assert.Equal(second, Assert.Single(await _repository.GetDocumentsAsync()));
+    }
+
+    [Fact]
     public async Task AddSourceFolder_Twice_KeepsOne()
     {
         await _repository.AddSourceFolderAsync("/notes/");
