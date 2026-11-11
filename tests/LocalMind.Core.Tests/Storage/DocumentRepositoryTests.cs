@@ -188,6 +188,76 @@ public sealed class DocumentRepositoryTests : IAsyncLifetime, IDisposable
     }
 
     [Fact]
+    public async Task RemoveSourceFolder_OtherCase_FollowsOsRule()
+    {
+        await _repository.AddSourceFolderAsync("/Нотатки");
+        var document = TestData.Document("/Нотатки/Кава.md");
+        await _repository.SaveAsync(document, TestData.Chunks(document.Id, "кава"), Vectors(1), Model);
+
+        var removed = await _repository.RemoveSourceFolderAsync("/нотатки");
+
+        if (FilePaths.IgnoreCase)
+        {
+            Assert.Single(removed);
+            Assert.Empty(await _repository.GetSourceFoldersAsync());
+            Assert.Empty(await _repository.GetDocumentsAsync());
+        }
+        else
+        {
+            Assert.Empty(removed);
+            Assert.Equal("/Нотатки", Assert.Single(await _repository.GetSourceFoldersAsync()));
+            Assert.Single(await _repository.GetDocumentsAsync());
+        }
+    }
+
+    [Fact]
+    public async Task AddSourceFolder_OtherCase_FollowsOsRule()
+    {
+        await _repository.AddSourceFolderAsync("/Нотатки");
+        await _repository.AddSourceFolderAsync("/НОТАТКИ");
+
+        Assert.Equal(FilePaths.IgnoreCase ? 1 : 2, (await _repository.GetSourceFoldersAsync()).Count);
+    }
+
+    [Fact]
+    public async Task DocumentPath_OtherCase_FollowsOsRule()
+    {
+        var document = TestData.Document("/Нотатки/Кава.md");
+        await _repository.SaveAsync(document, [], [], Model);
+
+        var found = await _repository.GetDocumentByPathAsync("/нотатки/КАВА.md");
+        var other = TestData.Document("/нотатки/кава.md");
+        var replaced = await _repository.SaveAsync(other, [], [], Model);
+
+        if (FilePaths.IgnoreCase)
+        {
+            Assert.Equal(document, found);
+            Assert.Equal(other, Assert.Single(await _repository.GetDocumentsAsync()));
+        }
+        else
+        {
+            Assert.Null(found);
+            Assert.Empty(replaced);
+            Assert.Equal(2, (await _repository.GetDocumentsAsync()).Count);
+        }
+    }
+
+    [Fact]
+    public async Task DocumentPath_OutsideBmp_FoundAndReplaced()
+    {
+        var path = "/нотатки/📝 план 𝄞.md";
+        var first = TestData.Document(path);
+        await _repository.SaveAsync(first, [], [], Model);
+
+        Assert.Equal(first, await _repository.GetDocumentByPathAsync(path));
+
+        var second = TestData.Document(path);
+        await _repository.SaveAsync(second, [], [], Model);
+
+        Assert.Equal(second, Assert.Single(await _repository.GetDocumentsAsync()));
+    }
+
+    [Fact]
     public async Task AddSourceFolder_Twice_KeepsOne()
     {
         await _repository.AddSourceFolderAsync("/notes/");
@@ -348,7 +418,6 @@ public sealed class DocumentRepositoryTests : IAsyncLifetime, IDisposable
 
     [Theory]
     [InlineData("/notes/b.md")]
-    [InlineData("/Notes/a.md")]
     [InlineData("/notes/a.md/")]
     public async Task GetDocumentByPath_OtherPath_ReturnsNull(string path)
     {

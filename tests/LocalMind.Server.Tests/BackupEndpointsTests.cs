@@ -123,6 +123,56 @@ public sealed class BackupEndpointsTests(LocalMindServerFactory factory) : IClas
     }
 
     [Fact]
+    public async Task Upload_OverCountQuota_Returns409UntilOldDeleted()
+    {
+        using var app = factory.WithWebHostBuilder(b => b.UseSetting("Storage:MaxBackupsPerUser", "2"));
+        using var client = await AuthorizedClientAsync(app);
+        var first = await UploadOkAsync(client, [1]);
+        await UploadOkAsync(client, [2]);
+
+        using var third = await PostAsync(client, [3]);
+        using var delete = await client.DeleteAsync(new Uri($"/api/v1/backups/{first.Id}", UriKind.Relative));
+        using var afterDelete = await PostAsync(client, [3]);
+
+        Assert.Equal(HttpStatusCode.Conflict, third.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, afterDelete.StatusCode);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Upload_OverTotalBytesQuota_Returns409AndStoresNothing(bool sendContentLength)
+    {
+        using var app = factory.WithWebHostBuilder(b => b.UseSetting("Storage:MaxTotalBytesPerUser", "100"));
+        using var client = await AuthorizedClientAsync(app);
+        await UploadOkAsync(client, new byte[60]);
+        var filesBefore = Directory.GetFiles(factory.StorageRoot).Length;
+
+        HttpContent content = sendContentLength
+            ? new ByteArrayContent(new byte[41])
+            : new StreamContent(new UnknownLengthStream(new byte[41]));
+        using var response = await client.PostAsync(Backups, content);
+        content.Dispose();
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Single(await client.GetFromJsonAsync<BackupInfo[]>(Backups) ?? []);
+        Assert.Equal(filesBefore, Directory.GetFiles(factory.StorageRoot).Length);
+    }
+
+    [Fact]
+    public async Task Quota_IsPerUser()
+    {
+        using var app = factory.WithWebHostBuilder(b => b.UseSetting("Storage:MaxBackupsPerUser", "1"));
+        using var first = await AuthorizedClientAsync(app);
+        using var second = await AuthorizedClientAsync(app);
+        await UploadOkAsync(first, [1]);
+
+        var info = await UploadOkAsync(second, [2]);
+
+        Assert.Equal(1, info.SizeBytes);
+    }
+
+    [Fact]
     public async Task RootPathWithTrailingSeparator_Works()
     {
         var root = Path.Combine(factory.StorageRoot, "trailing") + Path.DirectorySeparatorChar;
@@ -213,11 +263,16 @@ public sealed class BackupEndpointsTests(LocalMindServerFactory factory) : IClas
 
     private static async Task<BackupInfo> UploadOkAsync(HttpClient client, byte[] data)
     {
-        using var content = new ByteArrayContent(data);
-        content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
-        using var response = await client.PostAsync(Backups, content);
+        using var response = await PostAsync(client, data);
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         return (await response.Content.ReadFromJsonAsync<BackupInfo>())!;
+    }
+
+    private static async Task<HttpResponseMessage> PostAsync(HttpClient client, byte[] data)
+    {
+        using var content = new ByteArrayContent(data);
+        content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+        return await client.PostAsync(Backups, content);
     }
 
     /// <summary>Потік без відомої довжини — запит іде без Content-Length.</summary>

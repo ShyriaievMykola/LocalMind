@@ -28,17 +28,36 @@ public sealed class AuthEndpointsTests(LocalMindServerFactory factory) : IClassF
     }
 
     [Fact]
-    public async Task Register_DuplicateEmail_Returns409()
+    public async Task Register_ExistingEmail_LooksLikeNewRegistrationAndKeepsOldPassword()
+    {
+        using var client = factory.CreateClient();
+        var email = NewEmail();
+        using var first = await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest(email, StrongPassword));
+        using var fresh = await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest(NewEmail(), StrongPassword));
+
+        using var second = await client.PostAsJsonAsync("/api/v1/auth/register",
+            new RegisterRequest(email.ToUpperInvariant(), StrongPassword + "!"));
+        using var hijack = await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest(email, StrongPassword + "!"));
+        using var owner = await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest(email, StrongPassword));
+
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+        Assert.Equal(fresh.StatusCode, second.StatusCode);
+        Assert.Equal(await fresh.Content.ReadAsStringAsync(), await second.Content.ReadAsStringAsync());
+        Assert.Equal(fresh.Headers.Location, second.Headers.Location);
+        Assert.Equal(HttpStatusCode.Unauthorized, hijack.StatusCode);
+        Assert.True(owner.IsSuccessStatusCode);
+    }
+
+    [Fact]
+    public async Task Register_ExistingEmailWithWeakPassword_StillReportsPassword()
     {
         using var client = factory.CreateClient();
         var email = NewEmail();
         using var first = await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest(email, StrongPassword));
 
-        using var second = await client.PostAsJsonAsync("/api/v1/auth/register",
-            new RegisterRequest(email.ToUpperInvariant(), StrongPassword + "!"));
+        using var weak = await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest(email, "короткий"));
 
-        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
-        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, weak.StatusCode);
     }
 
     [Theory]
@@ -162,19 +181,21 @@ public sealed class AuthEndpointsTests(LocalMindServerFactory factory) : IClassF
     };
 
     [Fact]
-    public async Task Register_SameEmailInNfcAndNfd_Returns409()
+    public async Task Register_SameEmailInNfcAndNfd_IsOneAccount()
     {
         using var client = factory.CreateClient();
         var nfc = $"й-{Guid.NewGuid():N}@example.com".Normalize(NormalizationForm.FormC);
         var nfd = nfc.Normalize(NormalizationForm.FormD);
 
         using var first = await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest(nfc, StrongPassword));
-        using var second = await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest(nfd, StrongPassword));
+        using var second = await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest(nfd, StrongPassword + "!"));
         using var login = await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest(nfd, StrongPassword));
+        using var secondPassword = await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest(nfc, StrongPassword + "!"));
 
         Assert.Equal(HttpStatusCode.Created, first.StatusCode);
-        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, second.StatusCode);
         Assert.True(login.IsSuccessStatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, secondPassword.StatusCode);
     }
 
     [Fact]
