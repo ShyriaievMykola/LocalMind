@@ -10,6 +10,10 @@ public sealed class MainViewModelTests
     private readonly SearchViewModel _search = new FakeSearchService().CreateViewModel();
     private readonly LibraryViewModel _library = new FakeIndexingService().CreateViewModel();
     private readonly SettingsViewModel _settings = new();
+    private readonly FakeUiDispatcher _dispatcher = new();
+    private readonly UnhandledErrorReporter _errors;
+
+    public MainViewModelTests() => _errors = new UnhandledErrorReporter(_dispatcher, NullLogger<UnhandledErrorReporter>.Instance);
 
     [Fact]
     public async Task Dispose_CancelsSearchOwnedByWindow()
@@ -23,7 +27,7 @@ public sealed class MainViewModelTests
             return [];
         };
         var search = service.CreateViewModel();
-        using var viewModel = new MainViewModel(_status, search, _library, _settings);
+        using var viewModel = CreateViewModel(search);
         search.QueryText = "нотатка";
         var pending = search.SearchCommand.ExecuteAsync(null);
         var cancellation = await started.Task.WaitAsync(TimeSpan.FromSeconds(10));
@@ -40,7 +44,7 @@ public sealed class MainViewModelTests
     public void Dispose_StopsLibraryUpdates()
     {
         var indexing = new FakeIndexingService();
-        var viewModel = new MainViewModel(_status, _search, indexing.CreateViewModel(), _settings);
+        var viewModel = CreateViewModel(_search, indexing.CreateViewModel());
 
         viewModel.Dispose();
 
@@ -132,5 +136,73 @@ public sealed class MainViewModelTests
         Assert.Equal("Помилка запуску. БД недоступна", viewModel.StatusText);
     }
 
-    private MainViewModel CreateViewModel() => new(_status, _search, _library, _settings);
+    [Fact]
+    public void Notice_WhileStartingOrReady_IsHidden()
+    {
+        using var viewModel = CreateViewModel();
+
+        Assert.False(viewModel.HasNotice);
+        Assert.Null(viewModel.NoticeText);
+
+        _status.SetModelAvailable();
+        _status.SetReady();
+
+        Assert.False(viewModel.HasNotice);
+    }
+
+    [Fact]
+    public void Notice_ModelMissing_ExplainsHowToGetModel()
+    {
+        _status.SetModelMissing("missing.onnx");
+        _status.SetReady();
+        using var viewModel = CreateViewModel();
+
+        Assert.True(viewModel.HasNotice);
+        Assert.Contains("Модель не завантажена", viewModel.NoticeText, StringComparison.Ordinal);
+        Assert.Contains("scripts/download-models", viewModel.NoticeText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Notice_DatabaseUnavailable_ShowsReasonInsteadOfModelHint()
+    {
+        _status.SetModelMissing("missing.onnx");
+        _status.SetFailed("База даних недоступна: файл пошкоджено");
+        using var viewModel = CreateViewModel();
+
+        Assert.True(viewModel.HasNotice);
+        Assert.Equal("База даних недоступна: файл пошкоджено", viewModel.NoticeText);
+    }
+
+    [Fact]
+    public void UnhandledError_ShowsMessageUntilDismissed()
+    {
+        using var viewModel = CreateViewModel();
+        Assert.False(viewModel.HasUnhandledError);
+
+        _errors.Report(new InvalidOperationException("збій"), "тест");
+        _dispatcher.RunPending();
+
+        Assert.True(viewModel.HasUnhandledError);
+        Assert.Equal(UnhandledErrorReporter.UserMessage, viewModel.UnhandledErrorText);
+
+        viewModel.DismissUnhandledErrorCommand.Execute(null);
+
+        Assert.False(viewModel.HasUnhandledError);
+        Assert.Null(viewModel.UnhandledErrorText);
+    }
+
+    [Fact]
+    public void UnhandledError_AfterDispose_IsIgnored()
+    {
+        var viewModel = CreateViewModel();
+        viewModel.Dispose();
+
+        _errors.Report(new InvalidOperationException("збій"), "тест");
+        _dispatcher.RunPending();
+
+        Assert.False(viewModel.HasUnhandledError);
+    }
+
+    private MainViewModel CreateViewModel(SearchViewModel? search = null, LibraryViewModel? library = null) =>
+        new(_status, _errors, search ?? _search, library ?? _library, _settings);
 }

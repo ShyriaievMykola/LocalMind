@@ -44,6 +44,7 @@ public static class AppHost
         builder.Services.AddSingleton<IFolderPicker, FolderPicker>();
         builder.Services.AddSingleton<IUiDispatcher, AvaloniaUiDispatcher>();
         builder.Services.AddSingleton<IThemeService, ThemeService>();
+        builder.Services.AddSingleton<UnhandledErrorReporter>();
         builder.Services.AddHostedService<CoreStartup>();
         builder.Services.AddSingleton<IFileLauncher, SystemFileLauncher>();
         builder.Services.AddSingleton<ResultCardFactory>();

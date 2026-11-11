@@ -63,6 +63,10 @@ public sealed partial class SearchViewModel : ViewModelBase
 
     public bool HasError => ErrorMessage is not null;
 
+    /// <summary>Пошук завершився успішно, але нічого не знайшов; скидається з початком наступного запиту.</summary>
+    [ObservableProperty]
+    public partial bool HasNoResults { get; private set; }
+
     /// <summary>Скасовує пошук при закритті застосунку; Transient-VM не утримується DI як IDisposable.</summary>
     public void Close() => _searchCancellation?.Cancel();
 
@@ -76,6 +80,7 @@ public sealed partial class SearchViewModel : ViewModelBase
 
         IsSearching = false;
         ErrorMessage = null;
+        HasNoResults = false;
         Results = [];
 
         try
@@ -129,6 +134,7 @@ public sealed partial class SearchViewModel : ViewModelBase
             if (ReferenceEquals(_searchCancellation, request) && !request.IsCancellationRequested)
             {
                 Results = results;
+                HasNoResults = results.Count == 0;
             }
         }
         catch (OperationCanceledException) when (request.IsCancellationRequested)

@@ -40,6 +40,18 @@ public sealed class LibraryViewModelTests
     }
 
     [Fact]
+    public async Task Refresh_EmptyLibrary_ShowsEmptyStates()
+    {
+        var viewModel = _indexing.CreateViewModel();
+
+        await viewModel.RefreshCommand.ExecuteAsync(null);
+
+        Assert.False(viewModel.HasFolders);
+        Assert.False(viewModel.HasDocuments);
+        Assert.False(viewModel.HasError);
+    }
+
+    [Fact]
     public async Task Refresh_AfterFailure_SuccessfulRefreshClearsError()
     {
         await _indexing.Repository.AddSourceFolderAsync(Folder);

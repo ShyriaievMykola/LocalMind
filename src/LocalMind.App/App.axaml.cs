@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using LocalMind.App.Services;
 using LocalMind.App.ViewModels;
 using LocalMind.App.Views;
 using Microsoft.Extensions.DependencyInjection;
@@ -21,6 +22,7 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop && Services is not null)
         {
+            GlobalExceptionHandler.Install(Services.GetRequiredService<UnhandledErrorReporter>());
             desktop.MainWindow = new MainWindow
             {
                 DataContext = Services.GetRequiredService<MainViewModel>(),
