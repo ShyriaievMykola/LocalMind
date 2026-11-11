@@ -37,10 +37,27 @@
                         Margin="24" />
       </Grid>
 
-      <Border Grid.Row="1" Padding="16,8">
-        <TextBlock Text="{Binding StatusText}" TextTrimming="CharacterEllipsis"
-                   ToolTip.Tip="{Binding StatusText}"
-                   AutomationProperties.Name="Стан ядра" />
+      <!-- Рядок стану: під час індексації показує прогрес і «Скасувати», інакше — стан ядра. -->
+      <Border Grid.Row="1" Padding="16,8" BorderBrush="{DynamicResource Lm.Brush.Border}" BorderThickness="0,1,0,0">
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+          <TextBlock Text="{Binding StatusText}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                     ToolTip.Tip="{Binding StatusText}" IsVisible="{Binding !Indexing.IsIndexing}"
+                     AutomationProperties.Name="Стан ядра" />
+
+          <Grid ColumnDefinitions="Auto,200,*" ColumnSpacing="12" VerticalAlignment="Center"
+                IsVisible="{Binding Indexing.IsIndexing}">
+            <TextBlock Text="{Binding Indexing.ProgressText}" VerticalAlignment="Center"
+                       AutomationProperties.Name="Прогрес індексації" />
+            <ProgressBar Grid.Column="1" Minimum="0" Maximum="1" Value="{Binding Indexing.Fraction}"
+                         Foreground="{DynamicResource Lm.Brush.Accent}" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="2" Classes="muted" Text="{Binding Indexing.CurrentFileName}"
+                       TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                       ToolTip.Tip="{Binding Indexing.Progress.CurrentFile}" />
+          </Grid>
+
+          <Button Grid.Column="1" Content="{Binding Indexing.CancelText}" Command="{Binding Indexing.CancelCommand}"
+                  IsVisible="{Binding Indexing.IsIndexing}" AutomationProperties.Name="Скасувати індексацію" />
+        </Grid>
       </Border>
     </Grid>
 

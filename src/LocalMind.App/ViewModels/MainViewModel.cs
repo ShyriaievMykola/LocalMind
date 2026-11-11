@@ -12,15 +12,22 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     private readonly LibraryViewModel _library;
     private bool _disposed;
 
-    public MainViewModel(CoreStatus status, SearchViewModel search, LibraryViewModel library, SettingsViewModel settings)
+    public MainViewModel(
+        CoreStatus status,
+        SearchViewModel search,
+        LibraryViewModel library,
+        SettingsViewModel settings,
+        IndexingProgressViewModel indexing)
     {
         ArgumentNullException.ThrowIfNull(status);
         ArgumentNullException.ThrowIfNull(search);
         ArgumentNullException.ThrowIfNull(library);
         ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(indexing);
 
         _search = search;
         _library = library;
+        Indexing = indexing;
 
         NavigationItems = Array.AsReadOnly<NavigationItem>([
             new("Пошук", search),
@@ -34,6 +41,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         UpdateStatus();
     }
 
+    /// <summary>Прогрес індексації для рядка стану.</summary>
+    public IndexingProgressViewModel Indexing { get; }
     public IReadOnlyList<NavigationItem> NavigationItems { get; }
 
     [ObservableProperty]
@@ -51,6 +60,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         _status.Changed -= OnStatusChanged;
         _search.Close();
         _library.Close();
+        Indexing.Close();
     }
 
     private void OnStatusChanged(object? sender, EventArgs args) => Dispatcher.UIThread.Post(() =>

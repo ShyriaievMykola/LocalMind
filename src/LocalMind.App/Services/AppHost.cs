@@ -53,6 +53,7 @@ public static class AppHost
         builder.Services.AddTransient<SearchViewModel>();
         builder.Services.AddTransient<LibraryViewModel>();
         builder.Services.AddTransient<SettingsViewModel>();
+        builder.Services.AddTransient<IndexingProgressViewModel>();
 
         return builder;
     }
