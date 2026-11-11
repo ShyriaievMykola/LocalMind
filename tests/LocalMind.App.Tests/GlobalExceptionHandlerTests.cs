@@ -26,7 +26,8 @@ public sealed class GlobalExceptionHandlerTests
     [Fact]
     public void ShouldHandle_OutOfMemory_IsFalse_OtherExceptionsAreTrue()
     {
-        Assert.False(GlobalExceptionHandler.ShouldHandle(new OutOfMemoryException()));
+        // OutOfMemoryException створювати в коді не можна (CA2201); його нащадок для перевірки підходить.
+        Assert.False(GlobalExceptionHandler.ShouldHandle(new InsufficientMemoryException()));
         Assert.True(GlobalExceptionHandler.ShouldHandle(new InvalidOperationException()));
     }
 }
