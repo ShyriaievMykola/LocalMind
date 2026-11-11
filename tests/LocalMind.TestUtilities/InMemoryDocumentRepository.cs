@@ -109,6 +109,15 @@ public sealed class InMemoryDocumentRepository : IDocumentRepository
             return Task.FromResult(_documents.GetValueOrDefault(id));
         }
     }
+    
+    public Task<IReadOnlyDictionary<Guid, int>> GetChunkCountsAsync(CancellationToken cancellationToken = default)
+    {
+        lock (_lock)
+        {
+            return Task.FromResult<IReadOnlyDictionary<Guid, int>>(
+                _chunksByDocument.Where(p => p.Value.Count > 0).ToDictionary(p => p.Key, p => p.Value.Count));
+        }
+    }
 
     public Task<Document?> GetDocumentByPathAsync(string path, CancellationToken cancellationToken = default)
     {

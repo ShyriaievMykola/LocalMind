@@ -73,6 +73,16 @@ public sealed class DocumentRepository(IDbContextFactory<LocalMindDbContext> con
             .ToListAsync(cancellationToken);
         return [.. entities.Select(ToModel)];
     }
+    
+    /// <inheritdoc />
+    public async Task<IReadOnlyDictionary<Guid, int>> GetChunkCountsAsync(CancellationToken cancellationToken = default)
+    {
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+        return await context.Chunks.AsNoTracking()
+            .GroupBy(c => c.DocumentId)
+            .Select(g => new { DocumentId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.DocumentId, x => x.Count, cancellationToken);
+    }
 
     /// <inheritdoc />
     public async Task<Document?> GetDocumentAsync(Guid id, CancellationToken cancellationToken = default)
