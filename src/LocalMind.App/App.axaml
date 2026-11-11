@@ -3,13 +3,25 @@
              x:Class="LocalMind.App.App"
              xmlns:local="using:LocalMind.App"
              RequestedThemeVariant="Default">
-             <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
+             <!-- "Default" ThemeVariant іде за системною темою; ThemeService перемикає на Light/Dark під час роботи. -->
 
     <Application.DataTemplates>
         <local:ViewLocator />
     </Application.DataTemplates>
 
+    <!-- Спільні ресурси: сторінки не задають власних кольорів, відступів і шрифтів. -->
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceInclude Source="avares://LocalMind.App/Styles/Colors.axaml" />
+                <ResourceInclude Source="avares://LocalMind.App/Styles/Brushes.axaml" />
+                <ResourceInclude Source="avares://LocalMind.App/Styles/Metrics.axaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+
     <Application.Styles>
         <FluentTheme />
+        <StyleInclude Source="avares://LocalMind.App/Styles/Controls.axaml" />
     </Application.Styles>
 </Application>

@@ -16,6 +16,14 @@ public sealed class BlobStoreOptions
     /// <summary>Максимальний розмір одного бекапу в байтах.</summary>
     [Range(1, long.MaxValue)]
     public long MaxBackupBytes { get; set; } = 100 * 1024 * 1024;
+
+    /// <summary>Скільки бекапів може зберігати один користувач (DR-032).</summary>
+    [Range(1, 10_000)]
+    public int MaxBackupsPerUser { get; set; } = 20;
+
+    /// <summary>Сумарний розмір бекапів одного користувача в байтах (DR-032).</summary>
+    [Range(1, long.MaxValue)]
+    public long MaxTotalBytesPerUser { get; set; } = 1024L * 1024 * 1024;
 }
 
 /// <summary>Бекап більший за <see cref="BlobStoreOptions.MaxBackupBytes"/>.</summary>
