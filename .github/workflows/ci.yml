@@ -19,7 +19,7 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: true
 
 jobs:
-  build-test:
+    build-test:
     name: build & test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -48,10 +48,34 @@ jobs:
           dotnet test LocalMind.slnx --no-build --configuration Release
           --collect:"XPlat Code Coverage" --results-directory TestResults
 
+      # Сирий звіт містить увесь App (Views/XAML дають 0 %), тому покриття ViewModels (A-08) рахуємо окремо.
+      - name: Coverage summary (ViewModels)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          dotnet tool install --global dotnet-reportgenerator-globaltool
+          "$HOME/.dotnet/tools/reportgenerator" \
+            "-reports:TestResults/**/coverage.cobertura.xml" \
+            "-targetdir:CoverageReport" \
+            "-classfilters:+LocalMind.App.ViewModels*" \
+            "-reporttypes:MarkdownSummaryGithub;TextSummary"
+          {
+            echo "## Покриття ViewModels"
+            echo
+            cat CoverageReport/SummaryGithub.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload coverage
         if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v7
         with:
           name: coverage
           path: TestResults/**/coverage.cobertura.xml
+          if-no-files-found: ignore
+
+      - name: Upload ViewModels coverage report
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-viewmodels
+          path: CoverageReport
           if-no-files-found: ignore
