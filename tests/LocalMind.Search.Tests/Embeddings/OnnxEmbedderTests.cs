@@ -128,6 +128,58 @@ public class OnnxEmbedderTests
         Assert.Contains("download-models", exception.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task EmbedAsync_DamagedTokenizerFile_ThrowsLocalMindException()
+    {
+        using var folder = new TempFolder();
+        var options = Options.Create(new EmbeddingModelOptions
+        {
+            ModelName = "damaged",
+            ModelPath = folder.Write("model.onnx", "не модель"),
+            TokenizerPath = folder.Write("tokenizer.model", "не токенізатор"),
+            Dimensions = 4,
+        });
+        using var embedder = new OnnxEmbedder(options, new ModelTokenizer(options));
+
+        var exception = await Assert.ThrowsAsync<LocalMindException>(
+            () => embedder.EmbedAsync(["текст"], EmbeddingPurpose.Query));
+
+        Assert.Contains("пошкоджений", exception.Message, StringComparison.Ordinal);
+        Assert.NotNull(exception.InnerException);
+    }
+
+    [ModelFact]
+    public async Task EmbedAsync_DamagedModelFile_ThrowsLocalMindException()
+    {
+        using var folder = new TempFolder();
+        var options = TestModel.Options();
+        options.ModelPath = folder.Write("model.onnx", "обірване завантаження");
+        var wrapped = Options.Create(options);
+        using var embedder = new OnnxEmbedder(wrapped, new ModelTokenizer(wrapped));
+
+        var exception = await Assert.ThrowsAsync<LocalMindException>(
+            () => embedder.EmbedAsync(["текст"], EmbeddingPurpose.Query));
+
+        Assert.IsType<Microsoft.ML.OnnxRuntime.OnnxRuntimeException>(exception.InnerException);
+    }
+
+    [ModelFact]
+    public async Task EmbedAsync_FileAppearsLater_LoadsWithoutRestart()
+    {
+        // Токенізатор, а не модель: він малий, а кешування однакове.
+        using var folder = new TempFolder();
+        var options = TestModel.Options();
+        var source = options.TokenizerPath;
+        options.TokenizerPath = Path.Combine(folder.Path, "sentencepiece.bpe.model");
+        var wrapped = Options.Create(options);
+        using var embedder = new OnnxEmbedder(wrapped, new ModelTokenizer(wrapped));
+        await Assert.ThrowsAsync<LocalMindException>(() => embedder.EmbedAsync(["текст"], EmbeddingPurpose.Query));
+
+        File.Copy(source, options.TokenizerPath);
+
+        Assert.Single(await embedder.EmbedAsync(["текст"], EmbeddingPurpose.Query));
+    }
+
     private static async Task<(float Related, float Unrelated)> SimilaritiesAsync(
         OnnxEmbedder embedder,
         string query,
@@ -169,5 +221,19 @@ public class OnnxEmbedderTests
             Dimensions = 4,
         });
         return new OnnxEmbedder(options, new ModelTokenizer(options));
+    }
+
+    private sealed class TempFolder : IDisposable
+    {
+        public string Path { get; } = Directory.CreateTempSubdirectory("localmind-").FullName;
+
+        public string Write(string name, string content)
+        {
+            var path = System.IO.Path.Combine(Path, name);
+            File.WriteAllText(path, content);
+            return path;
+        }
+
+        public void Dispose() => Directory.Delete(Path, recursive: true);
     }
 }
