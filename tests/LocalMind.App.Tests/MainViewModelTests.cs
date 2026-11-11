@@ -7,9 +7,34 @@ namespace LocalMind.App.Tests;
 public sealed class MainViewModelTests
 {
     private readonly CoreStatus _status = new(NullLogger<CoreStatus>.Instance);
-    private readonly SearchViewModel _search = new();
+    private readonly SearchViewModel _search = new FakeSearchService().CreateViewModel();
     private readonly LibraryViewModel _library = new();
     private readonly SettingsViewModel _settings = new();
+
+    [Fact]
+    public async Task Dispose_CancelsSearchOwnedByWindow()
+    {
+        var service = new FakeSearchService();
+        var started = new TaskCompletionSource<CancellationToken>(TaskCreationOptions.RunContinuationsAsynchronously);
+        service.Handler = async (_, token) =>
+        {
+            started.SetResult(token);
+            await Task.Delay(Timeout.InfiniteTimeSpan, token);
+            return [];
+        };
+        var search = service.CreateViewModel();
+        using var viewModel = new MainViewModel(_status, search, _library, _settings);
+        search.QueryText = "нотатка";
+        var pending = search.SearchCommand.ExecuteAsync(null);
+        var cancellation = await started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        viewModel.Dispose();
+        await pending.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.True(cancellation.IsCancellationRequested);
+        Assert.False(search.IsSearching);
+        Assert.Null(search.ErrorMessage);
+    }
 
     [Fact]
     public void Constructor_SelectsSearch_AndExposesAllPages()
