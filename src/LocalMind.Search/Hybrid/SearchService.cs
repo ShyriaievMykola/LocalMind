@@ -1,15 +1,22 @@
 using LocalMind.Core.Abstractions;
-using LocalMind.Core.Errors;
 using LocalMind.Core.Models;
+using LocalMind.Search.Configuration;
 using LocalMind.Search.Snippets;
+using Microsoft.Extensions.Options;
 
 namespace LocalMind.Search.Hybrid;
 
 /// <summary>
-/// Пошук по бібліотеці. Поки підтримує лише <see cref="SearchMode.Semantic"/>;
-/// Keyword і Hybrid додамо разом із FTS5. Вектори зі сховища завантажуються в індекс під час першого пошуку.
+/// Пошук по бібліотеці в режимах <see cref="SearchMode.Keyword"/> (FTS5, BM25), <see cref="SearchMode.Semantic"/>
+/// (embeddings) і <see cref="SearchMode.Hybrid"/> (обидва, злиті <see cref="ReciprocalRankFusion"/>).
+/// Keyword працює і без моделі. Вектори зі сховища завантажуються в індекс під час першого семантичного пошуку.
 /// </summary>
-public sealed class SearchService(IEmbedder embedder, IVectorIndex index, IDocumentRepository repository)
+public sealed class SearchService(
+    IEmbedder embedder,
+    IVectorIndex index,
+    IKeywordIndex keywordIndex,
+    IDocumentRepository repository,
+    IOptions<SearchOptions> options)
     : ISearchService, IDisposable
 {
     private readonly SemaphoreSlim _loadLock = new(1, 1);
@@ -20,19 +27,47 @@ public sealed class SearchService(IEmbedder embedder, IVectorIndex index, IDocum
     {
         ArgumentNullException.ThrowIfNull(query);
 
-        if (query.Mode != SearchMode.Semantic)
+        var scored = query.Mode switch
         {
-            throw new LocalMindException($"Режим пошуку {query.Mode} ще не підтримується.");
-        }
+            SearchMode.Keyword => await keywordIndex.SearchAsync(query.Text, query.TopK, cancellationToken),
+            SearchMode.Semantic => await SemanticAsync(query.Text, query.TopK, cancellationToken),
+            _ => await HybridAsync(query, cancellationToken),
+        };
 
+        return await ToResultsAsync(scored, query.Text, cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<ScoredChunk>> HybridAsync(SearchQuery query, CancellationToken cancellationToken)
+    {
+        // Більше кандидатів з кожного індексу — фрагмент, середній в обох списках, має шанс піднятися нагору.
+        var candidates = Math.Max(options.Value.CandidatesPerIndex, query.TopK);
+        var keyword = await keywordIndex.SearchAsync(query.Text, candidates, cancellationToken);
+        var semantic = await SemanticAsync(query.Text, candidates, cancellationToken);
+
+        return ReciprocalRankFusion.Fuse([keyword, semantic], options.Value.RrfK, query.TopK);
+    }
+
+    private async Task<IReadOnlyList<ScoredChunk>> SemanticAsync(string text, int k, CancellationToken cancellationToken)
+    {
         await EnsureVectorsLoadedAsync(cancellationToken);
         if (index.Count == 0)
         {
             return [];
         }
 
-        var vectors = await embedder.EmbedAsync([query.Text], EmbeddingPurpose.Query, cancellationToken);
-        var scored = index.Search(vectors[0].Span, query.TopK);
+        var vectors = await embedder.EmbedAsync([text], EmbeddingPurpose.Query, cancellationToken);
+        return index.Search(vectors[0].Span, k);
+    }
+
+    private async Task<IReadOnlyList<SearchResult>> ToResultsAsync(
+        IReadOnlyList<ScoredChunk> scored,
+        string queryText,
+        CancellationToken cancellationToken)
+    {
+        if (scored.Count == 0)
+        {
+            return [];
+        }
 
         var chunks = (await repository.GetChunksAsync([.. scored.Select(s => s.ChunkId)], cancellationToken))
             .ToDictionary(c => c.Id);
@@ -43,9 +78,10 @@ public sealed class SearchService(IEmbedder embedder, IVectorIndex index, IDocum
         var results = new List<SearchResult>(scored.Count);
         foreach (var (chunkId, score) in scored)
         {
+            // Фрагмент могли видалити між пошуком в індексі й читанням зі сховища.
             if (chunks.TryGetValue(chunkId, out var chunk) && paths.TryGetValue(chunk.DocumentId, out var path))
             {
-                results.Add(new SearchResult(chunk, path, score, SnippetBuilder.Build(chunk, query.Text)));
+                results.Add(new SearchResult(chunk, path, score, SnippetBuilder.Build(chunk, queryText)));
             }
         }
 

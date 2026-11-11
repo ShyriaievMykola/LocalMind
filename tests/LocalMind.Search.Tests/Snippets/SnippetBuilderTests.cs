@@ -1,4 +1,5 @@
 using LocalMind.Core.Models;
+using LocalMind.Core.Storage.FullText;
 using LocalMind.Search.Snippets;
 
 namespace LocalMind.Search.Tests.Snippets;
@@ -104,6 +105,6 @@ public class SnippetBuilderTests
     [InlineData("docker", "dock")]
     public void Stem_KeepsWordRoot(string word, string expected)
     {
-        Assert.Equal(expected, SnippetBuilder.Stem(word));
+        Assert.Equal(expected, SearchTerms.Stem(word));
     }
 }
