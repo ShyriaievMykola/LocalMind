@@ -14,6 +14,9 @@ public sealed class LocalMindServerFactory : WebApplicationFactory<Program>
     private readonly string _connectionString = $"Data Source=server-{Guid.NewGuid():N};Mode=Memory;Cache=Shared";
     private readonly SqliteConnection _keepAlive;
 
+    /// <summary>Окрема тимчасова тека для файлів бекапів.</summary>
+    public string StorageRoot { get; } = Path.Combine(Path.GetTempPath(), "localmind-tests", Guid.NewGuid().ToString("N"));
+
     public LocalMindServerFactory()
     {
         // Спільна in-memory база живе, доки відкрите хоча б одне підключення.
@@ -25,6 +28,7 @@ public sealed class LocalMindServerFactory : WebApplicationFactory<Program>
     {
         builder.UseSetting("ConnectionStrings:Server", _connectionString);
         builder.UseSetting("Jwt:SigningKey", SigningKey);
+        builder.UseSetting("Storage:RootPath", StorageRoot);
     }
 
     protected override void Dispose(bool disposing)
@@ -33,6 +37,10 @@ public sealed class LocalMindServerFactory : WebApplicationFactory<Program>
         if (disposing)
         {
             _keepAlive.Dispose();
+            if (Directory.Exists(StorageRoot))
+            {
+                Directory.Delete(StorageRoot, recursive: true);
+            }
         }
     }
 }
