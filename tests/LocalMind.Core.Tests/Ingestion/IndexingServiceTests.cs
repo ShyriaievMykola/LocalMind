@@ -235,11 +235,9 @@ public sealed class IndexingServiceTests : IDisposable
     {
         var path = Write("locked.txt", "текст");
         var logger = new ListLogger();
-        // Повторне пересканування має реально спрацювати, тому тут потрібен живий watcher (debounce 500 мс),
-        // а не спільний _watcher з годинним debounce. Пауза 2 с дає запас, щоб пересканування встигло
-        // поставити файл у чергу, поки тривають повторні спроби.
-        var watcher = rescanDuringRetry ? LiveWatcher() : _watcher;
-        var service = CreateService(logger: logger, retryDelay: TimeSpan.FromSeconds(2), watcher: watcher);
+        // Повідомлення спостерігача проходить через debounce, а в _watcher він годинний: потрібен живий.
+        var watcher = rescanDuringRetry ? LiveWatcher() : null;
+        var service = CreateService(logger: logger, retryDelay: TimeSpan.FromSeconds(1), watcher: watcher);
         var lockStream = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
 
         try
