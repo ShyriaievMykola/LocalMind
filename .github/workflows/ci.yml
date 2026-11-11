@@ -19,7 +19,7 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: true
 
 jobs:
-    build-test:
+  build-test:
     name: build & test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
