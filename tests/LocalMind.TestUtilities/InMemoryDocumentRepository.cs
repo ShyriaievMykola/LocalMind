@@ -1,3 +1,4 @@
+using LocalMind.Core;
 using System.Runtime.CompilerServices;
 using LocalMind.Core.Abstractions;
 using LocalMind.Core.Models;
@@ -43,7 +44,7 @@ public sealed class InMemoryDocumentRepository : IDocumentRepository
 
         lock (_lock)
         {
-            if (!_folders.Contains(folder, StringComparer.Ordinal))
+            if (!_folders.Contains(folder, FilePaths.Comparer))
             {
                 _folders.Add(folder);
             }
@@ -58,7 +59,7 @@ public sealed class InMemoryDocumentRepository : IDocumentRepository
 
         lock (_lock)
         {
-            _folders.Remove(NormalizeFolder(path));
+            _folders.RemoveAll(f => FilePaths.AreSame(f, NormalizeFolder(path)));
 
             var removed = new List<Guid>();
             foreach (var document in _documents.Values.Where(d => IsInsideFolder(d.Path, path)).ToList())
@@ -77,9 +78,7 @@ public sealed class InMemoryDocumentRepository : IDocumentRepository
     private static bool IsInsideFolder(string filePath, string folderPath)
     {
         var folder = NormalizeFolder(folderPath);
-        return filePath.Length > folder.Length
-            && filePath.StartsWith(folder, StringComparison.Ordinal)
-            && (folder[^1] is '/' or '\\' || filePath[folder.Length] is '/' or '\\');
+        return filePath.Length > folder.Length && FilePaths.IsSameOrInside(filePath, folder);
     }
 
     public Task<IReadOnlyList<Document>> GetDocumentsAsync(CancellationToken cancellationToken = default)
@@ -208,7 +207,7 @@ public sealed class InMemoryDocumentRepository : IDocumentRepository
     }
 
     private Document? FindByPath(string path) =>
-        _documents.Values.FirstOrDefault(d => string.Equals(d.Path, path, StringComparison.Ordinal));
+        _documents.Values.FirstOrDefault(d => FilePaths.AreSame(d.Path, path));
 
     /// <summary>Видаляє документ з фрагментами і векторами; викликається під <see cref="_lock"/>.</summary>
     private IReadOnlyList<Guid> RemoveDocument(Guid documentId)
