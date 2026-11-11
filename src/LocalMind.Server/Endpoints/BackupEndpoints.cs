@@ -29,10 +29,17 @@ public static class BackupEndpoints
         return api;
     }
 
-    private static async Task<Results<Created<BackupInfo>, ProblemHttpResult>> UploadAsync(
+    private static async Task<Results<Created<BackupInfo>, ProblemHttpResult, ChallengeHttpResult>> UploadAsync(
         HttpContext context, ClaimsPrincipal principal, ServerDbContext db, FileSystemBlobStore store,
         TimeProvider time, CancellationToken cancellationToken)
     {
+        // Токен ще чинний, а користувача видалено — інакше впали б на зовнішньому ключі з 500.
+        var userId = UserId(principal);
+        if (!await db.Users.AnyAsync(u => u.Id == userId, cancellationToken))
+        {
+            return TypedResults.Challenge();
+        }
+
         if (context.Request.ContentLength > store.MaxBytes)
         {
             return TooLarge(store);
@@ -59,7 +66,7 @@ public static class BackupEndpoints
         var snapshot = new SnapshotEntity
         {
             Id = id,
-            UserId = UserId(principal),
+            UserId = userId,
             SizeBytes = size,
             Sha256 = sha256,
             CreatedAt = time.GetUtcNow(),

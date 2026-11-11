@@ -52,7 +52,9 @@ public sealed class FileSystemBlobStore
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(environment);
 
-        _root = Path.GetFullPath(Path.Combine(environment.ContentRootPath, options.Value.RootPath));
+        // Без хвостового роздільника: інакше «/data/backups/» не збігся б з Path.GetDirectoryName у ResolvePath.
+        _root = Path.TrimEndingDirectorySeparator(
+            Path.GetFullPath(Path.Combine(environment.ContentRootPath, options.Value.RootPath)));
         _maxBytes = options.Value.MaxBackupBytes;
         Directory.CreateDirectory(_root);
     }
@@ -107,7 +109,8 @@ public sealed class FileSystemBlobStore
     {
         var path = ResolvePath(FileName(id));
         return File.Exists(path)
-            ? new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 0, useAsync: true)
+            // FileShare.Delete: видалення бекапу під час чийогось скачування не падає (особливо на Windows).
+            ? new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete, 0, useAsync: true)
             : null;
     }
 
