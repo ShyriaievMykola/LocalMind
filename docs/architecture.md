@@ -101,7 +101,8 @@ Cli ──┘
 ### 3.3. Storage (`Core/Storage`)
 
 - `LocalMindDbContext` — EF Core поверх SQLite, міграції застосовуються при старті.
-- FTS5-таблиця синхронізується з таблицею фрагментів тригерами; запити до неї — параметризований SQL.
+- FTS5-таблиця `ChunksFts` (external content над `Chunks`) синхронізується тригерами; запити до неї — параметризований SQL,
+  кожне слово запиту в лапках (`Fts5KeywordIndex`, [DR-019](decisions.md)).
 - Вектори зберігаються як BLOB і при старті завантажуються в `IVectorIndex` у пам'яті.
 
 ### 3.4. Search (`LocalMind.Search`)
