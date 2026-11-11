@@ -1,4 +1,5 @@
 using LocalMind.Core.Abstractions;
+using LocalMind.Core.Backup;
 using LocalMind.Core.Configuration;
 using LocalMind.Core.Ingestion;
 using LocalMind.Core.Ingestion.Chunking;
@@ -63,6 +64,45 @@ public static class ServiceCollectionExtensions
         });
         services.TryAddSingleton<IDocumentRepository, DocumentRepository>();
         services.TryAddSingleton<IKeywordIndex, Fts5KeywordIndex>();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Реєструє клієнт бекапу: <see cref="BackupApiClient"/> (typed HttpClient), сховище токенів
+    /// (DPAPI на Windows, інакше лише пам'ять), <see cref="BackupService"/> і <see cref="RestoreService"/>.
+    /// Потребує <see cref="AddLocalMindCore"/>.
+    /// </summary>
+    public static IServiceCollection AddLocalMindBackup(this IServiceCollection services, IConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        services.AddOptions<BackupClientOptions>()
+            .Bind(configuration.GetSection(BackupClientOptions.SectionName))
+            // Бекап опційний: без адреси застосунок стартує, а операції бекапу повідомляють, що сервер не налаштовано.
+            .Validate(o => o.ServerUrl is null || BackupClientOptions.IsValidServerUrl(o.ServerUrl),
+                "LocalMind:Backup:ServerUrl має бути абсолютною HTTPS-адресою (HTTP — лише для localhost).")
+            .ValidateOnStart();
+        services.TryAddSingleton(TimeProvider.System);
+        services.TryAddSingleton<ITokenStore>(provider =>
+        {
+            if (!OperatingSystem.IsWindows())
+            {
+                return new InMemoryTokenStore();
+            }
+
+            var path = provider.GetRequiredService<IOptions<BackupClientOptions>>().Value.TokenFilePath;
+            return new DpapiTokenStore(string.IsNullOrWhiteSpace(path) ? BackupClientOptions.DefaultTokenFilePath() : path);
+        });
+        services.AddHttpClient<BackupApiClient>((provider, client) =>
+        {
+            client.BaseAddress = BackupClientOptions.WithTrailingSlash(
+                provider.GetRequiredService<IOptions<BackupClientOptions>>().Value.ServerUrl);
+            client.Timeout = TimeSpan.FromMinutes(5);
+        });
+        services.TryAddTransient<BackupService>();
+        services.TryAddTransient<RestoreService>();
 
         return services;
     }
