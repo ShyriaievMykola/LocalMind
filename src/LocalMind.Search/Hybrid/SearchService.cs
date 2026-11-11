@@ -1,7 +1,10 @@
 using LocalMind.Core.Abstractions;
+using LocalMind.Core.Errors;
 using LocalMind.Core.Models;
 using LocalMind.Search.Configuration;
 using LocalMind.Search.Snippets;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 namespace LocalMind.Search.Hybrid;
@@ -9,16 +12,19 @@ namespace LocalMind.Search.Hybrid;
 /// <summary>
 /// Пошук по бібліотеці в режимах <see cref="SearchMode.Keyword"/> (FTS5, BM25), <see cref="SearchMode.Semantic"/>
 /// (embeddings) і <see cref="SearchMode.Hybrid"/> (обидва, злиті <see cref="ReciprocalRankFusion"/>).
-/// Keyword працює і без моделі. Вектори зі сховища завантажуються в індекс під час першого семантичного пошуку.
+/// Keyword працює і без моделі; Hybrid, якщо модель недоступна, повертає лише keyword-результати.
+/// Вектори зі сховища завантажуються в індекс під час першого семантичного пошуку.
 /// </summary>
-public sealed class SearchService(
+public sealed partial class SearchService(
     IEmbedder embedder,
     IVectorIndex index,
     IKeywordIndex keywordIndex,
     IDocumentRepository repository,
-    IOptions<SearchOptions> options)
+    IOptions<SearchOptions> options,
+    ILogger<SearchService>? logger = null)
     : ISearchService, IDisposable
 {
+    private readonly ILogger _logger = logger ?? NullLogger<SearchService>.Instance;
     private readonly SemaphoreSlim _loadLock = new(1, 1);
     private volatile bool _isLoaded;
 
@@ -31,7 +37,8 @@ public sealed class SearchService(
         {
             SearchMode.Keyword => await keywordIndex.SearchAsync(query.Text, query.TopK, cancellationToken),
             SearchMode.Semantic => await SemanticAsync(query.Text, query.TopK, cancellationToken),
-            _ => await HybridAsync(query, cancellationToken),
+            SearchMode.Hybrid => await HybridAsync(query, cancellationToken),
+            _ => throw new ArgumentOutOfRangeException(nameof(query), query.Mode, "Невідомий режим пошуку."),
         };
 
         return await ToResultsAsync(scored, query.Text, cancellationToken);
@@ -42,7 +49,18 @@ public sealed class SearchService(
         // Більше кандидатів з кожного індексу — фрагмент, середній в обох списках, має шанс піднятися нагору.
         var candidates = Math.Max(options.Value.CandidatesPerIndex, query.TopK);
         var keyword = await keywordIndex.SearchAsync(query.Text, candidates, cancellationToken);
-        var semantic = await SemanticAsync(query.Text, candidates, cancellationToken);
+        IReadOnlyList<ScoredChunk> semantic;
+        try
+        {
+            semantic = await SemanticAsync(query.Text, candidates, cancellationToken);
+        }
+        catch (LocalMindException ex)
+        {
+            // Модель недоступна (файлу немає, не та розмірність): keyword-частина вже є, тож пошук не валимо.
+            // Оцінки лишаються в шкалі RRF, як і в звичайному Hybrid.
+            LogSemanticUnavailable(_logger, ex);
+            semantic = [];
+        }
 
         return ReciprocalRankFusion.Fuse([keyword, semantic], options.Value.RrfK, query.TopK);
     }
@@ -87,6 +105,9 @@ public sealed class SearchService(
 
         return results;
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Семантичний пошук недоступний, Hybrid повертає лише keyword-результати.")]
+    private static partial void LogSemanticUnavailable(ILogger logger, Exception exception);
 
     /// <inheritdoc />
     public void Dispose() => _loadLock.Dispose();
