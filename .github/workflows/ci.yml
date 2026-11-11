@@ -67,8 +67,10 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      # Попередження NuGet про вразливості (NU1901–NU1904) тут не робимо помилками, щоб ламав збірку наступний крок
+      # із зрозумілим звітом, а не безіменне падіння restore.
       - name: Restore
-        run: dotnet restore LocalMind.slnx
+        run: dotnet restore LocalMind.slnx -p:TreatWarningsAsErrors=false
 
       # dotnet list завжди завершується з кодом 0, тож про вразливість судимо за текстом звіту.
       - name: Check for vulnerable packages
