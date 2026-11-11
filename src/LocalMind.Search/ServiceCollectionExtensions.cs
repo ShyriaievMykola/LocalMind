@@ -47,7 +47,9 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<IEmbedder, OnnxEmbedder>();
         services.TryAddSingleton<IVectorIndex>(provider =>
             new BruteForceIndex(provider.GetRequiredService<IOptions<EmbeddingModelOptions>>().Value.Dimensions));
-        services.TryAddSingleton<ISearchService, SearchService>();
+        // Один екземпляр під двома іменами: хост через SearchService завантажує вектори заздалегідь.
+        services.TryAddSingleton<SearchService>();
+        services.TryAddSingleton<ISearchService>(provider => provider.GetRequiredService<SearchService>());
 
         return services;
     }

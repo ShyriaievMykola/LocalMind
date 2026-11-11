@@ -6,7 +6,8 @@ namespace LocalMind.Search.Hybrid;
 
 /// <summary>
 /// Пошук по бібліотеці. Поки підтримує лише <see cref="SearchMode.Semantic"/>;
-/// Keyword і Hybrid додамо разом із FTS5. Вектори зі сховища завантажуються в індекс під час першого пошуку.
+/// Keyword і Hybrid додамо разом із FTS5. Вектори зі сховища завантажуються в індекс під час першого пошуку
+/// або заздалегідь через <see cref="LoadVectorsAsync"/>.
 /// </summary>
 public sealed class SearchService(IEmbedder embedder, IVectorIndex index, IDocumentRepository repository)
     : ISearchService, IDisposable
@@ -24,7 +25,7 @@ public sealed class SearchService(IEmbedder embedder, IVectorIndex index, IDocum
             throw new LocalMindException($"Режим пошуку {query.Mode} ще не підтримується.");
         }
 
-        await EnsureVectorsLoadedAsync(cancellationToken);
+        await LoadVectorsAsync(cancellationToken);
         if (index.Count == 0)
         {
             return [];
@@ -54,7 +55,11 @@ public sealed class SearchService(IEmbedder embedder, IVectorIndex index, IDocum
     /// <inheritdoc />
     public void Dispose() => _loadLock.Dispose();
 
-    private async Task EnsureVectorsLoadedAsync(CancellationToken cancellationToken)
+    /// <summary>
+    /// Завантажує вектори зі сховища в індекс, якщо цього ще не зроблено. Хост викликає під час запуску,
+    /// щоб перший пошук не чекав; повторні виклики нічого не роблять.
+    /// </summary>
+    public async Task LoadVectorsAsync(CancellationToken cancellationToken = default)
     {
         if (_isLoaded)
         {
