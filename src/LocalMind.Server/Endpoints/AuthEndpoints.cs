@@ -1,0 +1,86 @@
+using LocalMind.Core.Backup.Dtos;
+using LocalMind.Server.Auth;
+using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.Identity;
+
+namespace LocalMind.Server.Endpoints;
+
+/// <summary>Реєстрація і вхід (SV-03).</summary>
+public static class AuthEndpoints
+{
+    internal const string InvalidCredentials = "Неправильний email або пароль.";
+
+    public static RouteGroupBuilder MapAuthEndpoints(this RouteGroupBuilder api)
+    {
+        ArgumentNullException.ThrowIfNull(api);
+
+        var auth = api.MapGroup("/auth").WithTags("Auth");
+        auth.MapPost("/register", RegisterAsync);
+        auth.MapPost("/login", LoginAsync);
+        return api;
+    }
+
+    private static async Task<Results<Created, ValidationProblem, ProblemHttpResult>> RegisterAsync(
+        RegisterRequest request, UserManager<IdentityUser> users)
+    {
+        if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrEmpty(request.Password))
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["request"] = ["Email і пароль обов'язкові."],
+            });
+        }
+
+        var email = EmailFormatValidator.Normalize(request.Email);
+        var user = new IdentityUser { UserName = email, Email = email };
+        var result = await users.CreateAsync(user, request.Password);
+        if (result.Succeeded)
+        {
+            return TypedResults.Created();
+        }
+
+        if (result.Errors.Any(e => e.Code is nameof(IdentityErrorDescriber.DuplicateEmail)
+            or nameof(IdentityErrorDescriber.DuplicateUserName)))
+        {
+            return TypedResults.Problem(
+                statusCode: StatusCodes.Status409Conflict,
+                title: "Обліковий запис із таким email уже існує.");
+        }
+
+        return TypedResults.ValidationProblem(result.Errors
+            .GroupBy(e => e.Code.StartsWith("Password", StringComparison.Ordinal) ? "password" : "email")
+            .ToDictionary(g => g.Key, g => g.Select(e => e.Description).ToArray()));
+    }
+
+    private static async Task<Results<NoContent, ProblemHttpResult>> LoginAsync(
+        LoginRequest request, UserManager<IdentityUser> users, SignInManager<IdentityUser> signIn,
+        IPasswordHasher<IdentityUser> hasher)
+    {
+        var user = string.IsNullOrWhiteSpace(request.Email) ? null : await users.FindByEmailAsync(EmailFormatValidator.Normalize(request.Email));
+        if (user is null)
+        {
+            // Хешуємо й для неіснуючого користувача, щоб час відповіді не видавав, чи є такий email.
+            hasher.VerifyHashedPassword(DummyUser, DummyHash.Value, request.Password ?? string.Empty);
+            return Unauthorized();
+        }
+
+        var result = await signIn.CheckPasswordSignInAsync(user, request.Password ?? string.Empty, lockoutOnFailure: true);
+
+        if (result.IsLockedOut)
+        {
+            // Для заблокованого акаунта Identity не хешує пароль — хешуємо самі, щоб і час, і тіло відповіді
+            // були такими самими, як для неправильного пароля чи неіснуючого email.
+            hasher.VerifyHashedPassword(DummyUser, DummyHash.Value, request.Password ?? string.Empty);
+        }
+
+        return result.Succeeded ? TypedResults.NoContent() : Unauthorized();
+    }
+
+    private static ProblemHttpResult Unauthorized() =>
+        TypedResults.Problem(statusCode: StatusCodes.Status401Unauthorized, title: InvalidCredentials);
+
+    private static readonly IdentityUser DummyUser = new();
+
+    private static readonly Lazy<string> DummyHash =
+        new(() => new PasswordHasher<IdentityUser>().HashPassword(DummyUser, Guid.NewGuid().ToString()));
+}
