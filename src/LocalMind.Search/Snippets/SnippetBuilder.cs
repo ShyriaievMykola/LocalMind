@@ -1,11 +1,12 @@
 using LocalMind.Core.Models;
+using LocalMind.Core.Storage.FullText;
 
 namespace LocalMind.Search.Snippets;
 
 /// <summary>
 /// Вибирає з фрагмента уривок для картки результату і позначає слова запиту для підсвітки.
 /// Слово фрагмента збігається зі словом запиту без урахування регістру, якщо має з ним спільний початок
-/// (<see cref="Stem"/>) — так «каву» знаходиться за запитом «кава», а «нотатках» — за «нотатки».
+/// (<see cref="SearchTerms.Stem"/>) — так «каву» знаходиться за запитом «кава», а «нотатках» — за «нотатки».
 /// Стоп-слова («і», «the», «на»…) не підсвічуються.
 /// </summary>
 public static class SnippetBuilder
@@ -15,16 +16,6 @@ public static class SnippetBuilder
 
     /// <summary>Скільки контексту лишати перед першим збігом, частка від довжини уривка.</summary>
     private const int ContextBeforeDivisor = 5;
-
-    private static readonly HashSet<string> StopWords = new(StringComparer.Ordinal)
-    {
-        // Українська.
-        "і", "й", "та", "а", "але", "в", "у", "з", "із", "зі", "на", "до", "від", "по", "за", "про", "для", "що", "як",
-        "це", "не", "чи", "або", "о", "об", "при", "під", "над", "між", "так", "же", "би", "б", "ж", "то", "той", "ця",
-        // Англійська.
-        "a", "an", "the", "and", "or", "of", "to", "in", "on", "for", "is", "are", "be", "with", "by", "at", "as", "it",
-        "this", "that", "from", "how", "what",
-    };
 
     /// <summary>Будує уривок фрагмента для запиту.</summary>
     /// <param name="chunk">Знайдений фрагмент.</param>
@@ -58,38 +49,8 @@ public static class SnippetBuilder
             hasTextAfter: !string.IsNullOrWhiteSpace(text[end..]));
     }
 
-    /// <summary>
-    /// Спільний початок, за яким шукаємо форми слова: до 3 літер — слово повністю, 4–5 — без останньої літери,
-    /// довше — без двох останніх, але не коротше за 4. Закінчення відкидаємо, корінь лишаємо:
-    /// «кава» → «кав» (каву, кави), «нотатки» → «нотат» (нотаток, нотатках).
-    /// </summary>
-    internal static string Stem(string word) => word.Length switch
-    {
-        <= 3 => word,
-        <= 5 => word[..^1],
-        _ => word[..Math.Max(4, word.Length - 2)],
-    };
-
-    private static List<string> QueryStems(string query)
-    {
-        var stems = new List<string>();
-        foreach (var (start, length) in Words(query))
-        {
-            var word = query.Substring(start, length).ToLowerInvariant();
-            if (word.Length < 2 || StopWords.Contains(word))
-            {
-                continue;
-            }
-
-            var stem = Stem(word);
-            if (!stems.Contains(stem, StringComparer.Ordinal))
-            {
-                stems.Add(stem);
-            }
-        }
-
-        return stems;
-    }
+    private static List<string> QueryStems(string query) =>
+        [.. SearchTerms.Split(query).Select(SearchTerms.Stem).Distinct(StringComparer.Ordinal)];
 
     private static List<Match> FindMatches(string text, List<string> stems)
     {
@@ -99,7 +60,7 @@ public static class SnippetBuilder
             return matches;
         }
 
-        foreach (var (start, length) in Words(text))
+        foreach (var (start, length) in SearchTerms.WordRanges(text))
         {
             var word = text.AsSpan(start, length);
             for (var i = 0; i < stems.Count; i++)
@@ -195,38 +156,6 @@ public static class SnippetBuilder
         }
 
         return (start, end);
-    }
-
-    private static IEnumerable<(int Start, int Length)> Words(string text)
-    {
-        var start = -1;
-        for (var i = 0; i <= text.Length; i++)
-        {
-            var isWord = i < text.Length && IsWordChar(text, i);
-            if (isWord && start < 0)
-            {
-                start = i;
-            }
-            else if (!isWord && start >= 0)
-            {
-                yield return (start, i - start);
-                start = -1;
-            }
-        }
-    }
-
-    /// <summary>Літера, цифра або апостроф між літерами («м'ята», «п’ять»), але не лапки навколо слова.</summary>
-    private static bool IsWordChar(string text, int index)
-    {
-        var c = text[index];
-        if (char.IsLetterOrDigit(c))
-        {
-            return true;
-        }
-
-        return c is '\'' or '’' or 'ʼ'
-            && index > 0 && char.IsLetter(text[index - 1])
-            && index + 1 < text.Length && char.IsLetter(text[index + 1]);
     }
 
     private readonly record struct Match(int Start, int Length, int StemIndex)

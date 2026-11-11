@@ -22,27 +22,42 @@ public static class SearchTerms
         ArgumentNullException.ThrowIfNull(text);
 
         var terms = new List<string>();
-        var start = -1;
-        for (var i = 0; i <= text.Length; i++)
+        foreach (var (start, length) in WordRanges(text))
         {
-            var isWord = i < text.Length && IsWordChar(text, i);
-            if (isWord && start < 0)
+            var word = text.Substring(start, length).ToLowerInvariant();
+            if (word.Length >= 2 && !StopWords.Contains(word) && !terms.Contains(word, StringComparer.Ordinal))
             {
-                start = i;
-            }
-            else if (!isWord && start >= 0)
-            {
-                var word = text[start..i].ToLowerInvariant();
-                if (word.Length >= 2 && !StopWords.Contains(word) && !terms.Contains(word, StringComparer.Ordinal))
-                {
-                    terms.Add(word);
-                }
-
-                start = -1;
+                terms.Add(word);
             }
         }
 
         return terms;
+    }
+
+    /// <summary>Межі слів у тексті: літери, цифри й апострофи між літерами.</summary>
+    public static IEnumerable<(int Start, int Length)> WordRanges(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+
+        return Enumerate(text);
+
+        static IEnumerable<(int Start, int Length)> Enumerate(string text)
+        {
+            var start = -1;
+            for (var i = 0; i <= text.Length; i++)
+            {
+                var isWord = i < text.Length && IsWordChar(text, i);
+                if (isWord && start < 0)
+                {
+                    start = i;
+                }
+                else if (!isWord && start >= 0)
+                {
+                    yield return (start, i - start);
+                    start = -1;
+                }
+            }
+        }
     }
 
     /// <summary>

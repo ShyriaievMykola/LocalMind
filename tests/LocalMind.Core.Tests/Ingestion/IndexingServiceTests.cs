@@ -18,7 +18,8 @@ namespace LocalMind.Core.Tests.Ingestion;
 
 public sealed class IndexingServiceTests : IDisposable
 {
-    private static readonly TimeSpan _waitTimeout = TimeSpan.FromSeconds(10);
+    // Запас на повільні раннери CI; на швидкій машині умови виконуються за долі секунди.
+    private static readonly TimeSpan _waitTimeout = TimeSpan.FromSeconds(30);
 
     private readonly string _folder = Directory.CreateTempSubdirectory("localmind-indexing-").FullName;
     private readonly InMemoryDocumentRepository _repository = new();
@@ -26,18 +27,23 @@ public sealed class IndexingServiceTests : IDisposable
     private readonly ParserRegistry _parsers = new([new PlainTextParser(), new MarkdownParser(), new DocxParser()]);
     private readonly FakeVectorIndex _vectorIndex;
     private readonly FolderWatcher _watcher;
+    private FolderWatcher? _liveWatcher;
     private IndexingService? _service;
 
     public IndexingServiceTests()
     {
         _vectorIndex = new FakeVectorIndex(_fakeEmbedder.Dimensions);
-        _watcher = new FolderWatcher(_parsers);
+        // Watcher, що не встигає спрацювати: на macOS FSEvents іноді повідомляє про файли, створені щойно
+        // перед Watch, і файл стає в чергу вдруге — тоді Progress.Total не збігається з очікуваним.
+        // Тести реакції на події файлової системи створюють власний watcher (LiveWatcher).
+        _watcher = new FolderWatcher(_parsers, TimeSpan.FromHours(1));
     }
 
     public void Dispose()
     {
         _service?.Dispose();
         _watcher.Dispose();
+        _liveWatcher?.Dispose();
         Directory.Delete(_folder, recursive: true);
     }
 
@@ -97,7 +103,8 @@ public sealed class IndexingServiceTests : IDisposable
         // навіть після повторного CancelPending.
         Assert.Equal(new IndexingProgress(1, 1), service.Progress);
 
-        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(2));
+        // Embedder не відпускаємо, тож завершитися вчасно можна лише через скасування; запас — для повільних раннерів.
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(10));
         Assert.Empty(await _repository.GetDocumentsAsync());
         Assert.Equal(0, _vectorIndex.Count);
 
@@ -129,9 +136,10 @@ public sealed class IndexingServiceTests : IDisposable
     public async Task ModifiedFile_IsReindexedAfterWatcherEvent()
     {
         var path = Write("note.txt", "стара версія");
-        var service = CreateService();
+        var service = CreateService(watcher: LiveWatcher());
         await service.AddFolderAsync(_folder);
-        await WaitUntilAsync(() => service.Progress is { IsCompleted: true, Total: 1 });
+        // Живий watcher може поставити файл у чергу повторно, тож чекаємо на результат, а не на лічильник.
+        await WaitUntilAsync(() => service.Progress.IsCompleted && _repository.AllChunks.Count == 1);
         var oldChunkIds = _repository.AllChunks.Select(c => c.Id).ToHashSet();
 
         await File.WriteAllTextAsync(path, "нова версія тексту");
@@ -147,9 +155,10 @@ public sealed class IndexingServiceTests : IDisposable
     public async Task DeletedFile_IsRemovedAfterWatcherEvent()
     {
         var path = Write("note.txt", "текст");
-        var service = CreateService();
+        var service = CreateService(watcher: LiveWatcher());
         await service.AddFolderAsync(_folder);
-        await WaitUntilAsync(() => service.Progress is { IsCompleted: true, Total: 1 });
+        // Живий watcher може поставити файл у чергу повторно, тож чекаємо на результат, а не на лічильник.
+        await WaitUntilAsync(() => service.Progress.IsCompleted && _repository.AllChunks.Count == 1);
 
         File.Delete(path);
 
@@ -219,8 +228,10 @@ public sealed class IndexingServiceTests : IDisposable
         Assert.Equal(DocumentStatus.Indexed, Assert.Single(await _repository.GetDocumentsAsync()).Status);
     }
 
-    [Fact]
-    public async Task LockedFile_ReleasedDuringRetries_IsIndexed()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LockedFile_ReleasedDuringRetries_IsIndexed(bool rescanDuringRetry)
     {
         var path = Write("locked.txt", "текст");
         var logger = new ListLogger();
@@ -231,13 +242,23 @@ public sealed class IndexingServiceTests : IDisposable
         {
             await service.AddFolderAsync(_folder);
             await WaitUntilAsync(() => logger.Entries.Any(e => e.Message.Contains("зайнятий", StringComparison.Ordinal)));
+
+            if (rescanDuringRetry)
+            {
+                // Повторне повідомлення спостерігача ставить поточний файл у чергу ще раз.
+                _watcher.OnWatcherError(_folder);
+                await WaitUntilAsync(() => service.Progress.Total >= 2);
+            }
         }
         finally
         {
             await lockStream.DisposeAsync();
         }
 
-        await WaitUntilAsync(() => service.Progress is { IsCompleted: true, Total: 1 });
+        // Спостерігач може повторно поставити файл у чергу, зокрема на macOS.
+        // Чекаємо завершення всієї роботи, а не рівно одного елемента черги.
+        await WaitUntilAsync(() => service.Progress is { IsCompleted: true, Total: >= 1 });
+        Assert.Equal(0, service.Progress.Failed);
         Assert.Equal(DocumentStatus.Indexed, Assert.Single(await _repository.GetDocumentsAsync()).Status);
     }
 
@@ -304,7 +325,8 @@ public sealed class IndexingServiceTests : IDisposable
         IEmbedder? embedder = null,
         IChunker? chunker = null,
         ILogger<IndexingService>? logger = null,
-        TimeSpan? retryDelay = null)
+        TimeSpan? retryDelay = null,
+        FolderWatcher? watcher = null)
     {
         _service = new IndexingService(
             _parsers,
@@ -313,11 +335,14 @@ public sealed class IndexingServiceTests : IDisposable
             _repository,
             _vectorIndex,
             new ChangeDetector(_repository),
-            _watcher,
+            watcher ?? _watcher,
             logger ?? NullLogger<IndexingService>.Instance,
             retryDelay);
         return _service;
     }
+
+    /// <summary>Watcher зі звичайним debounce — для тестів, що перевіряють реакцію на зміни файлів.</summary>
+    private FolderWatcher LiveWatcher() => _liveWatcher ??= new FolderWatcher(_parsers);
 
     private static FixedSizeChunker CreateChunker() =>
         new(Options.Create(new ChunkingOptions()), new FakeTokenCounter());

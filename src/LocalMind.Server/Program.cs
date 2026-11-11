@@ -48,6 +48,7 @@ builder.Services.AddOptions<BlobStoreOptions>()
     .ValidateDataAnnotations()
     .ValidateOnStart();
 builder.Services.AddSingleton<FileSystemBlobStore>();
+builder.Services.AddSingleton<UserUploadGate>();
 builder.Services
     .AddIdentityCore<IdentityUser>(options =>
     {

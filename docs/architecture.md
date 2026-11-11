@@ -109,19 +109,84 @@ Cli ──┘
 
 - `OnnxEmbedder` — токенізація, інференс ONNX Runtime, mean pooling, L2-нормалізація; для e5-моделей — префікси `query:` / `passage:`.
 - `VectorMath` — косинусна схожість (для нормалізованих векторів — скалярний добуток) з SIMD.
-- `ReciprocalRankFusion` — злиття списків keyword і semantic.
-- `SearchService` — режими Keyword / Semantic / Hybrid, формування `SearchResult`.
+- `ReciprocalRankFusion` — злиття списків keyword і semantic за рангами: Σ 1 / (k + rank), `k = LocalMind:Search:RrfK` (60).
+- `SearchService` — режими Keyword / Semantic / Hybrid, формування `SearchResult`. Hybrid бере по `CandidatesPerIndex`
+  кандидатів з кожного індексу і зливає RRF. Keyword працює без моделі — його варто вмикати в UI, коли `CoreStatus.IsModelAvailable = false`.
+  Hybrid без моделі не падає: якщо embedder кидає `LocalMindException` (файлу моделі немає, а вектори в БД лишились),
+  повертаються лише keyword-результати в шкалі RRF і пишеться попередження в лог. Semantic у такому разі кидає виняток, бо інакше його результат був би порожнім і незрозумілим.
+  Помилку завантаження моделі не кешуємо (`LoadOnce<T>`): якщо модель докачали під час роботи, наступний пошук підхопить її сам.
+  Але `CoreStatus.IsModelAvailable` оновиться лише після перезапуску, і тоді ж проіндексуються файли, пропущені без моделі.
+- `SearchResult.Score` має різну шкалу в різних режимах: косинус (Semantic), BM25 (Keyword), RRF ≈ 0.01–0.03 (Hybrid).
+  Оцінки можна порівнювати лише в межах одного режиму й запиту. UI показує їх відносно (ранг або частку від найкращої) і не
+  фільтрує за абсолютним порогом. Нормалізації немає навмисно.
 - `SnippetBuilder` — уривок фрагмента для картки результату (`SearchResult.Snippet`): вікно з найбільшою кількістю слів запиту,
   обрізане по межі слова, і діапазони підсвітки відносно уривка (без регістру, прості форми слів, без стоп-слів).
 
-### 3.5. Backup (`Core/Backup`)
+### 3.5. Застосунок (`LocalMind.App`)
+
+**Запуск.** `Program.Main` збирає Generic Host (`Services/AppHost.cs`), стартує його і відкриває вікно.
+Ядро готується у фоні (`Services/CoreStartup.cs`): міграції БД → вектори з БД у `IVectorIndex` →
+`IIndexingService.RescanAsync` (лише якщо модель на місці). Вікно не чекає на це.
+Хід запуску — у синглтоні `CoreStatus`: `Stage` (`Starting` / `Ready` / `Failed`), `IsModelAvailable`, `ModelError`, `Error`,
+подія `Changed` і `Completion`. Без моделі застосунок працює: `Ready`, але `IsModelAvailable = false`, а семантичний
+пошук кидає `LocalMindException` — його треба показати користувачу. Під час закриття хост зупиняється і звільняє сервіси
+(зокрема `IndexingService`).
+
+**Налаштування** — `src/LocalMind.App/appsettings.json`, змінні оточення (`LocalMind__Storage__DatabasePath=...`),
+аргументи командного рядка. Відносні шляхи до моделі шукаються поруч із програмою, потім у теці даних користувача
+(`%LOCALAPPDATA%\LocalMind\models/...`), а в Debug-збірці при запуску з репозиторію — у його корені (`models/`, куди кладе
+`scripts/download-models`). Вище по дереву не шукаємо. Порожній або відносний шлях до БД — у теці даних користувача (див. розділ 6).
+
+**Як додати сторінку**
+
+Головне вікно має бокове меню «Пошук / Бібліотека / Налаштування» і рядок стану ядра внизу.
+`MainViewModel.NavigationItems` містить пункти меню (`NavigationItem`: назва і VM сторінки),
+`SelectedItem` задає активний пункт, а `CurrentPage` — вміст `ContentControl`, який відображає `ViewLocator`.
+Початкова сторінка — пошук. VM трьох сторінок отримуються через конструктор `MainViewModel` і зберігаються
+протягом роботи вікна: перемикання не створює нову VM і не скидає її стан.
+`SearchView` містить поле запиту (Enter або кнопка «Знайти»), вибір Semantic / Keyword / Hybrid, top-k і простий
+список результатів: шлях до файла, оцінка, текст фрагмента. Типові значення — Hybrid і `SearchOptions.DefaultTopK`.
+`SearchViewModel` отримує `ISearchService`, `CoreStatus`, `IOptions<SearchOptions>` та `ILogger<SearchViewModel>` з DI.
+Кожен запуск команди скасовує попередній запит; застаріла відповідь або помилка не змінює поточні результати.
+Сервіс викликається у фоновому потоці, а оновлення властивостей після `await` повертається в UI-контекст.
+До готовності ядра пошук показує повідомлення; без моделі доступний Keyword. `MainViewModel.Dispose` викликає
+`SearchViewModel.Close`, щоб скасувати запит при закритті застосунку.
+Бібліотека і налаштування поки містять лише заголовки (#91, #93); картки результатів — #89, спільне оформлення і теми — #117.
+
+1. `ViewModels/SearchViewModel.cs` — клас від `ViewModelBase`, сервіси — через конструктор:
+   ```csharp
+   public partial class SearchViewModel(ISearchService search, CoreStatus status) : ViewModelBase { ... }
+   ```
+   Доступні: `ISearchService`, `IIndexingService`, `IDocumentRepository`, `CoreStatus`, `ILogger<T>`, `IOptions<...>`.
+2. `Views/SearchView.axaml` (+ `.axaml.cs`) — `UserControl` з `x:DataType="vm:SearchViewModel"`.
+   `ViewLocator` сам знаходить View за назвою: `...ViewModels.XxxViewModel` → `...Views.XxxView`.
+3. Зареєструвати VM в `AppHost.CreateBuilder`: `builder.Services.AddTransient<SearchViewModel>();`
+   (`MainViewModel` — синглтон, бо живе весь час роботи вікна).
+   Контейнер перевіряється під час збирання (`ValidateOnBuild`) — забута залежність одразу дасть помилку.
+4. Показати: батьківська VM отримує `SearchViewModel` через конструктор (або `IServiceProvider`) і кладе в
+   властивість, до якої прив'язаний `ContentControl`.
+   Для нового пункту головного меню додайте VM до конструктора `MainViewModel` і запис до `NavigationItems`.
+
+**Перед зверненням до сервісів** дивіться `CoreStatus.Stage`: при `Failed` (недоступна БД, некоректні налаштування)
+сервіси з DI резолвляться, але кинуть виняток при першому використанні — покажіть `CoreStatus.Error`.
+Дочекатися кінця запуску: `await status.Completion`.
+
+**Потоки.** `IIndexingService.ProgressChanged` і `CoreStatus.Changed` приходять з фонового потоку — оновлюйте
+властивості через `Dispatcher.UIThread.Post(...)` (приклад — `MainViewModel`).
+
+**Підписки.** Синглтон тримає обробник події, а з ним і VM. Сторінка, що підписується на `CoreStatus.Changed` чи
+`ProgressChanged`, має відписатися, коли її закривають (метод на кшталт `Close()`, який викликає батьківська VM).
+Не робіть Transient-VM `IDisposable`: контейнер тримає такі об'єкти до завершення застосунку. Довгі виклики (`SearchAsync`, `AddFolderAsync`) — через
+`async`-команди `[RelayCommand]` з `CancellationToken`.
+
+### 3.6. Backup (`Core/Backup`)
 
 - `KeyDerivation` — PBKDF2-HMAC-SHA256, ключ із пароля шифрування.
 - `AesGcmCipher` + `EncryptedEnvelope` — шифрування і формат конверта.
 - `BackupApiClient` — HTTP-клієнт до сервера: JWT, автоматичне оновлення через refresh-токен.
 - `BackupService` / `RestoreService` — повний цикл бекапу і відновлення.
 
-### 3.6. Server (`LocalMind.Server`)
+### 3.7. Server (`LocalMind.Server`)
 
 - Minimal API, префікс `/api/v1`, OpenAPI-документація.
 - `AuthEndpoints` — реєстрація, вхід, оновлення токена, вихід.
@@ -207,7 +272,7 @@ SourceFolder 1 ──── * Document 1 ──── * Chunk 1 ──── 0..
 
 | ОС | Тека даних клієнта |
 |---|---|
-| Windows | `%AppData%\LocalMind` |
+| Windows | `%LOCALAPPDATA%\LocalMind` |
 | Linux | `~/.local/share/LocalMind` |
 | macOS | `~/Library/Application Support/LocalMind` |
 
@@ -234,6 +299,7 @@ SourceFolder 1 ──── * Document 1 ──── * Chunk 1 ──── 0..
 |---|---|---|
 | Юніт | Парсери, нарізка, RRF, VectorMath, метрики, криптографія | `tests/LocalMind.Core.Tests`, `tests/LocalMind.Search.Tests` |
 | Інтеграційний | Сховище на SQLite in-memory, FTS5 | `tests/LocalMind.Core.Tests` |
+| Інтеграційний | Хост App: контейнер DI, запуск без моделі і без БД | `tests/LocalMind.App.Tests` |
 | Інтеграційний | API сервера через `WebApplicationFactory`, сценарії безпеки | `tests/LocalMind.Server.Tests` |
 | Приймальний | Сценарії з [acceptance-cases.md](acceptance-cases.md) | Авто + ручний прогін |
 
