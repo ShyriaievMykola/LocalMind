@@ -8,7 +8,8 @@ namespace LocalMind.Server.Tests;
 public sealed class ServerSkeletonTests(LocalMindServerFactory factory)
     : IClassFixture<LocalMindServerFactory>
 {
-    private const string Secret = "секретна-деталь-винятку";
+    // Лише ASCII: кирилицю JSON-серіалізатор екранує в escape-послідовності, і перевірка пройшла б навіть при витоку.
+    private const string Secret = "LEAK-MARKER-7f3a9c";
 
     [Fact]
     public async Task Health_Returns200()
@@ -75,7 +76,7 @@ public sealed class ServerSkeletonTests(LocalMindServerFactory factory)
     [Fact]
     public async Task OpenApi_AvailableOnlyInDevelopment()
     {
-        using var dev = factory.CreateClient();
+        using var dev = factory.WithWebHostBuilder(b => b.UseEnvironment("Development")).CreateClient();
         using var prod = factory.WithWebHostBuilder(b => b.UseEnvironment("Production")).CreateClient();
 
         using var devDoc = await dev.GetAsync(new Uri("/openapi/v1.json", UriKind.Relative));

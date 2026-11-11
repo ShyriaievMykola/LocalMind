@@ -101,7 +101,8 @@ Cli ──┘
 ### 3.3. Storage (`Core/Storage`)
 
 - `LocalMindDbContext` — EF Core поверх SQLite, міграції застосовуються при старті.
-- FTS5-таблиця синхронізується з таблицею фрагментів тригерами; запити до неї — параметризований SQL.
+- FTS5-таблиця `ChunksFts` (external content над `Chunks`) синхронізується тригерами; запити до неї — параметризований SQL,
+  кожне слово запиту в лапках (`Fts5KeywordIndex`, [DR-019](decisions.md)).
 - Вектори зберігаються як BLOB і при старті завантажуються в `IVectorIndex` у пам'яті.
 
 ### 3.4. Search (`LocalMind.Search`)
@@ -110,6 +111,8 @@ Cli ──┘
 - `VectorMath` — косинусна схожість (для нормалізованих векторів — скалярний добуток) з SIMD.
 - `ReciprocalRankFusion` — злиття списків keyword і semantic.
 - `SearchService` — режими Keyword / Semantic / Hybrid, формування `SearchResult`.
+- `SnippetBuilder` — уривок фрагмента для картки результату (`SearchResult.Snippet`): вікно з найбільшою кількістю слів запиту,
+  обрізане по межі слова, і діапазони підсвітки відносно уривка (без регістру, прості форми слів, без стоп-слів).
 
 ### 3.5. Backup (`Core/Backup`)
 

@@ -60,6 +60,27 @@ public class ModelTokenizerTests
     }
 
     [ModelFact]
+    public void Chunks_WordLongerThanLimit_FitModelLimitWithPrefixAndKeepAllText()
+    {
+        const int Limit = 32;
+        var options = TestModel.Options();
+        var chunker = new FixedSizeChunker(
+            Options.Create(new ChunkingOptions { ChunkSizeTokens = Limit, OverlapPercent = 0 }),
+            CreateCounter());
+        var word = string.Concat(Enumerable.Repeat("aGVsbG8gd29ybGQ", 30)); // base64 без пробілів
+        var text = $"початок {word} кінець";
+
+        var tokenizer = CreateTokenizer();
+
+        var chunks = chunker.Split(Guid.NewGuid(), text);
+
+        Assert.True(chunks.Count > 2);
+        Assert.All(chunks, chunk =>
+            Assert.True(tokenizer.Encode(options.PassagePrefix + chunk.Text, 512).Length <= Limit));
+        Assert.Equal(text.Replace(" ", string.Empty, StringComparison.Ordinal), string.Concat(chunks.Select(c => c.Text.Replace(" ", string.Empty, StringComparison.Ordinal))));
+    }
+
+    [ModelFact]
     public void Encode_LongText_IsTruncatedAndKeepsEndToken()
     {
         var ids = CreateTokenizer().Encode(string.Concat(Enumerable.Repeat("слово ", 1000)), 16);
