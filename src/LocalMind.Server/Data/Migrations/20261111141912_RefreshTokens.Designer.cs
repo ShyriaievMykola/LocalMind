@@ -11,8 +11,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace LocalMind.Server.Data.Migrations
 {
     [DbContext(typeof(ServerDbContext))]
-    [Migration("20261111132833_Snapshots")]
-    partial class Snapshots
+    [Migration("20261111141912_RefreshTokens")]
+    partial class RefreshTokens
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -38,7 +38,14 @@ namespace LocalMind.Server.Data.Migrations
                     b.Property<DateTimeOffset?>("RevokedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("SecurityStamp")
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid>("SessionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("SessionStartedAt")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("TokenHash")
@@ -60,34 +67,6 @@ namespace LocalMind.Server.Data.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("RefreshTokens", (string)null);
-                });
-
-            modelBuilder.Entity("LocalMind.Server.Data.Entities.SnapshotEntity", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Sha256")
-                        .IsRequired()
-                        .HasMaxLength(64)
-                        .HasColumnType("TEXT");
-
-                    b.Property<long>("SizeBytes")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("UserId");
-
-                    b.ToTable("Snapshots", (string)null);
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole", b =>
@@ -283,17 +262,6 @@ namespace LocalMind.Server.Data.Migrations
                 });
 
             modelBuilder.Entity("LocalMind.Server.Data.Entities.RefreshTokenEntity", b =>
-                {
-                    b.HasOne("Microsoft.AspNetCore.Identity.IdentityUser", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("User");
-                });
-
-            modelBuilder.Entity("LocalMind.Server.Data.Entities.SnapshotEntity", b =>
                 {
                     b.HasOne("Microsoft.AspNetCore.Identity.IdentityUser", "User")
                         .WithMany()

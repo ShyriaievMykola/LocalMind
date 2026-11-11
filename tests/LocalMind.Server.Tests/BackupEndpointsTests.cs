@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using LocalMind.Core.Backup.Crypto;
 using LocalMind.Core.Backup.Dtos;
 using LocalMind.Server.Storage;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace LocalMind.Server.Tests;
@@ -119,6 +120,53 @@ public sealed class BackupEndpointsTests(LocalMindServerFactory factory) : IClas
         var info = await UploadOkAsync(client, new byte[1024]);
 
         Assert.Equal(1024, info.SizeBytes);
+    }
+
+    [Fact]
+    public async Task RootPathWithTrailingSeparator_Works()
+    {
+        var root = Path.Combine(factory.StorageRoot, "trailing") + Path.DirectorySeparatorChar;
+        using var app = factory.WithWebHostBuilder(b => b.UseSetting("Storage:RootPath", root));
+        using var client = await AuthorizedClientAsync(app);
+
+        var info = await UploadOkAsync(client, [1, 2, 3]);
+        var downloaded = await client.GetByteArrayAsync(new Uri($"/api/v1/backups/{info.Id}", UriKind.Relative));
+
+        Assert.Equal([1, 2, 3], downloaded);
+    }
+
+    [Fact]
+    public async Task Upload_DeletedUserWithValidToken_Returns401()
+    {
+        using var client = await AuthorizedClientAsync(factory);
+        var me = await client.GetFromJsonAsync<UserInfo>(new Uri("/api/v1/auth/me", UriKind.Relative));
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+            await users.DeleteAsync((await users.FindByIdAsync(me!.Id))!);
+        }
+
+        using var content = new ByteArrayContent([1]);
+        using var response = await client.PostAsync(Backups, content);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Delete_WhileDownloadStreamOpen_Succeeds()
+    {
+        using var client = await AuthorizedClientAsync(factory);
+        var info = await UploadOkAsync(client, new byte[10]);
+        var store = factory.Services.GetRequiredService<FileSystemBlobStore>();
+
+        await using (var reading = store.OpenRead(info.Id))
+        {
+            Assert.NotNull(reading);
+            using var delete = await client.DeleteAsync(new Uri($"/api/v1/backups/{info.Id}", UriKind.Relative));
+            Assert.Equal(HttpStatusCode.NoContent, delete.StatusCode);
+        }
+
+        Assert.Null(store.OpenRead(info.Id));
     }
 
     [Theory]
