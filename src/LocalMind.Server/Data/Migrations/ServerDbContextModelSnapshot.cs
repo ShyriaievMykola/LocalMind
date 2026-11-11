@@ -35,7 +35,14 @@ namespace LocalMind.Server.Data.Migrations
                     b.Property<DateTimeOffset?>("RevokedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("SecurityStamp")
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid>("SessionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("SessionStartedAt")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("TokenHash")

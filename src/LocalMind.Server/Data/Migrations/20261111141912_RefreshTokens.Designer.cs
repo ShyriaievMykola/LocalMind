@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace LocalMind.Server.Data.Migrations
 {
     [DbContext(typeof(ServerDbContext))]
-    [Migration("20261111132301_RefreshTokens")]
+    [Migration("20261111141912_RefreshTokens")]
     partial class RefreshTokens
     {
         /// <inheritdoc />
@@ -38,7 +38,14 @@ namespace LocalMind.Server.Data.Migrations
                     b.Property<DateTimeOffset?>("RevokedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("SecurityStamp")
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid>("SessionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("SessionStartedAt")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("TokenHash")

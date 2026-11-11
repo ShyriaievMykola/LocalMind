@@ -18,6 +18,12 @@ public sealed class RefreshTokenEntity
 
     public Guid SessionId { get; set; }
 
+    /// <summary>Коли почалась сесія (вхід за паролем) — для абсолютного обмеження її тривалості.</summary>
+    public DateTimeOffset SessionStartedAt { get; set; }
+
+    /// <summary>SecurityStamp користувача на момент видачі: зміна пароля його міняє, і сесія стає недійсною.</summary>
+    public string? SecurityStamp { get; set; }
+
     /// <summary>SHA-256 токена (hex).</summary>
     public required string TokenHash { get; set; }
 
@@ -39,6 +45,7 @@ public sealed class RefreshTokenEntityConfiguration : IEntityTypeConfiguration<R
     {
         builder.ToTable("RefreshTokens");
         builder.Property(t => t.TokenHash).HasMaxLength(64);
+        builder.Property(t => t.SecurityStamp).HasMaxLength(256);
         builder.HasIndex(t => t.TokenHash).IsUnique();
         builder.HasIndex(t => t.SessionId);
         builder.HasOne(t => t.User).WithMany().HasForeignKey(t => t.UserId).OnDelete(DeleteBehavior.Cascade);
