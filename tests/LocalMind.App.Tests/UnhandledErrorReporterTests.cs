@@ -29,13 +29,13 @@ public sealed class UnhandledErrorReporterTests
     }
 
     [Fact]
-    public void Report_FromBackgroundThread_StillRaisesEventOnlyWhenUiRunsPending()
+    public async Task Report_FromBackgroundThread_StillRaisesEventOnlyWhenUiRunsPending()
     {
         var reporter = new UnhandledErrorReporter(_dispatcher, _logger);
         var reported = 0;
         reporter.Reported += (_, _) => reported++;
 
-        Task.Run(() => reporter.Report(new InvalidOperationException("збій"), "фонове завдання")).GetAwaiter().GetResult();
+        await Task.Run(() => reporter.Report(new InvalidOperationException("збій"), "фонове завдання"));
 
         Assert.Equal(0, reported);
         Assert.Equal(1, _dispatcher.PendingCount);
@@ -54,9 +54,50 @@ public sealed class UnhandledErrorReporterTests
         Assert.Throws<ArgumentException>(() => reporter.Report(new InvalidOperationException(), " "));
     }
 
+    [Fact]
+    public void Report_LoggerThrows_DoesNotThrowAndStillNotifies()
+    {
+        _logger.ThrowOnLog = true;
+        var reporter = new UnhandledErrorReporter(_dispatcher, _logger);
+        var reported = 0;
+        reporter.Reported += (_, _) => reported++;
+
+        var failure = Record.Exception(() => reporter.Report(new InvalidOperationException("збій"), "UI-потік"));
+        _dispatcher.RunPending();
+
+        Assert.Null(failure);
+        Assert.Equal(1, reported);
+    }
+
+    [Fact]
+    public void Report_SubscriberThrows_DoesNotBreakUiAndIsLogged()
+    {
+        var reporter = new UnhandledErrorReporter(_dispatcher, _logger);
+        reporter.Reported += (_, _) => throw new InvalidOperationException("обробник");
+
+        reporter.Report(new InvalidOperationException("збій"), "UI-потік");
+        var failure = Record.Exception(_dispatcher.RunPending);
+
+        Assert.Null(failure);
+        Assert.Equal(2, _logger.Entries.Count);
+    }
+
+    [Fact]
+    public void Log_OnlyLogs_DoesNotNotifyUi()
+    {
+        var reporter = new UnhandledErrorReporter(_dispatcher, _logger);
+
+        reporter.Log(new InvalidOperationException("збій"), "домен застосунку");
+
+        Assert.Single(_logger.Entries);
+        Assert.Equal(0, _dispatcher.PendingCount);
+    }
+
     private sealed class CapturingLogger : ILogger<UnhandledErrorReporter>
     {
         public List<(LogLevel Level, Exception? Exception)> Entries { get; } = [];
+
+        public bool ThrowOnLog { get; set; }
 
         public IDisposable? BeginScope<TState>(TState state)
             where TState : notnull => null;
@@ -64,6 +105,14 @@ public sealed class UnhandledErrorReporterTests
         public bool IsEnabled(LogLevel logLevel) => true;
 
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
-            Func<TState, Exception?, string> formatter) => Entries.Add((logLevel, exception));
+            Func<TState, Exception?, string> formatter)
+        {
+            if (ThrowOnLog)
+            {
+                throw new InvalidOperationException("логер зламався");
+            }
+
+            Entries.Add((logLevel, exception));
+        }
     }
 }

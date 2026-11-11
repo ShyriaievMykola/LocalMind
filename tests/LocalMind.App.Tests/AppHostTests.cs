@@ -61,7 +61,7 @@ public sealed class AppHostTests : IDisposable
         var navigation = host.Services.GetRequiredService<MainViewModel>();
         var search = Assert.IsType<SearchViewModel>(navigation.CurrentPage);
         Assert.Equal(SearchQuery.DefaultTopK, search.TopK);
-        Assert.Contains("Некоректні налаштування", navigation.StatusText, StringComparison.Ordinal);
+        Assert.Contains("Некоректні налаштування", navigation.NoticeText, StringComparison.Ordinal);
     }
 
     [Fact]

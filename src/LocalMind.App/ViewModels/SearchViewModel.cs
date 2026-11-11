@@ -18,6 +18,7 @@ public sealed partial class SearchViewModel : ViewModelBase
     private readonly ILogger<SearchViewModel> _logger;
     private readonly ResultCardFactory _cards;
     private CancellationTokenSource? _searchCancellation;
+    private string? _noResultsQuery;
 
     public SearchViewModel(ISearchService search, CoreStatus status, IOptions<SearchOptions> options,
         ILogger<SearchViewModel> logger, ResultCardFactory cards)
@@ -42,6 +43,7 @@ public sealed partial class SearchViewModel : ViewModelBase
     ]);
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasNoResults))]
     public partial string QueryText { get; set; } = string.Empty;
 
     [ObservableProperty]
@@ -63,9 +65,8 @@ public sealed partial class SearchViewModel : ViewModelBase
 
     public bool HasError => ErrorMessage is not null;
 
-    /// <summary>Пошук завершився успішно, але нічого не знайшов; скидається з початком наступного запиту.</summary>
-    [ObservableProperty]
-    public partial bool HasNoResults { get; private set; }
+    /// <summary>Пошук за цим текстом завершився успішно, але нічого не знайшов; зникає зі зміною тексту й з новим запитом.</summary>
+    public bool HasNoResults => _noResultsQuery is not null && _noResultsQuery == QueryText;
 
     /// <summary>Скасовує пошук при закритті застосунку; Transient-VM не утримується DI як IDisposable.</summary>
     public void Close() => _searchCancellation?.Cancel();
@@ -80,7 +81,7 @@ public sealed partial class SearchViewModel : ViewModelBase
 
         IsSearching = false;
         ErrorMessage = null;
-        HasNoResults = false;
+        SetNoResults(null);
         Results = [];
 
         try
@@ -121,6 +122,7 @@ public sealed partial class SearchViewModel : ViewModelBase
                 return;
             }
 
+            var searchedText = QueryText;
             var query = new SearchQuery(QueryText, SelectedMode, (int)topK);
             IsSearching = true;
 
@@ -134,7 +136,7 @@ public sealed partial class SearchViewModel : ViewModelBase
             if (ReferenceEquals(_searchCancellation, request) && !request.IsCancellationRequested)
             {
                 Results = results;
-                HasNoResults = results.Count == 0;
+                SetNoResults(results.Count == 0 ? searchedText : null);
             }
         }
         catch (OperationCanceledException) when (request.IsCancellationRequested)
@@ -159,6 +161,12 @@ public sealed partial class SearchViewModel : ViewModelBase
                 IsSearching = false;
             }
         }
+    }
+
+    private void SetNoResults(string? query)
+    {
+        _noResultsQuery = query;
+        OnPropertyChanged(nameof(HasNoResults));
     }
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Не вдалося виконати пошук")]

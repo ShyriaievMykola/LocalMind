@@ -8,7 +8,8 @@ namespace LocalMind.App.ViewModels;
 /// <summary>Навігація головного вікна, стан запуску ядра і повідомлення про необроблені помилки.</summary>
 public sealed partial class MainViewModel : ViewModelBase, IDisposable
 {
-    private const string ModelMissingNotice = "Модель не завантажена — запустіть scripts/download-models. Зараз працює лише пошук Keyword.";
+    private const string ModelMissingNotice =
+        "Модель не завантажена — запустіть scripts/download-models. Без неї не працюють семантичний пошук та індексація; доступний лише пошук Keyword.";
 
     private readonly CoreStatus _status;
     private readonly UnhandledErrorReporter _errors;
@@ -111,20 +112,22 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
     private void UpdateStatus()
     {
+        // Рядок стану короткий; пояснення («чому» і «що робити») — лише в банері.
         StatusText = _status.Stage switch
         {
             CoreStage.Starting => "Запуск…",
-            CoreStage.Failed => $"Помилка запуску. {_status.Error}",
-            _ when !_status.IsModelAvailable => $"Готово, але без моделі. {_status.ModelError}",
+            CoreStage.Failed => "Помилка запуску.",
+            _ when !_status.IsModelAvailable => "Готово, але без моделі.",
             _ => "Готово.",
         };
 
         NoticeText = _status.Stage switch
         {
             CoreStage.Failed => _status.Error,
-            _ when _status.ModelError is not null => ModelMissingNotice,
+            CoreStage.Ready when !_status.IsModelAvailable => ModelMissingNotice,
             _ => null,
         };
+
         HasStatusProblem = _status.Stage != CoreStage.Ready || !_status.IsModelAvailable;
     }
 }

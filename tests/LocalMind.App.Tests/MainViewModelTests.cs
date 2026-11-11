@@ -136,7 +136,7 @@ public sealed class MainViewModelTests
         _status.SetReady();
         using var viewModel = CreateViewModel();
 
-        Assert.Equal("Готово, але без моделі. missing.onnx", viewModel.StatusText);
+        Assert.Equal("Готово, але без моделі.", viewModel.StatusText);
     }
 
     [Fact]
@@ -146,7 +146,7 @@ public sealed class MainViewModelTests
         _status.SetFailed("БД недоступна");
         using var viewModel = CreateViewModel();
 
-        Assert.Equal("Помилка запуску. БД недоступна", viewModel.StatusText);
+        Assert.Equal("Помилка запуску.", viewModel.StatusText);
         Assert.True(viewModel.HasStatusProblem);
     }
 
@@ -174,6 +174,25 @@ public sealed class MainViewModelTests
         Assert.True(viewModel.HasNotice);
         Assert.Contains("Модель не завантажена", viewModel.NoticeText, StringComparison.Ordinal);
         Assert.Contains("scripts/download-models", viewModel.NoticeText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Notice_ModelMissingWhileStarting_IsHiddenUntilReady()
+    {
+        _status.SetModelMissing("missing.onnx");
+        using var viewModel = CreateViewModel();
+
+        Assert.False(viewModel.HasNotice);
+    }
+
+    [Fact]
+    public void Notice_ModelMissing_WarnsThatIndexingIsUnavailableToo()
+    {
+        _status.SetModelMissing("missing.onnx");
+        _status.SetReady();
+        using var viewModel = CreateViewModel();
+
+        Assert.Contains("індексація", viewModel.NoticeText, StringComparison.Ordinal);
     }
 
     [Fact]

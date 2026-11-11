@@ -239,6 +239,7 @@ public sealed class SearchViewModelTests
         Assert.Empty(viewModel.Results);
         Assert.Null(viewModel.ErrorMessage);
         Assert.False(viewModel.IsSearching);
+        Assert.False(viewModel.HasNoResults);
     }
 
     [Fact]
@@ -378,6 +379,19 @@ public sealed class SearchViewModelTests
         await viewModel.SearchCommand.ExecuteAsync(null);
         Assert.False(viewModel.HasNoResults);
         Assert.True(viewModel.HasError);
+    }
+
+    [Fact]
+    public async Task Search_NothingFound_EmptyStateDisappearsWhenQueryTextChanges()
+    {
+        var viewModel = _search.CreateViewModel();
+        viewModel.QueryText = "нотатка";
+        await viewModel.SearchCommand.ExecuteAsync(null);
+        Assert.True(viewModel.HasNoResults);
+
+        viewModel.QueryText = "інше слово";
+
+        Assert.False(viewModel.HasNoResults);
     }
 
     [Fact]
