@@ -18,4 +18,11 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <!-- Файли PDF/DOCX для наскрізного тесту беремо з fixtures ядра, щоб не дублювати бінарники. -->
+  <ItemGroup>
+    <None Include="..\LocalMind.Core.Tests\TestData\sample.pdf;..\LocalMind.Core.Tests\TestData\sample.docx;..\LocalMind.Core.Tests\TestData\corrupted.pdf;..\LocalMind.Core.Tests\TestData\corrupted.docx;..\LocalMind.Core.Tests\TestData\scanned.pdf"
+          Link="TestData\%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

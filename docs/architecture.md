@@ -112,6 +112,8 @@ Cli ──┘
 - `ReciprocalRankFusion` — злиття списків keyword і semantic за рангами: Σ 1 / (k + rank), `k = LocalMind:Search:RrfK` (60).
 - `SearchService` — режими Keyword / Semantic / Hybrid, формування `SearchResult`. Hybrid бере по `CandidatesPerIndex`
   кандидатів з кожного індексу і зливає RRF. Keyword працює без моделі — його варто вмикати в UI, коли `CoreStatus.IsModelAvailable = false`.
+- `SnippetBuilder` — уривок фрагмента для картки результату (`SearchResult.Snippet`): вікно з найбільшою кількістю слів запиту,
+  обрізане по межі слова, і діапазони підсвітки відносно уривка (без регістру, прості форми слів, без стоп-слів).
 
 ### 3.5. Backup (`Core/Backup`)
 

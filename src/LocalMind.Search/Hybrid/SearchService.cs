@@ -1,6 +1,7 @@
 using LocalMind.Core.Abstractions;
 using LocalMind.Core.Models;
 using LocalMind.Search.Configuration;
+using LocalMind.Search.Snippets;
 using Microsoft.Extensions.Options;
 
 namespace LocalMind.Search.Hybrid;
@@ -33,7 +34,7 @@ public sealed class SearchService(
             _ => await HybridAsync(query, cancellationToken),
         };
 
-        return await ToResultsAsync(scored, cancellationToken);
+        return await ToResultsAsync(scored, query.Text, cancellationToken);
     }
 
     private async Task<IReadOnlyList<ScoredChunk>> HybridAsync(SearchQuery query, CancellationToken cancellationToken)
@@ -60,6 +61,7 @@ public sealed class SearchService(
 
     private async Task<IReadOnlyList<SearchResult>> ToResultsAsync(
         IReadOnlyList<ScoredChunk> scored,
+        string queryText,
         CancellationToken cancellationToken)
     {
         if (scored.Count == 0)
@@ -79,7 +81,7 @@ public sealed class SearchService(
             // Фрагмент могли видалити між пошуком в індексі й читанням зі сховища.
             if (chunks.TryGetValue(chunkId, out var chunk) && paths.TryGetValue(chunk.DocumentId, out var path))
             {
-                results.Add(new SearchResult(chunk, path, score));
+                results.Add(new SearchResult(chunk, path, score, SnippetBuilder.Build(chunk, queryText)));
             }
         }
 

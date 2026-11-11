@@ -43,6 +43,19 @@ public sealed class SearchServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Search_FillsSnippetWithQueryHighlights()
+    {
+        await IndexAsync("/notes/coffee.md", "Зранку кава з молоком");
+
+        var results = await _service.SearchAsync(new SearchQuery("кава", SearchMode.Semantic));
+
+        var snippet = results[0].Snippet;
+        Assert.Equal("Зранку кава з молоком", snippet.Text);
+        var highlight = Assert.Single(snippet.Highlights);
+        Assert.Equal("кава", snippet.Text.Substring(highlight.Start, highlight.Length));
+    }
+
+    [Fact]
     public async Task Search_RespectsTopK()
     {
         await IndexAsync("/notes/a.md", "один", "два", "три");

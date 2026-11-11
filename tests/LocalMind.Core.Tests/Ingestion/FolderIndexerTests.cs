@@ -76,6 +76,27 @@ public sealed class FolderIndexerTests : IDisposable
     }
 
     [Fact]
+    public async Task Index_PdfLargerThanLimit_IsMarkedAsErrorAndOthersAreIndexed()
+    {
+        var indexer = new FolderIndexer(
+            new ParserRegistry([new PlainTextParser(), new PdfParser(maxFileSizeBytes: 16)]),
+            new FixedSizeChunker(Options.Create(new ChunkingOptions()), new FakeTokenCounter()),
+            _embedder,
+            _repository,
+            NullLogger<FolderIndexer>.Instance);
+        File.Copy(Path.Combine(AppContext.BaseDirectory, "TestData", "sample.pdf"), PathOf("big.pdf"));
+        Write("good.txt", "кава");
+
+        var result = await indexer.IndexAsync(_folder);
+
+        Assert.Equal(1, result.Failed);
+        Assert.Equal(1, result.Indexed);
+        var big = await _repository.GetDocumentByPathAsync(PathOf("big.pdf"));
+        Assert.Equal(DocumentStatus.Error, big!.Status);
+        Assert.Contains("завеликий", big.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task Index_UnchangedBrokenFile_IsStillCountedAsFailed()
     {
         Write("broken.pdf", "NOT_A_PDF");
