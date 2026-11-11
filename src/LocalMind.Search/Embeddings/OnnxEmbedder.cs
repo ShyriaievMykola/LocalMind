@@ -143,6 +143,8 @@ public sealed class OnnxEmbedder : IEmbedder, IDisposable
 
         try
         {
+            // Файл лишається заблокованим, поки створюється сесія: між перевіркою хеша й завантаженням його не підмінити.
+            using var verified = ModelIntegrity.OpenVerified(_options.ModelPath, _options.ModelSha256, "Файл моделі");
             return new InferenceSession(_options.ModelPath);
         }
         catch (OnnxRuntimeException ex)

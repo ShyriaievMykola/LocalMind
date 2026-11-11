@@ -77,11 +77,12 @@ public sealed class ModelTokenizer
 
         try
         {
-            using var stream = File.OpenRead(_options.TokenizerPath);
+            // Токенізатор читається з того самого потоку, що й перевірявся, тож підмінити файл між перевіркою і читанням не можна.
+            using var stream = ModelIntegrity.OpenVerified(_options.TokenizerPath, _options.TokenizerSha256, "Файл токенізатора");
             return SentencePieceTokenizer.Create(stream, false, false);
         }
 #pragma warning disable CA1031 // Бібліотека кидає різні типи на пошкоджений файл; усі вони для нас означають одне.
-        catch (Exception ex) when (ex is not OutOfMemoryException)
+        catch (Exception ex) when (ex is not (OutOfMemoryException or LocalMindException))
 #pragma warning restore CA1031
         {
             throw new LocalMindException(
