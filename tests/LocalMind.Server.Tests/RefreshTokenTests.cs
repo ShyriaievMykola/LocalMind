@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using LocalMind.Core.Backup.Dtos;
 using LocalMind.Server.Auth;
 using LocalMind.Server.Data;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -150,6 +151,87 @@ public sealed class RefreshTokenTests(LocalMindServerFactory factory) : IClassFi
         {
             response.Dispose();
         }
+    }
+
+    [Fact]
+    public async Task Refresh_AfterPasswordChange_RevokesSession()
+    {
+        using var client = factory.CreateClient();
+        var email = NewEmail();
+        var tokens = await RegisterAndLoginAsync(client, email);
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+            var user = await users.FindByEmailAsync(email);
+            var changed = await users.ChangePasswordAsync(user!, Password, Password + " новий");
+            Assert.True(changed.Succeeded);
+        }
+
+        using var response = await RefreshAsync(client, tokens.RefreshToken);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Refresh_LockedOutUser_RevokesSession()
+    {
+        using var client = factory.CreateClient();
+        var email = NewEmail();
+        var tokens = await RegisterAndLoginAsync(client, email);
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+            var user = await users.FindByEmailAsync(email);
+            await users.SetLockoutEndDateAsync(user!, DateTimeOffset.UtcNow.AddHours(1));
+        }
+
+        using var locked = await RefreshAsync(client, tokens.RefreshToken);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, locked.StatusCode);
+    }
+
+    [Fact]
+    public async Task Refresh_AfterSessionMaxLifetime_Returns401EvenIfRotated()
+    {
+        var clock = new TestTimeProvider(DateTimeOffset.UtcNow);
+        using var app = factory.WithWebHostBuilder(b => b.ConfigureTestServices(
+            services => services.AddSingleton<TimeProvider>(clock)));
+        using var client = app.CreateClient();
+        var tokens = await RegisterAndLoginAsync(client);
+        for (var day = 0; day < 3; day++)
+        {
+            clock.Advance(TimeSpan.FromDays(10));
+            if (day < 2)
+            {
+                tokens = await RefreshOkAsync(client, tokens.RefreshToken);
+                Assert.True(tokens.RefreshTokenExpiresAt <= clock.GetUtcNow().AddDays(30));
+            }
+        }
+
+        using var response = await RefreshAsync(client, tokens.RefreshToken);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task RevokeAll_RevokesEverySessionOfUser()
+    {
+        using var client = factory.CreateClient();
+        var email = NewEmail();
+        var laptop = await RegisterAndLoginAsync(client, email);
+        var phone = await LoginAsync(client, email);
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
+            var user = await users.FindByEmailAsync(email);
+            await scope.ServiceProvider.GetRequiredService<RefreshTokenService>().RevokeAllAsync(user!.Id);
+        }
+
+        using var first = await RefreshAsync(client, laptop.RefreshToken);
+        using var second = await RefreshAsync(client, phone.RefreshToken);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, first.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, second.StatusCode);
     }
 
     private static string NewEmail() => $"user-{Guid.NewGuid():N}@example.com";

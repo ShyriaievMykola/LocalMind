@@ -11,7 +11,8 @@ namespace LocalMind.Server.Auth;
 
 /// <summary>
 /// Refresh-токени (SV-05, DR-018): у БД лише хеш, кожне оновлення видає новий токен і гасить старий,
-/// повторне пред'явлення вже використаного токена відкликає всю сесію.
+/// повторне пред'явлення вже використаного токена відкликає всю сесію. Сесія також стає недійсною, якщо змінився
+/// SecurityStamp користувача (зміна пароля), акаунт заблоковано або минув абсолютний строк сесії.
 /// </summary>
 public sealed class RefreshTokenService(ServerDbContext db, IOptions<JwtOptions> options, TimeProvider time)
 {
@@ -21,12 +22,13 @@ public sealed class RefreshTokenService(ServerDbContext db, IOptions<JwtOptions>
     public Task<(string Token, DateTimeOffset ExpiresAt)> IssueAsync(IdentityUser user, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(user);
-        return IssueAsync(user.Id, Guid.NewGuid(), cancellationToken);
+        return IssueAsync(user, Guid.NewGuid(), time.GetUtcNow(), cancellationToken);
     }
 
     /// <summary>
     /// Обмінює чинний токен на новий у тій самій сесії. Повертає <see langword="null"/>, якщо токен невідомий,
-    /// прострочений, відкликаний або вже використаний (тоді сесію відкликано).
+    /// прострочений, відкликаний, вже використаний, або користувач змінив пароль чи заблокований
+    /// (в останніх випадках сесію відкликано).
     /// </summary>
     public async Task<(IdentityUser User, string Token, DateTimeOffset ExpiresAt)?> RotateAsync(
         string token, CancellationToken cancellationToken = default)
@@ -44,7 +46,7 @@ public sealed class RefreshTokenService(ServerDbContext db, IOptions<JwtOptions>
             return null;
         }
 
-        if (stored.ExpiresAt <= now)
+        if (stored.ExpiresAt <= now || stored.SessionStartedAt + options.Value.SessionMaxLifetime <= now)
         {
             return null;
         }
@@ -60,13 +62,14 @@ public sealed class RefreshTokenService(ServerDbContext db, IOptions<JwtOptions>
             return null;
         }
 
-        var user = await db.Users.SingleOrDefaultAsync(u => u.Id == stored.UserId, cancellationToken);
-        if (user is null)
+        var user = await db.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Id == stored.UserId, cancellationToken);
+        if (user is null || user.SecurityStamp != stored.SecurityStamp || user.LockoutEnd > now)
         {
+            await RevokeSessionAsync(stored.SessionId, cancellationToken);
             return null;
         }
 
-        var (next, expiresAt) = await IssueAsync(user.Id, stored.SessionId, cancellationToken);
+        var (next, expiresAt) = await IssueAsync(user, stored.SessionId, stored.SessionStartedAt, cancellationToken);
         return (user, next, expiresAt);
     }
 
@@ -80,20 +83,33 @@ public sealed class RefreshTokenService(ServerDbContext db, IOptions<JwtOptions>
         }
     }
 
+    /// <summary>Відкликає всі сесії користувача — для зміни пароля чи підозри на компрометацію.</summary>
+    public async Task RevokeAllAsync(string userId, CancellationToken cancellationToken = default)
+    {
+        var now = time.GetUtcNow();
+        await db.RefreshTokens
+            .Where(t => t.UserId == userId && t.RevokedAt == null)
+            .ExecuteUpdateAsync(s => s.SetProperty(t => t.RevokedAt, now), cancellationToken);
+    }
+
     internal static string Hash(string token) =>
         Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
 
     private async Task<(string Token, DateTimeOffset ExpiresAt)> IssueAsync(
-        string userId, Guid sessionId, CancellationToken cancellationToken)
+        IdentityUser user, Guid sessionId, DateTimeOffset sessionStartedAt, CancellationToken cancellationToken)
     {
         var token = Base64UrlEncoder.Encode(RandomNumberGenerator.GetBytes(TokenBytes));
         var now = time.GetUtcNow();
+        var sessionEnd = sessionStartedAt + options.Value.SessionMaxLifetime;
         var expiresAt = now.Add(options.Value.RefreshTokenLifetime);
+        expiresAt = expiresAt < sessionEnd ? expiresAt : sessionEnd;
         db.RefreshTokens.Add(new RefreshTokenEntity
         {
             Id = Guid.NewGuid(),
-            UserId = userId,
+            UserId = user.Id,
             SessionId = sessionId,
+            SessionStartedAt = sessionStartedAt,
+            SecurityStamp = user.SecurityStamp,
             TokenHash = Hash(token),
             CreatedAt = now,
             ExpiresAt = expiresAt,

@@ -18,6 +18,8 @@ namespace LocalMind.Server.Data.Migrations
                     Id = table.Column<Guid>(type: "TEXT", nullable: false),
                     UserId = table.Column<string>(type: "TEXT", nullable: false),
                     SessionId = table.Column<Guid>(type: "TEXT", nullable: false),
+                    SessionStartedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
+                    SecurityStamp = table.Column<string>(type: "TEXT", maxLength: 256, nullable: true),
                     TokenHash = table.Column<string>(type: "TEXT", maxLength: 64, nullable: false),
                     CreatedAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
                     ExpiresAt = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
