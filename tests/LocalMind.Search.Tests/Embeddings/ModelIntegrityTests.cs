@@ -14,23 +14,36 @@ public sealed partial class ModelIntegrityTests : IDisposable
     public void Dispose() => Directory.Delete(_folder, recursive: true);
 
     [Fact]
-    public void OpenVerified_MatchingHash_ReturnsStreamAtStart()
+    public void ReadVerified_MatchingHash_ReturnsTheVerifiedBytes()
     {
         var path = Write("model.onnx", "вміст моделі");
 
         // Регістр hex не важливий.
-        using var stream = ModelIntegrity.OpenVerified(path, HashOf(path).ToUpperInvariant(), "Файл моделі");
+        var bytes = ModelIntegrity.ReadVerified(path, HashOf(path).ToUpperInvariant(), "Файл моделі");
 
-        Assert.Equal(0, stream.Position);
+        Assert.Equal(File.ReadAllBytes(path), bytes);
     }
 
     [Fact]
-    public void OpenVerified_OtherHash_ThrowsAndExplainsWhatToDo()
+    public void ReadVerified_BytesStayTheSameWhenFileIsReplacedAfterwards()
+    {
+        var path = Write("model.onnx", "справжня модель");
+        var expected = File.ReadAllBytes(path);
+
+        var bytes = ModelIntegrity.ReadVerified(path, HashOf(path), "Файл моделі");
+        File.WriteAllText(path, "підміна після перевірки");
+
+        // Сесію створюють саме з цих байтів, а не з файла, тож підміна вже нічого не змінює.
+        Assert.Equal(expected, bytes);
+    }
+
+    [Fact]
+    public void ReadVerified_OtherHash_ThrowsAndExplainsWhatToDo()
     {
         var path = Write("model.onnx", "підмінена модель");
         var expected = new string('a', 64);
 
-        var exception = Assert.Throws<LocalMindException>(() => ModelIntegrity.OpenVerified(path, expected, "Файл моделі"));
+        var exception = Assert.Throws<LocalMindException>(() => ModelIntegrity.ReadVerified(path, expected, "Файл моделі"));
 
         Assert.Contains("SHA-256", exception.Message, StringComparison.Ordinal);
         Assert.Contains(expected, exception.Message, StringComparison.Ordinal);
@@ -39,11 +52,11 @@ public sealed partial class ModelIntegrityTests : IDisposable
     }
 
     [Fact]
-    public void OpenVerified_OtherHash_ReleasesTheFile()
+    public void ReadVerified_ReleasesTheFile()
     {
         var path = Write("model.onnx", "підмінена модель");
 
-        Assert.Throws<LocalMindException>(() => ModelIntegrity.OpenVerified(path, new string('a', 64), "Файл моделі"));
+        Assert.Throws<LocalMindException>(() => ModelIntegrity.ReadVerified(path, new string('a', 64), "Файл моделі"));
 
         File.Delete(path); // не кине, якщо потік закрито
     }
@@ -51,28 +64,88 @@ public sealed partial class ModelIntegrityTests : IDisposable
     [Theory]
     [InlineData("")]
     [InlineData(null)]
-    public void OpenVerified_NoExpectedHash_DoesNotCheck(string? expected)
+    public void ReadVerified_NoExpectedHash_DoesNotCheck(string? expected)
     {
         var path = Write("model.onnx", "будь-що");
 
-        using var stream = ModelIntegrity.OpenVerified(path, expected, "Файл моделі");
-
-        Assert.Equal(0, stream.Position);
+        Assert.Equal(File.ReadAllBytes(path), ModelIntegrity.ReadVerified(path, expected, "Файл моделі"));
     }
 
     [Fact]
-    public void OpenVerified_WhileOpen_FileCannotBeOverwrittenOnWindows()
+    public void ReadVerified_FileOpenForWriting_ThrowsIOException()
     {
-        // На Linux і macOS блокування дорадчі, тож перевіряємо там, де вони обов'язкові.
-        if (!OperatingSystem.IsWindows())
+        var path = Write("model.onnx", "файл, який саме завантажують");
+        using var downloading = new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.None);
+
+        Assert.Throws<IOException>(() => ModelIntegrity.ReadVerified(path, null, "Файл моделі"));
+    }
+
+    [Fact]
+    public void Tokenizer_FileBusy_ExplainsToWaitOrDownload()
+    {
+        var path = Write("tokenizer.model", "файл, який саме завантажують");
+        var tokenizer = new ModelTokenizer(Options.Create(new EmbeddingModelOptions { TokenizerPath = path }));
+        using var downloading = new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.None);
+
+        var exception = Assert.Throws<LocalMindException>(() => tokenizer.CountTokens("текст"));
+
+        Assert.Contains("недоступний", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("download-models", exception.Message, StringComparison.Ordinal);
+        Assert.IsAssignableFrom<IOException>(exception.InnerException);
+    }
+
+    [ModelFact]
+    public async Task Embedder_ModelFileBusy_ExplainsToWaitOrDownload()
+    {
+        var real = TestModel.Options();
+        var options = Options.Create(new EmbeddingModelOptions
         {
-            return;
-        }
+            ModelName = real.ModelName,
+            ModelPath = Write("model.onnx", "файл, який саме завантажують"),
+            TokenizerPath = real.TokenizerPath,
+            Dimensions = real.Dimensions,
+        });
+        using var embedder = new OnnxEmbedder(options, new ModelTokenizer(options));
+        using var downloading = new FileStream(options.Value.ModelPath, FileMode.Open, FileAccess.Write, FileShare.None);
 
-        var path = Write("model.onnx", "вміст");
-        using var stream = ModelIntegrity.OpenVerified(path, HashOf(path), "Файл моделі");
+        var exception = await Assert.ThrowsAsync<LocalMindException>(
+            () => embedder.EmbedAsync(["текст"], Core.Models.EmbeddingPurpose.Query));
 
-        Assert.Throws<IOException>(() => File.WriteAllText(path, "підміна"));
+        Assert.Contains("недоступний", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("download-models", exception.Message, StringComparison.Ordinal);
+    }
+
+    [ModelFact]
+    public async Task Embedder_SessionIsCreatedFromVerifiedBytes_NotFromThePathAgain()
+    {
+        var real = TestModel.Options();
+        var original = "модель, що пройшла перевірку"u8.ToArray();
+        var path = Write("model.onnx", string.Empty);
+        File.WriteAllBytes(path, original);
+        var options = Options.Create(new EmbeddingModelOptions
+        {
+            ModelName = real.ModelName,
+            ModelPath = path,
+            TokenizerPath = real.TokenizerPath,
+            ModelSha256 = Convert.ToHexStringLower(SHA256.HashData(original)),
+            Dimensions = real.Dimensions,
+        });
+        byte[]? received = null;
+        using var embedder = new OnnxEmbedder(
+            options,
+            new ModelTokenizer(options),
+            model =>
+            {
+                // Саме тут, між перевіркою й створенням сесії, зловмисник підмінив би файл.
+                File.WriteAllText(path, "підміна між перевіркою і завантаженням");
+                received = model;
+                throw new InvalidOperationException("зупинка після отримання байтів");
+            });
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => embedder.EmbedAsync(["текст"], Core.Models.EmbeddingPurpose.Query));
+
+        Assert.Equal(original, received);
     }
 
     [Fact]
@@ -117,8 +190,8 @@ public sealed partial class ModelIntegrityTests : IDisposable
     {
         var real = TestModel.Options();
 
-        using var model = ModelIntegrity.OpenVerified(real.ModelPath, ConfiguredHash("ModelSha256"), "Файл моделі");
-        using var tokenizer = ModelIntegrity.OpenVerified(real.TokenizerPath, ConfiguredHash("TokenizerSha256"), "Файл токенізатора");
+        Assert.NotEmpty(ModelIntegrity.ReadVerified(real.ModelPath, ConfiguredHash("ModelSha256"), "Файл моделі"));
+        Assert.NotEmpty(ModelIntegrity.ReadVerified(real.TokenizerPath, ConfiguredHash("TokenizerSha256"), "Файл токенізатора"));
     }
 
     [Theory]

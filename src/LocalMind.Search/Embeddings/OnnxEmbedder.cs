@@ -18,9 +18,22 @@ public sealed class OnnxEmbedder : IEmbedder, IDisposable
     private readonly EmbeddingModelOptions _options;
     private readonly ModelTokenizer _tokenizer;
     private readonly LoadOnce<InferenceSession> _session;
+    private readonly Func<byte[], InferenceSession> _sessionFactory;
 
     public OnnxEmbedder(IOptions<EmbeddingModelOptions> options, ModelTokenizer tokenizer)
+        : this(options, tokenizer, model => new InferenceSession(model))
     {
+    }
+
+    // sessionFactory створює сесію з перевірених байтів моделі; у тестах підміняється.
+    internal OnnxEmbedder(
+        IOptions<EmbeddingModelOptions> options,
+        ModelTokenizer tokenizer,
+        Func<byte[], InferenceSession> sessionFactory)
+    {
+        ArgumentNullException.ThrowIfNull(sessionFactory);
+        _sessionFactory = sessionFactory;
+
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(tokenizer);
 
@@ -141,11 +154,25 @@ public sealed class OnnxEmbedder : IEmbedder, IDisposable
                 $"Файл моделі не знайдено: {_options.ModelPath}. Запустіть scripts/download-models.");
         }
 
+        byte[] model;
         try
         {
-            // Файл лишається заблокованим, поки створюється сесія: між перевіркою хеша й завантаженням його не підмінити.
-            using var verified = ModelIntegrity.OpenVerified(_options.ModelPath, _options.ModelSha256, "Файл моделі");
-            return new InferenceSession(_options.ModelPath);
+            // Сесія створюється з тих самих байтів, що пройшли перевірку хеша, а не з файла за шляхом: між перевіркою
+            // і завантаженням файл не підмінити. Байти живуть лише до кінця цього методу, тож двох копій моделі
+            // в пам'яті довго немає: після створення сесії масив збирає GC.
+            model = ModelIntegrity.ReadVerified(_options.ModelPath, _options.ModelSha256, "Файл моделі");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Найчастіше файл зайнятий: його саме завантажує scripts/download-models.
+            throw new LocalMindException(
+                $"Файл моделі недоступний: {_options.ModelPath} ({ex.Message}). " +
+                "Дочекайтеся завершення завантаження або запустіть scripts/download-models.", ex);
+        }
+
+        try
+        {
+            return _sessionFactory(model);
         }
         catch (OnnxRuntimeException ex)
         {
