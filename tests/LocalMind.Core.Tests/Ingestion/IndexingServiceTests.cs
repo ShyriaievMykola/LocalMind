@@ -292,6 +292,29 @@ public sealed class IndexingServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task RemoveFolder_OtherCase_FollowsOsRule()
+    {
+        Write("note.txt", "текст");
+        var service = CreateService();
+        await service.AddFolderAsync(_folder);
+        await WaitUntilAsync(() => service.Progress is { IsCompleted: true, Total: 1 });
+
+        await service.RemoveFolderAsync(_folder.ToUpperInvariant());
+
+        if (FilePaths.IgnoreCase)
+        {
+            Assert.Empty(await _repository.GetDocumentsAsync());
+            Assert.Equal(0, _vectorIndex.Count);
+            Assert.Empty(await service.GetFoldersAsync());
+        }
+        else
+        {
+            Assert.Single(await _repository.GetDocumentsAsync());
+            Assert.Single(await service.GetFoldersAsync());
+        }
+    }
+
+    [Fact]
     public async Task AddFolder_MissingFolder_ThrowsDirectoryNotFoundException()
     {
         var service = CreateService();
