@@ -1,5 +1,6 @@
 using LocalMind.Core.Models;
 using LocalMind.Core.Storage;
+using LocalMind.Core.Storage.Entities;
 using LocalMind.TestUtilities;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -237,6 +238,208 @@ public sealed class DocumentRepositoryTests : IAsyncLifetime, IDisposable
         Assert.Equal(insideChunks[0].Id, Assert.Single(removed));
         Assert.Empty(await _repository.GetSourceFoldersAsync());
         Assert.Equal(similarName, Assert.Single(await _repository.GetDocumentsAsync()));
+    }
+
+    [Fact]
+    public async Task DeleteDocumentRow_CascadesToChunksAndVectors()
+    {
+        var document = TestData.Document();
+        await _repository.SaveAsync(document, TestData.Chunks(document.Id, "1", "2"), Vectors(2), Model);
+
+        await using var context = _factory.CreateDbContext();
+        await context.Database.ExecuteSqlAsync($"DELETE FROM Documents WHERE Id = {document.Id}");
+
+        Assert.Equal(0, await context.Chunks.CountAsync());
+        Assert.Equal(0, await context.Embeddings.CountAsync());
+        Assert.Equal(1, await context.EmbeddingModels.CountAsync());
+    }
+
+    [Fact]
+    public async Task DeleteModelWithVectors_IsRestricted()
+    {
+        var document = TestData.Document();
+        await _repository.SaveAsync(document, TestData.Chunks(document.Id, "1"), Vectors(1), Model);
+
+        await using var context = _factory.CreateDbContext();
+
+        await Assert.ThrowsAsync<SqliteException>(
+            () => context.Database.ExecuteSqlAsync($"DELETE FROM EmbeddingModels WHERE Name = {Model}"));
+        Assert.Single(await CollectVectorsAsync(Model));
+    }
+
+    [Fact]
+    public async Task InsertDuplicatePath_ViolatesUniqueIndex()
+    {
+        await _repository.SaveAsync(TestData.Document("/notes/a.md"), [], [], Model);
+
+        await using var context = _factory.CreateDbContext();
+        context.Documents.Add(new DocumentEntity { Id = Guid.NewGuid(), Path = "/notes/a.md", ContentHash = TestData.Hash(1) });
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+    }
+
+    [Fact]
+    public async Task InsertChunkOfMissingDocument_ViolatesForeignKey()
+    {
+        await using var context = _factory.CreateDbContext();
+        context.Chunks.Add(new ChunkEntity { Id = Guid.NewGuid(), DocumentId = Guid.NewGuid(), Text = "сирота" });
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+    }
+
+    [Fact]
+    public async Task Save_Reindex_LeavesNoOrphanRows()
+    {
+        var path = "/notes/a.md";
+        for (var version = 0; version < 3; version++)
+        {
+            var document = TestData.Document(path, hashSeed: version);
+            await _repository.SaveAsync(document, TestData.Chunks(document.Id, "1", "2", "3"), Vectors(3), Model);
+        }
+
+        await using var context = _factory.CreateDbContext();
+        Assert.Equal(1, await context.Documents.CountAsync());
+        Assert.Equal(3, await context.Chunks.CountAsync());
+        Assert.Equal(3, await context.Embeddings.CountAsync());
+    }
+
+    [Fact]
+    public async Task Save_SameIdNewPath_ReplacesDocument()
+    {
+        var id = Guid.NewGuid();
+        var old = TestData.Document("/notes/old.md", id: id);
+        var oldChunks = TestData.Chunks(id, "старий");
+        await _repository.SaveAsync(old, oldChunks, Vectors(1), Model);
+
+        var moved = TestData.Document("/notes/new.md", id: id);
+        var replaced = await _repository.SaveAsync(moved, TestData.Chunks(id, "новий"), Vectors(1), Model);
+
+        Assert.Equal(oldChunks[0].Id, Assert.Single(replaced));
+        Assert.Equal(moved, Assert.Single(await _repository.GetDocumentsAsync()));
+        Assert.Null(await _repository.GetDocumentByPathAsync("/notes/old.md"));
+    }
+
+    [Fact]
+    public async Task Save_Cancelled_KeepsOldVersion()
+    {
+        var document = TestData.Document("/notes/a.md");
+        await _repository.SaveAsync(document, TestData.Chunks(document.Id, "старий"), Vectors(1), Model);
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        var newDocument = TestData.Document("/notes/a.md", hashSeed: 1);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => _repository.SaveAsync(newDocument, TestData.Chunks(newDocument.Id, "новий"), Vectors(1), Model, cts.Token));
+
+        Assert.Equal(document, await _repository.GetDocumentByPathAsync("/notes/a.md"));
+    }
+
+    [Fact]
+    public async Task Save_OtherModel_KeepsVectorsSeparate()
+    {
+        var first = TestData.Document("/notes/a.md");
+        await _repository.SaveAsync(first, TestData.Chunks(first.Id, "1"), Vectors(1), Model);
+        var second = TestData.Document("/notes/b.md");
+        await _repository.SaveAsync(second, TestData.Chunks(second.Id, "2"), Vectors(1), "other-model");
+
+        Assert.Single(await CollectVectorsAsync(Model));
+        Assert.Single(await CollectVectorsAsync("other-model"));
+    }
+
+    [Theory]
+    [InlineData("/notes/b.md")]
+    [InlineData("/Notes/a.md")]
+    [InlineData("/notes/a.md/")]
+    public async Task GetDocumentByPath_OtherPath_ReturnsNull(string path)
+    {
+        await _repository.SaveAsync(TestData.Document("/notes/a.md"), [], [], Model);
+
+        Assert.Null(await _repository.GetDocumentByPathAsync(path));
+    }
+
+    [Fact]
+    public async Task CyrillicPath_RoundTrips()
+    {
+        var document = TestData.Document("/нотатки/Подорож до Львова.md");
+        await _repository.AddSourceFolderAsync("/нотатки/");
+        await _repository.SaveAsync(document, TestData.Chunks(document.Id, "квитки"), Vectors(1), Model);
+
+        Assert.Equal("/нотатки", Assert.Single(await _repository.GetSourceFoldersAsync()));
+        Assert.Equal(document, await _repository.GetDocumentByPathAsync("/нотатки/Подорож до Львова.md"));
+        Assert.Single(await _repository.RemoveSourceFolderAsync("/нотатки"));
+    }
+
+    [Fact]
+    public async Task RemoveSourceFolder_WindowsPaths_RemovesNestedOnly()
+    {
+        await _repository.AddSourceFolderAsync(@"C:\notes\");
+        var nested = TestData.Document(@"C:\notes\sub\a.md");
+        var similar = TestData.Document(@"C:\notes2\b.md");
+        await _repository.SaveAsync(nested, TestData.Chunks(nested.Id, "1", "2"), Vectors(2), Model);
+        await _repository.SaveAsync(similar, TestData.Chunks(similar.Id, "3"), Vectors(1), Model);
+
+        var removed = await _repository.RemoveSourceFolderAsync(@"C:\notes");
+
+        Assert.Equal(2, removed.Count);
+        Assert.Equal(similar, Assert.Single(await _repository.GetDocumentsAsync()));
+    }
+
+    [Fact]
+    public async Task RemoveSourceFolder_Unknown_KeepsEverything()
+    {
+        await _repository.AddSourceFolderAsync("/notes");
+        await _repository.SaveAsync(TestData.Document("/notes/a.md"), [], [], Model);
+
+        Assert.Empty(await _repository.RemoveSourceFolderAsync("/other"));
+        Assert.Single(await _repository.GetSourceFoldersAsync());
+        Assert.Single(await _repository.GetDocumentsAsync());
+    }
+
+    [Fact]
+    public async Task Save_ErrorDocument_KeepsErrorText()
+    {
+        var document = TestData.Document(status: DocumentStatus.Error);
+
+        await _repository.SaveAsync(document, [], [], Model);
+
+        var stored = await _repository.GetDocumentAsync(document.Id);
+        Assert.Equal(DocumentStatus.Error, stored!.Status);
+        Assert.Equal(document.Error, stored.Error);
+    }
+
+    [Fact]
+    public async Task GetVectors_Cancelled_Throws()
+    {
+        var document = TestData.Document();
+        await _repository.SaveAsync(document, TestData.Chunks(document.Id, "1"), Vectors(1), Model);
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+        {
+            await foreach (var _ in _repository.GetVectorsAsync(Model, cts.Token))
+            {
+            }
+        });
+    }
+
+    [Fact]
+    public async Task InvalidArguments_Throw()
+    {
+        var document = TestData.Document();
+
+        await Assert.ThrowsAsync<ArgumentException>(() => _repository.AddSourceFolderAsync(" "));
+        await Assert.ThrowsAsync<ArgumentException>(() => _repository.RemoveSourceFolderAsync(""));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _repository.GetDocumentByPathAsync(null!));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _repository.GetDocumentsAsync(null!));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => _repository.GetChunksAsync(null!));
+        await Assert.ThrowsAsync<ArgumentException>(() => _repository.SaveAsync(document, [], [], " "));
+        await Assert.ThrowsAsync<ArgumentException>(async () =>
+        {
+            await foreach (var _ in _repository.GetVectorsAsync(""))
+            {
+            }
+        });
     }
 
     private static List<ReadOnlyMemory<float>> Vectors(int count) =>
