@@ -2,11 +2,17 @@
 
   <!-- Сервер бекапу: автентифікація (Identity + JWT), зберігання зашифрованих знімків. -->
 
+  <PropertyGroup>
+    <!-- Секрети (ключ JWT) у Development — через `dotnet user-secrets`, поза репозиторієм. -->
+    <UserSecretsId>localmind-server</UserSecretsId>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
     <PackageReference Include="Microsoft.OpenApi" />
     <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all" />
   </ItemGroup>

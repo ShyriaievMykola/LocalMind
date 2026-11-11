@@ -17,3 +17,11 @@ Content-Type: application/json
 { "email": "demo@example.com", "password": "довгий тестовий пароль" }
 
 ###
+
+# Підставте accessToken з відповіді на login.
+@AccessToken = paste-access-token-here
+
+GET {{LocalMind.Server_HostAddress}}/api/v1/auth/me
+Authorization: Bearer {{AccessToken}}
+
+###

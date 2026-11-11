@@ -1,8 +1,10 @@
 using LocalMind.Server.Auth;
 using LocalMind.Server.Data;
 using LocalMind.Server.Endpoints;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,7 +19,23 @@ var connectionString = builder.Configuration.GetConnectionString("Server")
     ?? throw new InvalidOperationException("Не задано рядок підключення ConnectionStrings:Server.");
 builder.Services.AddDbContext<ServerDbContext>(options => options.UseSqlite(connectionString));
 
-builder.Services.AddAuthentication();
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddOptions<JwtOptions>()
+    .BindConfiguration(JwtOptions.SectionName)
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+builder.Services.AddSingleton<JwtTokenService>();
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();
+builder.Services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
+    .Configure<IOptions<JwtOptions>, IHostEnvironment>((bearer, jwt, environment) =>
+    {
+        bearer.MapInboundClaims = false;
+
+        // Причина відмови (прострочено, чужий ключ…) у WWW-Authenticate — лише для налагодження.
+        bearer.IncludeErrorDetails = environment.IsDevelopment();
+        bearer.TokenValidationParameters = JwtTokenService.CreateValidationParameters(jwt.Value);
+    });
+builder.Services.AddAuthorization();
 builder.Services
     .AddIdentityCore<IdentityUser>(options =>
     {
@@ -43,6 +61,9 @@ builder.Services
 
 var app = builder.Build();
 
+// Без коректного ключа JWT сервер не стартує — перевіряємо до міграцій, а не лише в StartAsync.
+_ = app.Services.GetRequiredService<IOptions<JwtOptions>>().Value;
+
 // Сервер — один процес з однією SQLite-базою, тож міграції застосовуємо на старті.
 await using (var scope = app.Services.CreateAsyncScope())
 {
@@ -64,6 +85,8 @@ else
 }
 
 app.UseHttpsRedirection();
+app.UseAuthentication();
+app.UseAuthorization();
 
 var api = app.MapGroup("/api/v1");
 api.MapHealthChecks("/health").WithMetadata(new HttpMethodMetadata([HttpMethods.Get, HttpMethods.Head]));
