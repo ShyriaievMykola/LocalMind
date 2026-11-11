@@ -87,4 +87,54 @@ public class MarkdownParserTests
         Assert.Null(result.Title);
         Assert.False(result.HasText);
     }
+
+    [Fact]
+    public async Task ParseAsync_InlineElements_KeepsTheirText()
+    {
+        var result = await ParseTextAsync(
+            "Команда `dotnet test`, сайт <https://example.com>, знак &copy; і формула $E=mc^2$.  \nНовий рядок з **жирним _вкладеним_** текстом.");
+
+        Assert.Contains("Команда dotnet test", result.Text);
+        Assert.Contains("https://example.com", result.Text);
+        Assert.Contains("©", result.Text);
+        Assert.Contains("E=mc^2", result.Text);
+        Assert.Contains("\nНовий рядок з жирним вкладеним текстом.", result.Text);
+        Assert.DoesNotContain("`", result.Text);
+        Assert.DoesNotContain("**", result.Text);
+    }
+
+    [Fact]
+    public async Task ParseAsync_HtmlBlock_StripsTagsAndKeepsText()
+    {
+        var result = await ParseTextAsync("Вступ\n\n<div class=\"note\"><b>Увага</b>: текст у HTML</div>\n\n<!-- коментар -->\n\nКінець");
+
+        Assert.Contains("Увага: текст у HTML", result.Text);
+        Assert.DoesNotContain("<", result.Text);
+        Assert.DoesNotContain("коментар", result.Text);
+        Assert.EndsWith("Кінець", result.Text);
+    }
+
+    [Fact]
+    public async Task ParseAsync_WhitespaceOnly_ReturnsEmpty()
+    {
+        var result = await ParseTextAsync("   \n\n\t  ");
+
+        Assert.False(result.HasText);
+    }
+
+    [Fact]
+    public async Task ParseAsync_Cancelled_Throws()
+    {
+        using var stream = new MemoryStream("# Заголовок"u8.ToArray());
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => _parser.ParseAsync(stream, cts.Token));
+    }
+
+    private async Task<Core.Models.ParsedDocument> ParseTextAsync(string markdown)
+    {
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(markdown));
+        return await _parser.ParseAsync(stream);
+    }
 }
