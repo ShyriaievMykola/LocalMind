@@ -23,7 +23,10 @@ internal sealed class FakeSearchService : ISearchService
         return Handler(query, cancellationToken);
     }
 
-    public SearchViewModel CreateViewModel(CoreStatus? status = null, int defaultTopK = SearchQuery.DefaultTopK)
+    public SearchViewModel CreateViewModel(
+        CoreStatus? status = null,
+        int defaultTopK = SearchQuery.DefaultTopK,
+        SearchMode defaultMode = SearchMode.Hybrid)
     {
         if (status is null)
         {
@@ -32,7 +35,7 @@ internal sealed class FakeSearchService : ISearchService
             status.SetReady();
         }
 
-        return new SearchViewModel(this, status, Options.Create(new SearchOptions { DefaultTopK = defaultTopK }),
+        return new SearchViewModel(this, status, Options.Create(new SearchOptions { DefaultTopK = defaultTopK, DefaultMode = defaultMode }),
             NullLogger<SearchViewModel>.Instance,
             new ResultCardFactory(new InMemoryDocumentRepository(), new FakeFileLauncher(), NullLogger<ResultCardViewModel>.Instance));
     }

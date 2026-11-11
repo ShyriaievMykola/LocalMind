@@ -1,3 +1,4 @@
+using LocalMind.App.Services;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
@@ -21,6 +22,8 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop && Services is not null)
         {
+            // Збережена тема — до показу вікна, щоб воно не блимнуло іншою темою.
+            Services.GetRequiredService<IThemeService>().Apply(Services.GetRequiredService<IUserSettingsService>().Current.Theme);
             desktop.MainWindow = new MainWindow
             {
                 DataContext = Services.GetRequiredService<MainViewModel>(),

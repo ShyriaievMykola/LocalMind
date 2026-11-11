@@ -21,13 +21,17 @@ public sealed class AppHostTests : IDisposable
 
     public AppHostTests() => Directory.CreateDirectory(_folder);
 
+    
+    /// <summary>Окремий файл налаштувань: тести не читають справжній settings.json користувача.</summary>
+    private string SettingsPath => Path.Combine(_folder, "settings.json");
+
     [Fact]
     public async Task Build_ResultCardCommand_UsesRegisteredFileLauncher()
     {
         var files = new FakeFileLauncher();
         var result = new SearchResult(TestData.Chunk(Guid.NewGuid()), Path.Combine(_folder, "note.md"), 0.9);
         var search = new FakeSearchService { Handler = (_, _) => Task.FromResult<IReadOnlyList<SearchResult>>([result]) };
-        var builder = AppHost.CreateBuilder([]);
+        var builder = AppHost.CreateBuilder([], SettingsPath);
         builder.Services.AddSingleton<IFileLauncher>(files);
         builder.Services.AddSingleton<ISearchService>(search);
         builder.Services.AddSingleton<IDocumentRepository>(new InMemoryDocumentRepository());
@@ -47,7 +51,7 @@ public sealed class AppHostTests : IDisposable
     [Fact]
     public async Task Start_InvalidSearchOptions_WindowViewModelStillResolves()
     {
-        var builder = AppHost.CreateBuilder([]);
+        var builder = AppHost.CreateBuilder([], SettingsPath);
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
             [$"{SearchOptions.SectionName}:{nameof(SearchOptions.DefaultTopK)}"] = "0",
@@ -79,13 +83,27 @@ public sealed class AppHostTests : IDisposable
     }
 
     [Fact]
+    public async Task Build_UserSettingsFile_IsAppliedOnTopOfDefaults()
+    {
+        await File.WriteAllTextAsync(SettingsPath, """
+            { "LocalMind": { "App": { "Theme": "Dark" }, "Search": { "DefaultTopK": 25, "DefaultMode": "Keyword" } } }
+            """);
+        using var host = AppHost.CreateBuilder([], SettingsPath).Build();
+
+        Assert.Equal(ThemePreference.Dark, host.Services.GetRequiredService<IOptions<AppOptions>>().Value.Theme);
+        var search = host.Services.GetRequiredService<SearchViewModel>();
+        Assert.Equal(25m, search.TopK);
+        Assert.Equal(SearchMode.Keyword, search.SelectedMode);
+    }
+
+    [Fact]
     public void Build_NavigationUsesRegisteredPages_WithExpectedLifetimes()
     {
-        var builder = AppHost.CreateBuilder([]);
+        var builder = AppHost.CreateBuilder([], SettingsPath);
         // Підміна доводить, що навігація отримує VM з контейнера, а не створює їх через new.
         var search = new FakeSearchService().CreateViewModel();
         var library = new FakeIndexingService().CreateViewModel();
-        var settings = new SettingsViewModel();
+        var settings = new FakeUserSettingsService().CreateViewModel();
         builder.Services.AddSingleton(search);
         builder.Services.AddSingleton(library);
         builder.Services.AddSingleton(settings);
@@ -140,9 +158,9 @@ public sealed class AppHostTests : IDisposable
         Directory.Delete(_folder, recursive: true);
     }
 
-    private static IHost BuildHost(string databasePath)
+    private IHost BuildHost(string databasePath)
     {
-        var builder = AppHost.CreateBuilder([]);
+        var builder = AppHost.CreateBuilder([], SettingsPath);
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
             [$"{StorageOptions.SectionName}:{nameof(StorageOptions.DatabasePath)}"] = databasePath,

@@ -24,6 +24,11 @@ public sealed class SearchOptionsValidator : IValidateOptions<SearchOptions>
                 $"за DefaultTopK ({options.DefaultTopK}).");
         }
 
+        if (!Enum.IsDefined(options.DefaultMode))
+        {
+            errors.Add($"{Section}:DefaultMode — невідомий режим «{options.DefaultMode}».");
+        }
+
         if (options.RrfK <= 0)
         {
             errors.Add($"{Section}:RrfK має бути більше 0 (зараз {options.RrfK}).");
