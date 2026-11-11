@@ -2,12 +2,8 @@ using System.CommandLine;
 using System.Text;
 using LocalMind.Cli;
 using LocalMind.Cli.Commands;
-using LocalMind.Core;
 using LocalMind.Core.Errors;
-using LocalMind.Search;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 Console.OutputEncoding = Encoding.UTF8;
@@ -18,18 +14,13 @@ var configuration = new ConfigurationBuilder()
     .AddEnvironmentVariables()
     .Build();
 
-await using var services = new ServiceCollection()
-    .AddLogging(logging => logging
-        .AddSimpleConsole(console => console.SingleLine = true)
-        .SetMinimumLevel(LogLevel.Warning))
-    .AddLocalMindCore(configuration)
-    .AddLocalMindSearch(configuration)
-    .BuildServiceProvider();
+await using var services = CliServices.Build(configuration);
 
 var root = new RootCommand("LocalMind: семантичний пошук по особистих нотатках")
 {
     IndexCommand.Create(services),
     SearchCommand.Create(services),
+    EvalCommand.Create(configuration),
 };
 
 try
