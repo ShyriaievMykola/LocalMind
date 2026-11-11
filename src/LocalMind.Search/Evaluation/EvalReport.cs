@@ -40,7 +40,10 @@ public sealed record EvalRow(
 /// <param name="Chunks">Скільки фрагментів створено.</param>
 /// <param name="IndexingTime">Час індексації корпусу.</param>
 /// <param name="DatabaseBytes">Розмір бази після індексації; 0, якщо шлях не передано.</param>
-/// <param name="PeakMemoryBytes">Пікова пам'ять процесу (working set) на кінець прогону.</param>
+/// <param name="PeakMemoryBytes">
+/// Пікова пам'ять процесу. На Windows і Linux — справжній пік working set; на macOS ОС його не віддає, тож це найбільше
+/// із замірів working set і пам'яті GC після індексації та кожного режиму (оцінка знизу).
+/// </param>
 /// <param name="Rows">Рядки результатів.</param>
 public sealed record EvalReport(
     string Dataset,

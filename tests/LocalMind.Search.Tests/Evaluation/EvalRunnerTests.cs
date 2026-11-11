@@ -138,6 +138,16 @@ public sealed class EvalRunnerTests : IDisposable
         Assert.Contains("не вдалося проіндексувати", exception.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void SamplePeakMemory_IsPositiveOnEveryOsAndNeverDecreases()
+    {
+        var first = EvalRunner.SamplePeakMemory(0);
+
+        Assert.True(first > 0);
+        Assert.Equal(long.MaxValue, EvalRunner.SamplePeakMemory(long.MaxValue));
+        Assert.True(EvalRunner.SamplePeakMemory(first) >= first);
+    }
+
     [Theory]
     [MemberData(nameof(InvalidRuns))]
     public async Task RunAsync_InvalidRuns_Throw(EvalRun[] runs)

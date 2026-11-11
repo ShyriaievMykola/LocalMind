@@ -40,6 +40,7 @@ public static class EvalRunner
         ArgumentNullException.ThrowIfNull(search);
         ValidateRuns(runs);
 
+        long peakMemory = 0;
         var stopwatch = Stopwatch.StartNew();
         var indexing = await indexer.IndexAsync(dataset.CorpusDirectory, cancellationToken: cancellationToken);
         stopwatch.Stop();
@@ -50,6 +51,7 @@ public static class EvalRunner
                 "Перевірте їх командою index.");
         }
 
+        peakMemory = SamplePeakMemory(peakMemory);
         var corpus = Path.GetFullPath(dataset.CorpusDirectory);
         var rows = new List<EvalRow>();
         foreach (var run in runs)
@@ -57,6 +59,7 @@ public static class EvalRunner
             foreach (var mode in run.Modes)
             {
                 rows.AddRange(await RunModeAsync(dataset, search, corpus, run, mode, cancellationToken));
+                peakMemory = SamplePeakMemory(peakMemory);
             }
         }
 
@@ -66,8 +69,23 @@ public static class EvalRunner
             indexing.Chunks,
             stopwatch.Elapsed,
             DatabaseSize(databasePath),
-            Process.GetCurrentProcess().PeakWorkingSet64,
+            peakMemory,
             rows);
+    }
+
+    /// <summary>
+    /// Пікова пам'ять процесу. <c>PeakWorkingSet64</c> на macOS завжди 0, тож береться найбільше з нього,
+    /// поточного working set (знімок після індексації й кожного режиму) і обсягу, який виділив GC.
+    /// На macOS це оцінка знизу, а не справжній пік.
+    /// </summary>
+    internal static long SamplePeakMemory(long previous)
+    {
+        using var process = Process.GetCurrentProcess();
+        return Math.Max(
+            previous,
+            Math.Max(
+                Math.Max(process.PeakWorkingSet64, process.WorkingSet64),
+                GC.GetGCMemoryInfo().TotalCommittedBytes));
     }
 
     /// <summary>Перцентиль методом найближчого рангу; <paramref name="values"/> не порожній.</summary>
