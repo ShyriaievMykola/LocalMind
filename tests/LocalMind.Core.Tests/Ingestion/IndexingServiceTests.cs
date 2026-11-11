@@ -247,7 +247,7 @@ public sealed class IndexingServiceTests : IDisposable
             await service.AddFolderAsync(_folder);
             await WaitUntilAsync(() => logger.Entries.Any(e => e.Message.Contains("зайнятий", StringComparison.Ordinal)));
 
-            if (rescanDuringRetry)
+            if (watcher is not null)
             {
                 // Повторне повідомлення спостерігача ставить поточний файл у чергу ще раз.
                 watcher.OnWatcherError(_folder);
@@ -293,6 +293,29 @@ public sealed class IndexingServiceTests : IDisposable
         Assert.Empty(await _repository.GetDocumentsAsync());
         Assert.Equal(0, _vectorIndex.Count);
         Assert.Empty(await service.GetFoldersAsync());
+    }
+
+    [Fact]
+    public async Task RemoveFolder_OtherCase_FollowsOsRule()
+    {
+        Write("note.txt", "текст");
+        var service = CreateService();
+        await service.AddFolderAsync(_folder);
+        await WaitUntilAsync(() => service.Progress is { IsCompleted: true, Total: 1 });
+
+        await service.RemoveFolderAsync(_folder.ToUpperInvariant());
+
+        if (FilePaths.IgnoreCase)
+        {
+            Assert.Empty(await _repository.GetDocumentsAsync());
+            Assert.Equal(0, _vectorIndex.Count);
+            Assert.Empty(await service.GetFoldersAsync());
+        }
+        else
+        {
+            Assert.Single(await _repository.GetDocumentsAsync());
+            Assert.Single(await service.GetFoldersAsync());
+        }
     }
 
     [Fact]
