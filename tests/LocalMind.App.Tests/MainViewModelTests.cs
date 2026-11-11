@@ -10,6 +10,7 @@ public sealed class MainViewModelTests
     private readonly SearchViewModel _search = new FakeSearchService().CreateViewModel();
     private readonly LibraryViewModel _library = new FakeIndexingService().CreateViewModel();
     private readonly SettingsViewModel _settings = new();
+    private readonly IndexingProgressViewModel _indexingProgress = new FakeIndexingService().CreateProgressViewModel();
 
     [Fact]
     public async Task Dispose_CancelsSearchOwnedByWindow()
@@ -23,7 +24,7 @@ public sealed class MainViewModelTests
             return [];
         };
         var search = service.CreateViewModel();
-        using var viewModel = new MainViewModel(_status, search, _library, _settings);
+        using var viewModel = new MainViewModel(_status, search, _library, _settings, _indexingProgress);
         search.QueryText = "нотатка";
         var pending = search.SearchCommand.ExecuteAsync(null);
         var cancellation = await started.Task.WaitAsync(TimeSpan.FromSeconds(10));
@@ -40,7 +41,18 @@ public sealed class MainViewModelTests
     public void Dispose_StopsLibraryUpdates()
     {
         var indexing = new FakeIndexingService();
-        var viewModel = new MainViewModel(_status, _search, indexing.CreateViewModel(), _settings);
+        var viewModel = new MainViewModel(_status, _search, indexing.CreateViewModel(), _settings, _indexingProgress);
+
+        viewModel.Dispose();
+
+        Assert.False(indexing.HasSubscribers);
+    }
+
+    [Fact]
+    public void Dispose_StopsProgressUpdates()
+    {
+        var indexing = new FakeIndexingService();
+        var viewModel = new MainViewModel(_status, _search, _library, _settings, indexing.CreateProgressViewModel());
 
         viewModel.Dispose();
 
@@ -110,6 +122,7 @@ public sealed class MainViewModelTests
         using var viewModel = CreateViewModel();
 
         Assert.Equal("Готово.", viewModel.StatusText);
+        Assert.False(viewModel.HasStatusProblem);
     }
 
     [Fact]
@@ -130,7 +143,8 @@ public sealed class MainViewModelTests
         using var viewModel = CreateViewModel();
 
         Assert.Equal("Помилка запуску. БД недоступна", viewModel.StatusText);
+        Assert.True(viewModel.HasStatusProblem);
     }
 
-    private MainViewModel CreateViewModel() => new(_status, _search, _library, _settings);
+    private MainViewModel CreateViewModel() => new(_status, _search, _library, _settings, _indexingProgress);
 }
