@@ -177,6 +177,90 @@ public sealed class BackupApiClientTests
         Assert.Contains("недоступний", error.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task Logout_DuringRefresh_DoesNotResurrectSession()
+    {
+        using var refreshEntered = new ManualResetEventSlim();
+        using var releaseRefresh = new ManualResetEventSlim();
+        var handler = new FakeHandler(request =>
+        {
+            switch (request.RequestUri!.AbsolutePath)
+            {
+                case "/api/v1/auth/refresh":
+                    refreshEntered.Set();
+                    releaseRefresh.Wait(TimeSpan.FromSeconds(10));
+                    return Json(HttpStatusCode.OK, Tokens("new", "r2"));
+                case "/api/v1/auth/logout":
+                    return new HttpResponseMessage(HttpStatusCode.NoContent);
+                default:
+                    return Json(HttpStatusCode.OK, Array.Empty<BackupInfo>());
+            }
+        });
+        var (client, store) = Create(handler, Tokens("old", "r1", accessExpiresAt: Now));
+
+        var list = Task.Run(() => client.ListBackupsAsync());
+        Assert.True(refreshEntered.Wait(TimeSpan.FromSeconds(10)));
+        var logout = Task.Run(() => client.LogoutAsync());
+        await Task.Delay(50);
+        releaseRefresh.Set();
+        await Task.WhenAll(list, logout);
+
+        Assert.Null(store.Load());
+        Assert.False(client.IsSignedIn);
+        Assert.Equal(["r1", "r2"], handler.RefreshTokensSent);
+    }
+
+    [Fact]
+    public async Task List_MalformedJson_ThrowsBackupApiException()
+    {
+        var handler = new FakeHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("{ не json", System.Text.Encoding.UTF8, "application/json"),
+        });
+        var (client, _) = Create(handler, Tokens("a", "r1"));
+
+        var error = await Assert.ThrowsAsync<BackupApiException>(() => client.ListBackupsAsync());
+
+        Assert.IsType<System.Text.Json.JsonException>(error.InnerException, exactMatch: false);
+    }
+
+    [Fact]
+    public async Task Download_ConnectionDropsDuringBody_ThrowsBackupApiException()
+    {
+        var handler = new FakeHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StreamContent(new BrokenStream()),
+        });
+        var (client, _) = Create(handler, Tokens("a", "r1"));
+
+        var error = await Assert.ThrowsAsync<BackupApiException>(() => client.DownloadBackupAsync(Guid.NewGuid()));
+
+        // HttpClient загортає IOException потоку в HttpRequestException.
+        Assert.NotNull(error.InnerException);
+        Assert.Contains("перервалась", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ServerNotConfigured_ThrowsFriendlyError()
+    {
+        var client = new BackupApiClient(new HttpClient(), new InMemoryTokenStore(), new FixedTime(Now));
+
+        var error = await Assert.ThrowsAsync<BackupApiException>(() => client.LoginAsync("a@example.com", "пароль"));
+
+        Assert.Contains("не налаштовано", error.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("https://host/localmind", "https://host/localmind/api/v1/backups")]
+    [InlineData("https://host/localmind/", "https://host/localmind/api/v1/backups")]
+    [InlineData("https://host", "https://host/api/v1/backups")]
+    public void WithTrailingSlash_KeepsPathPrefix(string baseUrl, string expected)
+    {
+        var baseAddress = BackupClientOptions.WithTrailingSlash(new Uri(baseUrl))!;
+
+        Assert.Equal(new Uri(expected), new Uri(baseAddress, "api/v1/backups"));
+    }
+
     private static (BackupApiClient Client, InMemoryTokenStore Store) Create(FakeHandler handler, TokenResponse? tokens = null)
     {
         var store = new InMemoryTokenStore();
@@ -196,6 +280,18 @@ public sealed class BackupApiClientTests
 
     private static HttpResponseMessage Json<T>(HttpStatusCode status, T body) =>
         new(status) { Content = JsonContent.Create(body) };
+
+    /// <summary>Імітує обрив з'єднання під час читання тіла.</summary>
+    private sealed class BrokenStream : MemoryStream
+    {
+        public override int Read(byte[] buffer, int offset, int count) => throw new IOException("connection reset");
+
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) =>
+            throw new IOException("connection reset");
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+            throw new IOException("connection reset");
+    }
 
     private sealed class FixedTime(DateTimeOffset now) : TimeProvider
     {

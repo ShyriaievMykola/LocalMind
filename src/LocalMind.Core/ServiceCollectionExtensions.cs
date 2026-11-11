@@ -80,7 +80,8 @@ public static class ServiceCollectionExtensions
 
         services.AddOptions<BackupClientOptions>()
             .Bind(configuration.GetSection(BackupClientOptions.SectionName))
-            .Validate(o => BackupClientOptions.IsValidServerUrl(o.ServerUrl),
+            // Бекап опційний: без адреси застосунок стартує, а операції бекапу повідомляють, що сервер не налаштовано.
+            .Validate(o => o.ServerUrl is null || BackupClientOptions.IsValidServerUrl(o.ServerUrl),
                 "LocalMind:Backup:ServerUrl має бути абсолютною HTTPS-адресою (HTTP — лише для localhost).")
             .ValidateOnStart();
         services.TryAddSingleton(TimeProvider.System);
@@ -96,7 +97,8 @@ public static class ServiceCollectionExtensions
         });
         services.AddHttpClient<BackupApiClient>((provider, client) =>
         {
-            client.BaseAddress = provider.GetRequiredService<IOptions<BackupClientOptions>>().Value.ServerUrl;
+            client.BaseAddress = BackupClientOptions.WithTrailingSlash(
+                provider.GetRequiredService<IOptions<BackupClientOptions>>().Value.ServerUrl);
             client.Timeout = TimeSpan.FromMinutes(5);
         });
         services.TryAddTransient<BackupService>();

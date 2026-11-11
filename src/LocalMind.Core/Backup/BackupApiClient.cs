@@ -55,25 +55,35 @@ public sealed class BackupApiClient(HttpClient http, ITokenStore tokens, TimePro
     /// <summary>Вихід: відкликає сесію на сервері (якщо він доступний) і стирає токени локально.</summary>
     public async Task LogoutAsync(CancellationToken cancellationToken = default)
     {
-        var current = tokens.Load();
-        tokens.Clear();
-        if (current is null)
-        {
-            return;
-        }
-
+        // Під тим самим локом, що й оновлення: інакше паралельний refresh міг би зберегти нову пару вже після
+        // Clear, і сесія локально «воскресла б», хоча на сервері відкликана.
+        await RefreshLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            using var response = await SendAsync(
-                () => new HttpRequestMessage(HttpMethod.Post, "api/v1/auth/logout")
-                {
-                    Content = JsonContent.Create(new LogoutRequest(current.RefreshToken)),
-                },
-                cancellationToken).ConfigureAwait(false);
+            var current = tokens.Load();
+            tokens.Clear();
+            if (current is null)
+            {
+                return;
+            }
+
+            try
+            {
+                using var response = await SendAsync(
+                    () => new HttpRequestMessage(HttpMethod.Post, "api/v1/auth/logout")
+                    {
+                        Content = JsonContent.Create(new LogoutRequest(current.RefreshToken)),
+                    },
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (BackupApiException)
+            {
+                // Сервер недоступний — локально сесії вже немає, на сервері вона спливе сама.
+            }
         }
-        catch (BackupApiException)
+        finally
         {
-            // Сервер недоступний — локально сесії вже немає, на сервері вона спливе сама.
+            RefreshLock.Release();
         }
     }
 
@@ -114,7 +124,14 @@ public sealed class BackupApiClient(HttpClient http, ITokenStore tokens, TimePro
     {
         using var response = await SendAuthorizedAsync(
             () => new HttpRequestMessage(HttpMethod.Get, $"api/v1/backups/{id}"), cancellationToken).ConfigureAwait(false);
-        return await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (IsTransportError(ex, cancellationToken))
+        {
+            throw BrokenResponse(response, ex);
+        }
     }
 
     /// <summary>Видаляє бекап.</summary>
@@ -214,6 +231,11 @@ public sealed class BackupApiClient(HttpClient http, ITokenStore tokens, TimePro
 
     private async Task<HttpResponseMessage> SendAsync(Func<HttpRequestMessage> createRequest, CancellationToken cancellationToken)
     {
+        if (http.BaseAddress is null)
+        {
+            throw new BackupApiException(null, "Сервер бекапу не налаштовано. Вкажіть його адресу в налаштуваннях.");
+        }
+
         using var request = createRequest();
         try
         {
@@ -260,9 +282,27 @@ public sealed class BackupApiClient(HttpClient http, ITokenStore tokens, TimePro
         }
     }
 
-    private static async Task<T> ReadAsync<T>(HttpResponseMessage response, CancellationToken cancellationToken) =>
-        await response.Content.ReadFromJsonAsync<T>(cancellationToken).ConfigureAwait(false)
-        ?? throw new BackupApiException(response.StatusCode, "Сервер бекапу повернув порожню відповідь.");
+    private static async Task<T> ReadAsync<T>(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await response.Content.ReadFromJsonAsync<T>(cancellationToken).ConfigureAwait(false)
+                ?? throw new BackupApiException(response.StatusCode, "Сервер бекапу повернув порожню відповідь.");
+        }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException or NotSupportedException
+            || IsTransportError(ex, cancellationToken))
+        {
+            throw BrokenResponse(response, ex);
+        }
+    }
+
+    /// <summary>Обрив з'єднання або тайм-аут під час читання тіла (не скасування викликачем).</summary>
+    private static bool IsTransportError(Exception ex, CancellationToken cancellationToken) =>
+        ex is HttpRequestException or IOException
+        || (ex is TaskCanceledException && !cancellationToken.IsCancellationRequested);
+
+    private static BackupApiException BrokenResponse(HttpResponseMessage response, Exception inner) =>
+        new(response.StatusCode, "Відповідь сервера бекапу перервалась або пошкоджена. Спробуйте ще раз.", inner);
 
     private static BackupApiException SessionExpired() =>
         new(HttpStatusCode.Unauthorized, "Сесія завершилась. Увійдіть знову.");

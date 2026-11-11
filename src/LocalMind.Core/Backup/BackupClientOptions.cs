@@ -22,6 +22,13 @@ public sealed class BackupClientOptions
             "LocalMind",
             "session.bin");
 
+    /// <summary>
+    /// Додає «/» у кінець шляху: інакше відносне <c>api/v1/...</c> від <c>https://host/localmind</c> замінило б
+    /// останній сегмент, і префікс загубився б.
+    /// </summary>
+    internal static Uri? WithTrailingSlash(Uri? url) =>
+        url is null || url.AbsolutePath.EndsWith('/') ? url : new UriBuilder(url) { Path = url.AbsolutePath + "/" }.Uri;
+
     /// <summary>Перевірка адреси: абсолютна, HTTPS (HTTP дозволено лише для localhost).</summary>
     internal static bool IsValidServerUrl(Uri? url) =>
         url is { IsAbsoluteUri: true }
