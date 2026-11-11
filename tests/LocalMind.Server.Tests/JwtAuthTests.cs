@@ -2,8 +2,9 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Claims;
-using System.Text;
+using System.Security.Cryptography;
 using LocalMind.Core.Backup.Dtos;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
@@ -54,7 +55,8 @@ public sealed class JwtAuthTests(LocalMindServerFactory factory) : IClassFixture
     public async Task Me_ForgedSignature_Returns401()
     {
         using var client = factory.CreateClient();
-        var token = CreateToken("зовсім-інший-ключ-атакувальника-довжиною-32+", DateTime.UtcNow.AddMinutes(5));
+        var attackerKey = Convert.ToBase64String(RandomNumberGenerator.GetBytes(48));
+        var token = CreateToken(attackerKey, DateTime.UtcNow.AddMinutes(5));
 
         using var response = await SendAsync(client, token);
 
@@ -107,13 +109,41 @@ public sealed class JwtAuthTests(LocalMindServerFactory factory) : IClassFixture
 
     [Theory]
     [InlineData("")]
-    [InlineData("закороткий-ключ")]
+    [InlineData("не base64 — пароль замість ключа, довший за 32 символи")]
+    [InlineData("c2hvcnQta2V5LTE2LWJ5dGVz")]
     public void Startup_WithoutValidSigningKey_Fails(string key)
     {
         using var noKey = factory.WithWebHostBuilder(b => b.UseSetting("Jwt:SigningKey", key));
 
         var error = Assert.Throws<OptionsValidationException>(() => noKey.CreateClient());
         Assert.Contains("Jwt:SigningKey", error.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("Production", false)]
+    [InlineData("Development", true)]
+    public async Task Me_ExpiredToken_ErrorDetailsOnlyInDevelopment(string environment, bool expected)
+    {
+        using var client = factory.WithWebHostBuilder(b => b.UseEnvironment(environment)).CreateClient();
+        var token = CreateToken(LocalMindServerFactory.SigningKey, expires: DateTime.UtcNow.AddMinutes(-2));
+
+        using var response = await SendAsync(client, token);
+
+        var challenge = string.Join(' ', response.Headers.WwwAuthenticate.Select(h => h.ToString()));
+        Assert.StartsWith("Bearer", challenge, StringComparison.Ordinal);
+        Assert.Equal(expected, challenge.Contains("error_description", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Me_ValidTokenForDeletedUser_Returns401WithBearerChallenge()
+    {
+        using var client = factory.CreateClient();
+        var token = CreateToken(LocalMindServerFactory.SigningKey, DateTime.UtcNow.AddMinutes(5));
+
+        using var response = await SendAsync(client, token);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Contains(response.Headers.WwwAuthenticate, h => h.Scheme == "Bearer");
     }
 
     private static async Task<(string Email, TokenResponse Tokens)> RegisterAndLoginAsync(HttpClient client)
@@ -143,6 +173,6 @@ public sealed class JwtAuthTests(LocalMindServerFactory factory) : IClassFixture
             Expires = expires,
             Subject = new ClaimsIdentity([new Claim("sub", "будь-хто")]),
             SigningCredentials = new SigningCredentials(
-                new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key)), SecurityAlgorithms.HmacSha256),
+                new SymmetricSecurityKey(Convert.FromBase64String(key)), SecurityAlgorithms.HmacSha256),
         });
 }

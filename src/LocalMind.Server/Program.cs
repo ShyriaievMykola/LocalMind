@@ -28,9 +28,12 @@ builder.Services.AddSingleton<JwtTokenService>();
 builder.Services.AddScoped<RefreshTokenService>();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();
 builder.Services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
-    .Configure<IOptions<JwtOptions>>((bearer, jwt) =>
+    .Configure<IOptions<JwtOptions>, IHostEnvironment>((bearer, jwt, environment) =>
     {
         bearer.MapInboundClaims = false;
+
+        // Причина відмови (прострочено, чужий ключ…) у WWW-Authenticate — лише для налагодження.
+        bearer.IncludeErrorDetails = environment.IsDevelopment();
         bearer.TokenValidationParameters = JwtTokenService.CreateValidationParameters(jwt.Value);
     });
 builder.Services.AddAuthorization();

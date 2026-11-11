@@ -260,12 +260,12 @@ nonce) — можлива версія 2. Неправильний пароль 
 змінні оточення, сховище секретів (Key Vault).
 
 **Рішення.** JWT HS256 зі строком дії 15 хв, перевіряються підпис, `iss`, `aud`, `exp` (допуск 30 с), дозволено
-лише алгоритм HS256. Ключ `Jwt:SigningKey` (≥ 32 байти) — у Development через `dotnet user-secrets`, у Docker —
+лише алгоритм HS256. Ключ `Jwt:SigningKey` — base64, ≥ 32 байти після декодування (пароль замість ключа не пройде), у Development через `dotnet user-secrets`, у Docker —
 змінна оточення `Jwt__SigningKey`. Без ключа сервер не стартує (валідація опцій на старті).
 
 **Чому / наслідки.** Токени видає і перевіряє той самий сервер, тож асиметричні ключі нічого не дають.
 Фіксований список алгоритмів закриває атаки з `alg: none` і підміною алгоритму. Помилка конфігурації видна одразу,
-а не першим запитом. Локальний запуск: `dotnet user-secrets set Jwt:SigningKey "$(openssl rand -base64 48)" --project src/LocalMind.Server`.
+а не першим запитом. Причина відмови токена (`error_description` у `WWW-Authenticate`) віддається лише в Development. Локальний запуск: `dotnet user-secrets set Jwt:SigningKey "$(openssl rand -base64 48)" --project src/LocalMind.Server`.
 
 ## DR-018 · Refresh-токени: хеш, ротація, виявлення повторного використання
 
