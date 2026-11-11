@@ -53,6 +53,10 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
     [ObservableProperty]
     public partial string StatusText { get; private set; } = string.Empty;
+    
+    /// <summary>Ядро не готове або працює без моделі — такий стан видно навіть під час індексації.</summary>
+    [ObservableProperty]
+    public partial bool HasStatusProblem { get; private set; }
 
     public void Dispose()
     {
@@ -71,7 +75,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         }
     });
 
-    private void UpdateStatus() =>
+    private void UpdateStatus()
+    {
         StatusText = _status.Stage switch
         {
             CoreStage.Starting => "Запуск…",
@@ -79,4 +84,6 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             _ when !_status.IsModelAvailable => $"Готово, але без моделі. {_status.ModelError}",
             _ => "Готово.",
         };
+        HasStatusProblem = _status.Stage != CoreStage.Ready || !_status.IsModelAvailable;
+    }
 }

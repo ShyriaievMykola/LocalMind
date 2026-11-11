@@ -16,6 +16,7 @@ public sealed partial class IndexingProgressViewModel : ViewModelBase
     private readonly IUiDispatcher _dispatcher;
     private readonly EventHandler<IndexingProgress> _progressHandler;
     private volatile bool _closed;
+    private IndexingProgress? _cancelledAt;
 
     public IndexingProgressViewModel(IIndexingService indexing, IUiDispatcher dispatcher)
     {
@@ -39,11 +40,13 @@ public sealed partial class IndexingProgressViewModel : ViewModelBase
 
     /// <summary>Поточний прогрес; <see langword="null"/>, коли черга порожня.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsIndexing), nameof(ProgressText), nameof(Fraction), nameof(CurrentFileName))]
+    [NotifyPropertyChangedFor(nameof(IsIndexing), nameof(IsIdle), nameof(ProgressText), nameof(Fraction), nameof(CurrentFileName))]
     [NotifyCanExecuteChangedFor(nameof(CancelCommand))]
     public partial IndexingProgress? Progress { get; private set; }
 
     public bool IsIndexing => Progress is not null;
+
+    public bool IsIdle => !IsIndexing;
 
     public double Fraction => Progress?.Fraction ?? 0;
 
@@ -78,6 +81,10 @@ public sealed partial class IndexingProgressViewModel : ViewModelBase
     {
         IsCancelling = true;
         _indexing.CancelPending();
+
+        // Стан одразу після скасування: черга порожня, лишився лише поточний файл.
+        // Якщо далі прогрес «виросте» або почнеться з нуля — прийшла нова робота.
+        _cancelledAt = _indexing.Progress;
     }
 
     private bool CanCancel() => IsIndexing && !IsCancelling;
@@ -87,9 +94,16 @@ public sealed partial class IndexingProgressViewModel : ViewModelBase
     {
         var progress = _indexing.Progress;
         Progress = progress.IsCompleted ? null : progress;
-        if (Progress is null)
+
+        if (Progress is null || IsNewWorkAfterCancel(progress))
         {
             IsCancelling = false;
+            _cancelledAt = null;
         }
     }
+
+    /// <summary>Після «Скасувати» прийшла нова робота (watcher, пересканування) — кнопка знову має бути доступна.</summary>
+    private bool IsNewWorkAfterCancel(IndexingProgress progress) =>
+        IsCancelling && _cancelledAt is { } cancelled
+        && (progress.Total > cancelled.Total || progress.Processed < cancelled.Processed);
 }
