@@ -122,6 +122,7 @@ public sealed class MainViewModelTests
         using var viewModel = CreateViewModel();
 
         Assert.Equal("Готово.", viewModel.StatusText);
+        Assert.False(viewModel.HasStatusProblem);
     }
 
     [Fact]
@@ -142,6 +143,7 @@ public sealed class MainViewModelTests
         using var viewModel = CreateViewModel();
 
         Assert.Equal("Помилка запуску. БД недоступна", viewModel.StatusText);
+        Assert.True(viewModel.HasStatusProblem);
     }
 
     private MainViewModel CreateViewModel() => new(_status, _search, _library, _settings, _indexingProgress);

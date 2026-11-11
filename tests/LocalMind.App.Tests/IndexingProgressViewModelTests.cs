@@ -69,6 +69,34 @@ public sealed class IndexingProgressViewModelTests
         Assert.Equal("Скасувати", viewModel.CancelText);
     }
 
+        [Fact]
+    public void Cancel_ThenNewWorkArrives_EnablesCancelAgain()
+    {
+        _indexing.Report(new IndexingProgress(1, 5, 0, "/notes/a.md"));
+        var viewModel = _indexing.CreateProgressViewModel();
+        viewModel.CancelCommand.Execute(null);
+
+        // Поки поточний файл завершується, watcher ставить у чергу новий файл: всього стало більше.
+        _indexing.Report(new IndexingProgress(1, 6, 0, "/notes/a.md"));
+        _indexing.Dispatcher.RunPending();
+
+        Assert.True(viewModel.IsIndexing);
+        Assert.False(viewModel.IsCancelling);
+        Assert.True(viewModel.CancelCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void EventQueuedBeforeClose_IsIgnoredAfterClose()
+    {
+        var viewModel = _indexing.CreateProgressViewModel();
+        _indexing.Report(new IndexingProgress(0, 3, 0, "/notes/a.md"));
+
+        viewModel.Close();
+        _indexing.Dispatcher.RunPending();
+
+        Assert.False(viewModel.IsIndexing);
+    }
+
     [Fact]
     public void Close_UnsubscribesFromIndexingEvents()
     {
