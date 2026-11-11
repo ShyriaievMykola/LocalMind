@@ -23,6 +23,6 @@ else
 app.UseHttpsRedirection();
 
 var api = app.MapGroup("/api/v1");
-api.MapHealthChecks("/health");
+api.MapHealthChecks("/health").WithMetadata(new HttpMethodMetadata([HttpMethods.Get, HttpMethods.Head]));
 
 app.Run();

@@ -22,6 +22,27 @@ public sealed class ServerSkeletonTests(WebApplicationFactory<Program> factory)
     }
 
     [Fact]
+    public async Task Health_Post_Returns405()
+    {
+        using var client = factory.CreateClient();
+
+        using var response = await client.PostAsync(new Uri("/api/v1/health", UriKind.Relative), null);
+
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UnknownRoute_Returns404ProblemDetails()
+    {
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync(new Uri("/api/v1/nothing", UriKind.Relative));
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+    }
+
+    [Fact]
     public async Task WeatherForecast_Removed()
     {
         using var client = factory.CreateClient();
