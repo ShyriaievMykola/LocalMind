@@ -4,6 +4,7 @@ using LocalMind.Core.Abstractions;
 using LocalMind.Core.Configuration;
 using LocalMind.Core.Models;
 using LocalMind.Search.Configuration;
+using LocalMind.TestUtilities;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -19,6 +20,29 @@ public sealed class AppHostTests : IDisposable
     private readonly string _folder = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
 
     public AppHostTests() => Directory.CreateDirectory(_folder);
+
+    [Fact]
+    public async Task Build_ResultCardCommand_UsesRegisteredFileLauncher()
+    {
+        var files = new FakeFileLauncher();
+        var result = new SearchResult(TestData.Chunk(Guid.NewGuid()), Path.Combine(_folder, "note.md"), 0.9);
+        var search = new FakeSearchService { Handler = (_, _) => Task.FromResult<IReadOnlyList<SearchResult>>([result]) };
+        var builder = AppHost.CreateBuilder([]);
+        builder.Services.AddSingleton<IFileLauncher>(files);
+        builder.Services.AddSingleton<ISearchService>(search);
+        builder.Services.AddSingleton<IDocumentRepository>(new InMemoryDocumentRepository());
+        using var host = builder.Build();
+        var status = host.Services.GetRequiredService<CoreStatus>();
+        status.SetModelAvailable();
+        status.SetReady();
+        var viewModel = host.Services.GetRequiredService<SearchViewModel>();
+        viewModel.QueryText = "нотатка";
+
+        await viewModel.SearchCommand.ExecuteAsync(null);
+        await Assert.Single(viewModel.Results).OpenSourceCommand.ExecuteAsync(null);
+
+        Assert.Equal(result.DocumentPath, Assert.Single(files.Paths));
+    }
 
     [Fact]
     public async Task Start_InvalidSearchOptions_WindowViewModelStillResolves()
@@ -60,7 +84,7 @@ public sealed class AppHostTests : IDisposable
         var builder = AppHost.CreateBuilder([]);
         // Підміна доводить, що навігація отримує VM з контейнера, а не створює їх через new.
         var search = new FakeSearchService().CreateViewModel();
-        var library = new LibraryViewModel();
+        var library = new FakeIndexingService().CreateViewModel();
         var settings = new SettingsViewModel();
         builder.Services.AddSingleton(search);
         builder.Services.AddSingleton(library);

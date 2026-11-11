@@ -16,18 +16,22 @@ public sealed partial class SearchViewModel : ViewModelBase
     private readonly ISearchService _search;
     private readonly CoreStatus _status;
     private readonly ILogger<SearchViewModel> _logger;
+    private readonly ResultCardFactory _cards;
     private CancellationTokenSource? _searchCancellation;
 
-    public SearchViewModel(ISearchService search, CoreStatus status, IOptions<SearchOptions> options, ILogger<SearchViewModel> logger)
+    public SearchViewModel(ISearchService search, CoreStatus status, IOptions<SearchOptions> options,
+        ILogger<SearchViewModel> logger, ResultCardFactory cards)
     {
         ArgumentNullException.ThrowIfNull(search);
         ArgumentNullException.ThrowIfNull(status);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(cards);
 
         _search = search;
         _status = status;
         _logger = logger;
+        _cards = cards;
         // Після помилки ValidateOnStart хост уже повідомив CoreStatus.Failed.
         // Повторне читання невалідних Options не повинно завадити відкриттю вікна.
         TopK = status.Stage == CoreStage.Failed ? SearchQuery.DefaultTopK : options.Value.DefaultTopK;
@@ -51,7 +55,7 @@ public sealed partial class SearchViewModel : ViewModelBase
     public partial bool IsSearching { get; private set; }
 
     [ObservableProperty]
-    public partial IReadOnlyList<SearchResult> Results { get; private set; } = [];
+    public partial IReadOnlyList<ResultCardViewModel> Results { get; private set; } = [];
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasError))]
@@ -117,7 +121,11 @@ public sealed partial class SearchViewModel : ViewModelBase
 
             // Токенізація й частина пошуку можуть виконуватися синхронно всередині сервісу.
             // На UI-потік повертаємося після await, лише щоб опублікувати результат.
-            var results = await Task.Run(() => _search.SearchAsync(query, request.Token), request.Token);
+            var results = await Task.Run(async () =>
+            {
+                var found = await _search.SearchAsync(query, request.Token);
+                return await _cards.CreateAsync(found, request.Token);
+            }, request.Token);
             if (ReferenceEquals(_searchCancellation, request) && !request.IsCancellationRequested)
             {
                 Results = results;

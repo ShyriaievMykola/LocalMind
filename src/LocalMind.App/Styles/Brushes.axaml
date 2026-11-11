@@ -1,0 +1,48 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!-- Пензлі над кольорами з Colors.axaml. Тема береться з ThemeDictionaries, тому DynamicResource оновлює їх на льоту. -->
+  <ResourceDictionary.ThemeDictionaries>
+    <ResourceDictionary x:Key="Dark">
+      <SolidColorBrush x:Key="Lm.Brush.Accent" Color="{DynamicResource Lm.Color.Accent}" />
+      <SolidColorBrush x:Key="Lm.Brush.AccentHover" Color="{DynamicResource Lm.Color.AccentHover}" />
+      <SolidColorBrush x:Key="Lm.Brush.AccentPressed" Color="{DynamicResource Lm.Color.AccentPressed}" />
+      <SolidColorBrush x:Key="Lm.Brush.Background" Color="{DynamicResource Lm.Color.Background}" />
+      <SolidColorBrush x:Key="Lm.Brush.BackgroundActive" Color="{DynamicResource Lm.Color.BackgroundActive}" />
+      <SolidColorBrush x:Key="Lm.Brush.BackgroundHover" Color="{DynamicResource Lm.Color.BackgroundHover}" />
+      <SolidColorBrush x:Key="Lm.Brush.BackgroundSecondary" Color="{DynamicResource Lm.Color.BackgroundSecondary}" />
+      <SolidColorBrush x:Key="Lm.Brush.BackgroundSidebar" Color="{DynamicResource Lm.Color.BackgroundSidebar}" />
+      <SolidColorBrush x:Key="Lm.Brush.Border" Color="{DynamicResource Lm.Color.Border}" />
+      <SolidColorBrush x:Key="Lm.Brush.BorderStrong" Color="{DynamicResource Lm.Color.BorderStrong}" />
+      <SolidColorBrush x:Key="Lm.Brush.Error" Color="{DynamicResource Lm.Color.Error}" />
+      <SolidColorBrush x:Key="Lm.Brush.HighlightBackground" Color="{DynamicResource Lm.Color.HighlightBackground}" />
+      <SolidColorBrush x:Key="Lm.Brush.HighlightForeground" Color="{DynamicResource Lm.Color.HighlightForeground}" />
+      <SolidColorBrush x:Key="Lm.Brush.OnAccent" Color="{DynamicResource Lm.Color.OnAccent}" />
+      <SolidColorBrush x:Key="Lm.Brush.Success" Color="{DynamicResource Lm.Color.Success}" />
+      <SolidColorBrush x:Key="Lm.Brush.Text" Color="{DynamicResource Lm.Color.Text}" />
+      <SolidColorBrush x:Key="Lm.Brush.TextFaint" Color="{DynamicResource Lm.Color.TextFaint}" />
+      <SolidColorBrush x:Key="Lm.Brush.TextMuted" Color="{DynamicResource Lm.Color.TextMuted}" />
+      <SolidColorBrush x:Key="Lm.Brush.Warning" Color="{DynamicResource Lm.Color.Warning}" />
+    </ResourceDictionary>
+    <ResourceDictionary x:Key="Light">
+      <SolidColorBrush x:Key="Lm.Brush.Accent" Color="{DynamicResource Lm.Color.Accent}" />
+      <SolidColorBrush x:Key="Lm.Brush.AccentHover" Color="{DynamicResource Lm.Color.AccentHover}" />
+      <SolidColorBrush x:Key="Lm.Brush.AccentPressed" Color="{DynamicResource Lm.Color.AccentPressed}" />
+      <SolidColorBrush x:Key="Lm.Brush.Background" Color="{DynamicResource Lm.Color.Background}" />
+      <SolidColorBrush x:Key="Lm.Brush.BackgroundActive" Color="{DynamicResource Lm.Color.BackgroundActive}" />
+      <SolidColorBrush x:Key="Lm.Brush.BackgroundHover" Color="{DynamicResource Lm.Color.BackgroundHover}" />
+      <SolidColorBrush x:Key="Lm.Brush.BackgroundSecondary" Color="{DynamicResource Lm.Color.BackgroundSecondary}" />
+      <SolidColorBrush x:Key="Lm.Brush.BackgroundSidebar" Color="{DynamicResource Lm.Color.BackgroundSidebar}" />
+      <SolidColorBrush x:Key="Lm.Brush.Border" Color="{DynamicResource Lm.Color.Border}" />
+      <SolidColorBrush x:Key="Lm.Brush.BorderStrong" Color="{DynamicResource Lm.Color.BorderStrong}" />
+      <SolidColorBrush x:Key="Lm.Brush.Error" Color="{DynamicResource Lm.Color.Error}" />
+      <SolidColorBrush x:Key="Lm.Brush.HighlightBackground" Color="{DynamicResource Lm.Color.HighlightBackground}" />
+      <SolidColorBrush x:Key="Lm.Brush.HighlightForeground" Color="{DynamicResource Lm.Color.HighlightForeground}" />
+      <SolidColorBrush x:Key="Lm.Brush.OnAccent" Color="{DynamicResource Lm.Color.OnAccent}" />
+      <SolidColorBrush x:Key="Lm.Brush.Success" Color="{DynamicResource Lm.Color.Success}" />
+      <SolidColorBrush x:Key="Lm.Brush.Text" Color="{DynamicResource Lm.Color.Text}" />
+      <SolidColorBrush x:Key="Lm.Brush.TextFaint" Color="{DynamicResource Lm.Color.TextFaint}" />
+      <SolidColorBrush x:Key="Lm.Brush.TextMuted" Color="{DynamicResource Lm.Color.TextMuted}" />
+      <SolidColorBrush x:Key="Lm.Brush.Warning" Color="{DynamicResource Lm.Color.Warning}" />
+    </ResourceDictionary>
+  </ResourceDictionary.ThemeDictionaries>
+</ResourceDictionary>
