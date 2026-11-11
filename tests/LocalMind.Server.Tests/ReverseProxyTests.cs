@@ -40,6 +40,22 @@ public sealed class ReverseProxyTests(LocalMindServerFactory factory) : IClassFi
         Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
     }
 
+    [Fact]
+    public async Task AllowedHosts_AsInCompose_AcceptsLocalhostAndConfiguredDomainOnly()
+    {
+        // Так AllowedHosts формує docker-compose: домен адміністратора плюс localhost для healthcheck.
+        using var app = factory.WithWebHostBuilder(b => b.UseSetting("AllowedHosts", "backup.example.com;localhost"));
+        using var client = app.CreateClient();
+
+        using var local = await HealthAsync(client, "localhost");
+        using var domain = await HealthAsync(client, "backup.example.com");
+        using var foreign = await HealthAsync(client, "evil.example.com");
+
+        Assert.Equal(HttpStatusCode.OK, local.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, domain.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, foreign.StatusCode);
+    }
+
     [Theory]
     [InlineData("KnownNetworks", "не-мережа")]
     [InlineData("KnownNetworks", "10.0.0.0/99")]
@@ -63,6 +79,13 @@ public sealed class ReverseProxyTests(LocalMindServerFactory factory) : IClassFi
             // TestServer не має віддаленої адреси; ставимо адресу проксі до обробки X-Forwarded-*.
             builder.ConfigureServices(services => services.AddTransient<IStartupFilter, FakeProxyStartupFilter>());
         });
+
+    private static async Task<HttpResponseMessage> HealthAsync(HttpClient client, string host)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri("/api/v1/health", UriKind.Relative));
+        request.Headers.Host = host;
+        return await client.SendAsync(request);
+    }
 
     private static async Task<HttpResponseMessage> LoginAsync(HttpClient client, string forwardedFor)
     {
