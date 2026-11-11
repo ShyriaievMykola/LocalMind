@@ -27,6 +27,31 @@ public sealed class AppHostTests : IDisposable
         Assert.NotNull(host.Services.GetRequiredService<IIndexingService>());
         Assert.NotNull(host.Services.GetRequiredService<IDocumentRepository>());
         Assert.NotNull(host.Services.GetRequiredService<MainViewModel>());
+        Assert.NotSame(host.Services.GetRequiredService<SearchViewModel>(), host.Services.GetRequiredService<SearchViewModel>());
+        Assert.NotSame(host.Services.GetRequiredService<LibraryViewModel>(), host.Services.GetRequiredService<LibraryViewModel>());
+        Assert.NotSame(host.Services.GetRequiredService<SettingsViewModel>(), host.Services.GetRequiredService<SettingsViewModel>());
+    }
+
+    [Fact]
+    public void Build_NavigationUsesRegisteredPages_WithExpectedLifetimes()
+    {
+        var builder = AppHost.CreateBuilder([]);
+        // Підміна доводить, що навігація отримує VM з контейнера, а не створює їх через new.
+        var search = new SearchViewModel();
+        var library = new LibraryViewModel();
+        var settings = new SettingsViewModel();
+        builder.Services.AddSingleton(search);
+        builder.Services.AddSingleton(library);
+        builder.Services.AddSingleton(settings);
+        using var host = builder.Build();
+
+        var navigation = host.Services.GetRequiredService<MainViewModel>();
+
+        Assert.Same(navigation, host.Services.GetRequiredService<MainViewModel>());
+        Assert.Collection(navigation.NavigationItems,
+            item => Assert.Same(search, item.Page),
+            item => Assert.Same(library, item.Page),
+            item => Assert.Same(settings, item.Page));
     }
 
     [Fact]

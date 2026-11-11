@@ -45,6 +45,9 @@ public static class AppHost
 
         // Корінь вікна живе весь час роботи застосунку. Сторінки — Transient (див. docs/architecture.md, 3.5).
         builder.Services.AddSingleton<MainViewModel>();
+        builder.Services.AddTransient<SearchViewModel>();
+        builder.Services.AddTransient<LibraryViewModel>();
+        builder.Services.AddTransient<SettingsViewModel>();
 
         return builder;
     }
