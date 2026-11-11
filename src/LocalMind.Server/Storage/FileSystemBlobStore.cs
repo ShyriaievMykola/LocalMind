@@ -107,11 +107,17 @@ public sealed class FileSystemBlobStore
     /// <summary>Відкриває бекап для читання або повертає <see langword="null"/>, якщо файла немає.</summary>
     public Stream? OpenRead(Guid id)
     {
-        var path = ResolvePath(FileName(id));
-        return File.Exists(path)
+        try
+        {
             // FileShare.Delete: видалення бекапу під час чийогось скачування не падає (особливо на Windows).
-            ? new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete, 0, useAsync: true)
-            : null;
+            return new FileStream(ResolvePath(FileName(id)), FileMode.Open, FileAccess.Read,
+                FileShare.Read | FileShare.Delete, 0, useAsync: true);
+        }
+        catch (FileNotFoundException)
+        {
+            // Без окремого File.Exists: файл могли видалити між перевіркою і відкриттям.
+            return null;
+        }
     }
 
     /// <summary>Видаляє бекап; відсутній файл — не помилка.</summary>

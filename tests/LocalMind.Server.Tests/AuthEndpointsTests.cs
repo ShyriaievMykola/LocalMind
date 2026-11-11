@@ -145,6 +145,7 @@ public sealed class AuthEndpointsTests(LocalMindServerFactory factory) : IClassF
     [InlineData("Ім'я <user@example.com>")]
     [InlineData("user@localhost")]
     [InlineData("user@example.com")]
+    [MemberData(nameof(TooLongEmails))]
     public async Task Register_MalformedEmail_Returns400(string email)
     {
         using var client = factory.CreateClient();
@@ -153,6 +154,12 @@ public sealed class AuthEndpointsTests(LocalMindServerFactory factory) : IClassF
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
+
+    public static TheoryData<string> TooLongEmails => new()
+    {
+        new string('a', 65) + "@example.com",
+        "user@" + new string('d', 250) + ".com",
+    };
 
     [Fact]
     public async Task Register_SameEmailInNfcAndNfd_Returns409()
