@@ -1,3 +1,4 @@
+using LocalMind.Server.Auth;
 using LocalMind.Server.Data;
 using LocalMind.Server.Endpoints;
 using Microsoft.AspNetCore.Identity;
@@ -8,6 +9,9 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddProblemDetails();
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks();
+
+// Кривий JSON → 400 і в Development (за замовчуванням там кидається виняток, який став би 500).
+builder.Services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = false);
 
 var connectionString = builder.Configuration.GetConnectionString("Server")
     ?? throw new InvalidOperationException("Не задано рядок підключення ConnectionStrings:Server.");
@@ -25,9 +29,14 @@ builder.Services
         options.Password.RequireUppercase = false;
         options.Password.RequireNonAlphanumeric = false;
         options.User.RequireUniqueEmail = true;
+
+        // Логін = email, а email перевіряє окремий валідатор; так проходять і кириличні адреси.
+        options.User.AllowedUserNameCharacters = string.Empty;
         options.Lockout.MaxFailedAccessAttempts = 5;
         options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
     })
+    .AddErrorDescriber<UkrainianIdentityErrorDescriber>()
+    .AddPasswordValidator<EmailNotInPasswordValidator>()
     .AddSignInManager()
     .AddEntityFrameworkStores<ServerDbContext>();
 
