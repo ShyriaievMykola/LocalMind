@@ -494,3 +494,6 @@ eval/datasets/corpus/
 *.db-wal
 coverage/
 TestResults/
+
+# Бекапи користувачів, які зберігає локальний сервер
+src/LocalMind.Server/backups/

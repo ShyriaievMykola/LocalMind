@@ -85,6 +85,9 @@ public sealed class ServerSkeletonTests(LocalMindServerFactory factory)
         using var prodUi = await prod.GetAsync(new Uri("/swagger/index.html", UriKind.Relative));
 
         Assert.Equal(HttpStatusCode.OK, devDoc.StatusCode);
+        var document = await devDoc.Content.ReadAsStringAsync();
+        Assert.Contains("/api/v1/auth/login", document, StringComparison.Ordinal);
+        Assert.Contains("/api/v1/backups", document, StringComparison.Ordinal);
         Assert.Equal(HttpStatusCode.OK, devUi.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, prodDoc.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, prodUi.StatusCode);

@@ -11,6 +11,8 @@ public sealed class ServerDbContext(DbContextOptions<ServerDbContext> options) :
 {
     public DbSet<RefreshTokenEntity> RefreshTokens => Set<RefreshTokenEntity>();
 
+    public DbSet<SnapshotEntity> Snapshots => Set<SnapshotEntity>();
+
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder builder)
     {

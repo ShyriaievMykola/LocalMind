@@ -1,6 +1,7 @@
 using LocalMind.Server.Auth;
 using LocalMind.Server.Data;
 using LocalMind.Server.Endpoints;
+using LocalMind.Server.Storage;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -37,6 +38,11 @@ builder.Services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationSc
         bearer.TokenValidationParameters = JwtTokenService.CreateValidationParameters(jwt.Value);
     });
 builder.Services.AddAuthorization();
+builder.Services.AddOptions<BlobStoreOptions>()
+    .BindConfiguration(BlobStoreOptions.SectionName)
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+builder.Services.AddSingleton<FileSystemBlobStore>();
 builder.Services
     .AddIdentityCore<IdentityUser>(options =>
     {
@@ -92,5 +98,6 @@ app.UseAuthorization();
 var api = app.MapGroup("/api/v1");
 api.MapHealthChecks("/health").WithMetadata(new HttpMethodMetadata([HttpMethods.Get, HttpMethods.Head]));
 api.MapAuthEndpoints();
+api.MapBackupEndpoints();
 
 await app.RunAsync();
