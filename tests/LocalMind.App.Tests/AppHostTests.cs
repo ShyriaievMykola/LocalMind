@@ -60,7 +60,7 @@ public sealed class AppHostTests : IDisposable
         var builder = AppHost.CreateBuilder([]);
         // Підміна доводить, що навігація отримує VM з контейнера, а не створює їх через new.
         var search = new FakeSearchService().CreateViewModel();
-        var library = new LibraryViewModel();
+        var library = new FakeIndexingService().CreateViewModel();
         var settings = new SettingsViewModel();
         builder.Services.AddSingleton(search);
         builder.Services.AddSingleton(library);
