@@ -66,6 +66,23 @@ public sealed class DocumentRepositoryTests : IAsyncLifetime, IDisposable
     }
 
     [Fact]
+    public async Task GetChunkCounts_ReturnsCountPerDocument_WithoutDocumentsWithoutChunks()
+    {
+        var first = TestData.Document("/notes/a.md");
+        var second = TestData.Document("/notes/b.md");
+        var empty = TestData.Document("/notes/empty.md", DocumentStatus.Empty);
+        await _repository.SaveAsync(first, TestData.Chunks(first.Id, "один", "два"), Vectors(2), Model);
+        await _repository.SaveAsync(second, TestData.Chunks(second.Id, "три"), Vectors(1), Model);
+        await _repository.SaveAsync(empty, [], [], Model);
+
+        var counts = await _repository.GetChunkCountsAsync();
+
+        Assert.Equal(2, counts[first.Id]);
+        Assert.Equal(1, counts[second.Id]);
+        Assert.DoesNotContain(empty.Id, counts);
+    }
+
+    [Fact]
     public async Task Save_ThenGetVectors_ReturnsSameVectors()
     {
         var document = TestData.Document();

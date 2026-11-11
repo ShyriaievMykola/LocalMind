@@ -9,6 +9,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 {
     private readonly CoreStatus _status;
     private readonly SearchViewModel _search;
+    private readonly LibraryViewModel _library;
     private bool _disposed;
 
     public MainViewModel(CoreStatus status, SearchViewModel search, LibraryViewModel library, SettingsViewModel settings)
@@ -19,6 +20,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         ArgumentNullException.ThrowIfNull(settings);
 
         _search = search;
+        _library = library;
 
         NavigationItems = Array.AsReadOnly<NavigationItem>([
             new("Пошук", search),
@@ -48,6 +50,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         _disposed = true;
         _status.Changed -= OnStatusChanged;
         _search.Close();
+        _library.Close();
     }
 
     private void OnStatusChanged(object? sender, EventArgs args) => Dispatcher.UIThread.Post(() =>

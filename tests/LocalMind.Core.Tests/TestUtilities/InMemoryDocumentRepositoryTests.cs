@@ -36,6 +36,21 @@ public class InMemoryDocumentRepositoryTests
     }
 
     [Fact]
+    public async Task GetChunkCounts_ReturnsCountPerDocument_WithoutDocumentsWithoutChunks()
+    {
+        var repository = new InMemoryDocumentRepository();
+        var first = TestData.Document("/notes/a.md");
+        var empty = TestData.Document("/notes/empty.md", DocumentStatus.Empty);
+        await repository.SaveAsync(first, TestData.Chunks(first.Id, "один", "два"), Vectors(2), Model);
+        await repository.SaveAsync(empty, [], [], Model);
+
+        var counts = await repository.GetChunkCountsAsync();
+
+        Assert.Equal(2, counts[first.Id]);
+        Assert.DoesNotContain(empty.Id, counts);
+    }
+
+    [Fact]
     public async Task Save_ThenDocumentChunksAndVectorsAreAvailable()
     {
         var repository = new InMemoryDocumentRepository();
