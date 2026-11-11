@@ -1,6 +1,318 @@
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using LocalMind.App.Services;
+using LocalMind.Core.Abstractions;
+using LocalMind.Core.Models;
+using Microsoft.Extensions.Logging;
+
 namespace LocalMind.App.ViewModels;
 
-/// <summary>Заглушка сторінки бібліотеки; функціональність додається в A-04 (#91).</summary>
-public partial class LibraryViewModel : ViewModelBase
+/// <summary>
+/// Сторінка бібліотеки: відстежувані папки і документи зі станом індексації.
+/// Події ядра приходять з фонових потоків і переносяться в UI-потік через <see cref="SynchronizationContext"/>,
+/// захоплений під час створення: сторінку створює головне вікно в UI-потоці.
+/// </summary>
+public sealed partial class LibraryViewModel : ViewModelBase
 {
+    private const string ModelMissingMessage = "Для індексації потрібна модель. Запустіть scripts/download-models.";
+
+    private readonly IIndexingService _indexing;
+    private readonly IDocumentRepository _repository;
+    private readonly IFolderPicker _folderPicker;
+    private readonly CoreStatus _status;
+    private readonly ILogger<LibraryViewModel> _logger;
+    private readonly SynchronizationContext? _uiContext = SynchronizationContext.Current;
+    private readonly EventHandler<IndexingProgress> _progressHandler;
+    private readonly EventHandler _statusHandler;
+    private int _refreshVersion;
+    private volatile bool _closed;
+
+    public LibraryViewModel(
+        IIndexingService indexing,
+        IDocumentRepository repository,
+        IFolderPicker folderPicker,
+        CoreStatus status,
+        ILogger<LibraryViewModel> logger)
+    {
+        ArgumentNullException.ThrowIfNull(indexing);
+        ArgumentNullException.ThrowIfNull(repository);
+        ArgumentNullException.ThrowIfNull(folderPicker);
+        ArgumentNullException.ThrowIfNull(status);
+        ArgumentNullException.ThrowIfNull(logger);
+
+        _indexing = indexing;
+        _repository = repository;
+        _folderPicker = folderPicker;
+        _status = status;
+        _logger = logger;
+
+        _progressHandler = (_, _) => PostToUi(OnProgressChanged);
+        _statusHandler = (_, _) => PostToUi(OnCoreStatusChanged);
+        _indexing.ProgressChanged += _progressHandler;
+        _status.Changed += _statusHandler;
+
+        ShowProgress();
+    }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasFolders))]
+    public partial IReadOnlyList<string> Folders { get; private set; } = [];
+
+    public bool HasFolders => Folders.Count > 0;
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(RequestRemoveFolderCommand))]
+    public partial string? SelectedFolder { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsConfirmingRemoval))]
+    public partial string? FolderPendingRemoval { get; private set; }
+
+    public bool IsConfirmingRemoval => FolderPendingRemoval is not null;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasDocuments), nameof(DocumentCount), nameof(ErrorCount), nameof(SummaryText))]
+    public partial IReadOnlyList<LibraryDocumentItem> Documents { get; private set; } = [];
+
+    public bool HasDocuments => Documents.Count > 0;
+
+    public int DocumentCount => Documents.Count;
+
+    public int ErrorCount => Documents.Count(d => d.IsError);
+
+    public string SummaryText => $"Документів: {DocumentCount}, з помилками: {ErrorCount}";
+
+    /// <summary>Прогрес поточної індексації; <see langword="null"/>, коли черга порожня.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsIndexing), nameof(ProgressText))]
+    public partial IndexingProgress? Progress { get; private set; }
+
+    public bool IsIndexing => Progress is not null;
+
+    public string? ProgressText => Progress is { } progress ? $"Індексація: {progress.Processed} з {progress.Total}" : null;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasError))]
+    public partial string? ErrorMessage { get; private set; }
+
+    public bool HasError => ErrorMessage is not null;
+
+    /// <summary>Відписується від подій ядра при закритті вікна: сторінка Transient, DI її не звільняє.</summary>
+    public void Close()
+    {
+        _closed = true;
+        _indexing.ProgressChanged -= _progressHandler;
+        _status.Changed -= _statusHandler;
+    }
+
+    /// <summary>
+    /// Перечитує папки й документи. Спрацьовує, коли відкривають сторінку, коли ядро стало готовим
+    /// і коли черга індексації спорожніла. Опублікувати результат може лише останнє оновлення.
+    /// </summary>
+    [RelayCommand(AllowConcurrentExecutions = true)]
+    private async Task RefreshAsync()
+    {
+        // Поки ядро не готове, база ще може бути не створена.
+        if (_status.Stage != CoreStage.Ready)
+        {
+            return;
+        }
+
+        var version = Interlocked.Increment(ref _refreshVersion);
+        try
+        {
+            var folders = await _indexing.GetFoldersAsync();
+            var documents = await _repository.GetDocumentsAsync();
+            var chunkCounts = await _repository.GetChunkCountsAsync();
+            if (version != Volatile.Read(ref _refreshVersion) || _closed)
+            {
+                return;
+            }
+
+            Folders = [.. folders.Order(StringComparer.OrdinalIgnoreCase)];
+            Documents = [.. documents
+                .Select(d => new LibraryDocumentItem(d.Path, d.Status, chunkCounts.GetValueOrDefault(d.Id), d.Error))
+                .OrderBy(d => d.Path, StringComparer.OrdinalIgnoreCase)];
+
+            if (SelectedFolder is not null && !Folders.Contains(SelectedFolder))
+            {
+                SelectedFolder = null;
+            }
+        }
+        catch (Exception exception)
+        {
+            LogRefreshFailed(_logger, exception);
+            if (version == Volatile.Read(ref _refreshVersion))
+            {
+                ErrorMessage = "Не вдалося завантажити бібліотеку.";
+            }
+        }
+    }
+
+    [RelayCommand]
+    private async Task AddFolderAsync()
+    {
+        ErrorMessage = GetIndexingBlocker();
+        if (ErrorMessage is not null)
+        {
+            return;
+        }
+
+        string? folder;
+        try
+        {
+            folder = await _folderPicker.PickFolderAsync();
+        }
+        catch (Exception exception)
+        {
+            LogActionFailed(_logger, "вибір папки", exception);
+            ErrorMessage = "Не вдалося відкрити вибір папки.";
+            return;
+        }
+
+        if (folder is null)
+        {
+            return;
+        }
+
+        try
+        {
+            // Перелік файлів великої папки займає час, тому не на UI-потоці.
+            await Task.Run(() => _indexing.AddFolderAsync(folder));
+        }
+        catch (DirectoryNotFoundException)
+        {
+            ErrorMessage = $"Папку не знайдено: {folder}";
+            return;
+        }
+        catch (Exception exception)
+        {
+            LogActionFailed(_logger, "додавання папки", exception);
+            ErrorMessage = "Не вдалося додати папку.";
+            return;
+        }
+
+        await RefreshAsync();
+    }
+
+    [RelayCommand(CanExecute = nameof(CanRequestRemoveFolder))]
+    private void RequestRemoveFolder() => FolderPendingRemoval = SelectedFolder;
+
+    private bool CanRequestRemoveFolder() => SelectedFolder is not null;
+
+    [RelayCommand]
+    private void CancelRemoveFolder() => FolderPendingRemoval = null;
+
+    [RelayCommand]
+    private async Task ConfirmRemoveFolderAsync()
+    {
+        if (FolderPendingRemoval is not { } folder)
+        {
+            return;
+        }
+
+        FolderPendingRemoval = null;
+        ErrorMessage = GetCoreBlocker();
+        if (ErrorMessage is not null)
+        {
+            return;
+        }
+
+        try
+        {
+            await Task.Run(() => _indexing.RemoveFolderAsync(folder));
+        }
+        catch (Exception exception)
+        {
+            LogActionFailed(_logger, "видалення папки", exception);
+            ErrorMessage = "Не вдалося прибрати папку.";
+            return;
+        }
+
+        await RefreshAsync();
+    }
+
+    [RelayCommand]
+    private async Task RescanAsync()
+    {
+        ErrorMessage = GetIndexingBlocker();
+        if (ErrorMessage is not null)
+        {
+            return;
+        }
+
+        try
+        {
+            await Task.Run(() => _indexing.RescanAsync());
+        }
+        catch (Exception exception)
+        {
+            LogActionFailed(_logger, "пересканування", exception);
+            ErrorMessage = "Не вдалося пересканувати папки.";
+            return;
+        }
+
+        await RefreshAsync();
+    }
+
+    private string? GetCoreBlocker() => _status.Stage switch
+    {
+        CoreStage.Starting => "Ядро ще запускається. Спробуйте за мить.",
+        CoreStage.Failed => _status.Error ?? "Помилка запуску ядра.",
+        _ => null,
+    };
+
+    /// <summary>Без моделі кожен файл отримав би статус «помилка», тому індексацію не запускаємо.</summary>
+    private string? GetIndexingBlocker() =>
+        GetCoreBlocker() ?? (_status.IsModelAvailable ? null : ModelMissingMessage);
+
+    /// <summary>Читає поточний прогрес із сервісу, а не з аргументу події: події з різних потоків можуть прийти не по черзі.</summary>
+    private void ShowProgress()
+    {
+        var progress = _indexing.Progress;
+        Progress = progress.IsCompleted ? null : progress;
+    }
+
+    private void OnProgressChanged()
+    {
+        ShowProgress();
+        if (Progress is null)
+        {
+            _ = RefreshCommand.ExecuteAsync(null);
+        }
+    }
+
+    private void OnCoreStatusChanged()
+    {
+        if (_status.Stage == CoreStage.Ready)
+        {
+            _ = RefreshCommand.ExecuteAsync(null);
+        }
+    }
+
+    private void PostToUi(Action action)
+    {
+        if (_uiContext is null)
+        {
+            RunIfOpen(action);
+        }
+        else
+        {
+            _uiContext.Post(_ => RunIfOpen(action), null);
+        }
+    }
+
+    private void RunIfOpen(Action action)
+    {
+        if (!_closed)
+        {
+            action();
+        }
+    }
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Не вдалося завантажити бібліотеку")]
+    private static partial void LogRefreshFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Дія з бібліотекою не вдалася: {Action}")]
+    private static partial void LogActionFailed(ILogger logger, string action, Exception exception);
 }
