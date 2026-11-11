@@ -1,4 +1,5 @@
 using LocalMind.App.Services;
+using LocalMind.App.ViewModels;
 using LocalMind.Core.Models;
 using LocalMind.TestUtilities;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -39,6 +40,81 @@ public sealed class LibraryViewModelTests
     }
 
     [Fact]
+    public async Task Refresh_AfterFailure_SuccessfulRefreshClearsError()
+    {
+        await _indexing.Repository.AddSourceFolderAsync(Folder);
+        var failure = new TaskCompletionSource<IReadOnlyList<string>>();
+        failure.SetException(new InvalidOperationException("База недоступна"));
+        _indexing.PendingFolderResults.Enqueue(failure);
+        var viewModel = _indexing.CreateViewModel();
+
+        await viewModel.RefreshCommand.ExecuteAsync(null);
+
+        Assert.Equal("Не вдалося завантажити бібліотеку.", viewModel.ErrorMessage);
+
+        await viewModel.RefreshCommand.ExecuteAsync(null);
+
+        Assert.Null(viewModel.ErrorMessage);
+        Assert.Equal([Folder], viewModel.Folders);
+    }
+
+    [Fact]
+    public async Task Refresh_DoesNotHideErrorOfUserAction()
+    {
+        _indexing.Picker.Result = Folder;
+        _indexing.AddFolderError = new DirectoryNotFoundException();
+        var viewModel = _indexing.CreateViewModel();
+        await viewModel.AddFolderCommand.ExecuteAsync(null);
+
+        await viewModel.RefreshCommand.ExecuteAsync(null);
+
+        Assert.Equal($"Папку не знайдено: {Folder}", viewModel.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task Refresh_OlderResultFinishingLater_DoesNotOverwriteNewer()
+    {
+        var older = new TaskCompletionSource<IReadOnlyList<string>>();
+        var newer = new TaskCompletionSource<IReadOnlyList<string>>();
+        _indexing.PendingFolderResults.Enqueue(older);
+        _indexing.PendingFolderResults.Enqueue(newer);
+        var viewModel = _indexing.CreateViewModel();
+
+        var first = viewModel.RefreshCommand.ExecuteAsync(null);
+        var second = viewModel.RefreshCommand.ExecuteAsync(null);
+
+        newer.SetResult(["/new"]);
+        await second;
+        older.SetResult(["/old"]);
+        await first;
+
+        Assert.Equal(["/new"], viewModel.Folders);
+    }
+
+    [Fact]
+    public async Task Refresh_KeepsSelectedFolder_EvenIfListResetsSelection()
+    {
+        await _indexing.Repository.AddSourceFolderAsync(Folder);
+        var viewModel = _indexing.CreateViewModel();
+        await viewModel.RefreshCommand.ExecuteAsync(null);
+        viewModel.SelectedFolder = Folder;
+
+        // Так поводиться ListBox: новий ItemsSource скидає вибір, і TwoWay-прив'язка пише null у VM.
+        viewModel.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(LibraryViewModel.Folders))
+            {
+                viewModel.SelectedFolder = null;
+            }
+        };
+
+        await viewModel.RefreshCommand.ExecuteAsync(null);
+
+        Assert.Equal(Folder, viewModel.SelectedFolder);
+        Assert.True(viewModel.RequestRemoveFolderCommand.CanExecute(null));
+    }
+
+    [Fact]
     public async Task Refresh_WhileCoreStarting_DoesNotReadStorage_ThenLoadsWhenReady()
     {
         await _indexing.Repository.AddSourceFolderAsync(Folder);
@@ -51,7 +127,46 @@ public sealed class LibraryViewModelTests
 
         status.SetModelAvailable();
         status.SetReady();
+        _indexing.Dispatcher.RunPending();
 
+        await WaitUntilAsync(() => viewModel.DocumentCount == 1);
+    }
+
+    [Fact]
+    public async Task ProgressFromBackgroundThread_IsAppliedOnlyThroughUiDispatcher()
+    {
+        var viewModel = _indexing.CreateViewModel();
+
+        await Task.Run(() => _indexing.Report(new IndexingProgress(0, 1, 0, "/notes/a.md")));
+
+        // Обробник фонової події лише поставив дію в чергу UI-потоку і нічого не змінив сам.
+        Assert.False(viewModel.IsIndexing);
+        Assert.Equal(1, _indexing.Dispatcher.PendingCount);
+
+        _indexing.Dispatcher.RunPending();
+
+        Assert.True(viewModel.IsIndexing);
+        Assert.Equal("/notes/a.md", viewModel.Progress?.CurrentFile);
+    }
+
+    [Fact]
+    public async Task IndexingProgress_IsShown_AndCompletionRefreshesDocuments()
+    {
+        await _indexing.Repository.AddSourceFolderAsync(Folder);
+        var viewModel = _indexing.CreateViewModel();
+        await viewModel.RefreshCommand.ExecuteAsync(null);
+
+        _indexing.Report(new IndexingProgress(0, 1, 0, "/notes/a.md"));
+        _indexing.Dispatcher.RunPending();
+
+        Assert.True(viewModel.IsIndexing);
+        Assert.Equal("Індексація: 0 з 1", viewModel.ProgressText);
+
+        await SaveAsync("/notes/a.md", DocumentStatus.Indexed, "текст");
+        _indexing.Report(new IndexingProgress(1, 1));
+        _indexing.Dispatcher.RunPending();
+
+        Assert.False(viewModel.IsIndexing);
         await WaitUntilAsync(() => viewModel.DocumentCount == 1);
     }
 
@@ -168,24 +283,6 @@ public sealed class LibraryViewModelTests
 
         Assert.Equal(1, _indexing.RescanCount);
         Assert.Null(viewModel.ErrorMessage);
-    }
-
-    [Fact]
-    public async Task IndexingProgress_IsShown_AndCompletionRefreshesDocuments()
-    {
-        await _indexing.Repository.AddSourceFolderAsync(Folder);
-        var viewModel = _indexing.CreateViewModel();
-        await viewModel.RefreshCommand.ExecuteAsync(null);
-
-        _indexing.Report(new IndexingProgress(0, 1, 0, "/notes/a.md"));
-
-        await WaitUntilAsync(() => viewModel.IsIndexing && viewModel.Progress?.CurrentFile == "/notes/a.md");
-        Assert.Equal("Індексація: 0 з 1", viewModel.ProgressText);
-
-        await SaveAsync("/notes/a.md", DocumentStatus.Indexed, "текст");
-        _indexing.Report(new IndexingProgress(1, 1));
-
-        await WaitUntilAsync(() => !viewModel.IsIndexing && viewModel.DocumentCount == 1);
     }
 
     [Fact]

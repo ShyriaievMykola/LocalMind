@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using LocalMind.App.Services;
 using LocalMind.App.ViewModels;
 using LocalMind.Core.Abstractions;
@@ -13,6 +14,14 @@ internal sealed class FakeIndexingService : IIndexingService
     public InMemoryDocumentRepository Repository { get; } = new();
 
     public FakeFolderPicker Picker { get; } = new();
+    
+    public FakeUiDispatcher Dispatcher { get; } = new();
+
+    /// <summary>
+    /// Відповіді для наступних викликів <see cref="GetFoldersAsync"/>: дають тесту керувати тим,
+    /// коли і чим завершиться оновлення (порядок, збій).
+    /// </summary>
+    public ConcurrentQueue<TaskCompletionSource<IReadOnlyList<string>>> PendingFolderResults { get; } = new();
 
     public List<string> AddedFolders { get; } = [];
 
@@ -29,8 +38,7 @@ internal sealed class FakeIndexingService : IIndexingService
 
     public event EventHandler<IndexingProgress>? ProgressChanged;
 
-    public Task<IReadOnlyList<string>> GetFoldersAsync(CancellationToken cancellationToken = default) =>
-        Repository.GetSourceFoldersAsync(cancellationToken);
+    public Task<IReadOnlyList<string>> GetFoldersAsync(CancellationToken cancellationToken = default) => PendingFolderResults.TryDequeue(out var pending) ? pending.Task : Repository.GetSourceFoldersAsync(cancellationToken);
 
     public Task AddFolderAsync(string path, CancellationToken cancellationToken = default)
     {
@@ -75,6 +83,6 @@ internal sealed class FakeIndexingService : IIndexingService
             status.SetReady();
         }
 
-        return new LibraryViewModel(this, Repository, Picker, status, NullLogger<LibraryViewModel>.Instance);
+        return new LibraryViewModel(this, Repository, Picker, Dispatcher, status, NullLogger<LibraryViewModel>.Instance);
     }
 }
