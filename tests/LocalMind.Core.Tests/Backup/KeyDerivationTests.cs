@@ -1,3 +1,4 @@
+using System.Text;
 using LocalMind.Core.Backup.Crypto;
 
 namespace LocalMind.Core.Tests.Backup;
@@ -52,5 +53,16 @@ public sealed class KeyDerivationTests
     {
         Assert.Throws<ArgumentException>(() => KeyDerivation.DeriveKey("", KeyDerivation.CreateSalt()));
         Assert.Throws<ArgumentException>(() => KeyDerivation.DeriveKey("пароль", new byte[8]));
+    }
+
+    [Fact]
+    public void DeriveKey_NfcAndNfdPassword_ReturnSameKey()
+    {
+        var salt = KeyDerivation.CreateSalt();
+        var nfc = "пароль-й".Normalize(NormalizationForm.FormC);
+        var nfd = nfc.Normalize(NormalizationForm.FormD);
+
+        Assert.NotEqual(nfc, nfd, StringComparer.Ordinal);
+        Assert.Equal(KeyDerivation.DeriveKey(nfc, salt), KeyDerivation.DeriveKey(nfd, salt));
     }
 }
