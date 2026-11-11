@@ -8,6 +8,16 @@ internal static class AppPaths
     /// <summary>Файл, за яким упізнаємо корінь репозиторію.</summary>
     internal const string RepositoryMarker = "LocalMind.slnx";
 
+    /// <summary>
+    /// Чи шукати корінь репозиторію. Лише в Debug: у розробці модель лежить у <c>models/</c> репозиторію,
+    /// а встановлена програма не має повода ходити вгору по дереву папок.
+    /// </summary>
+#if DEBUG
+    internal const bool SearchRepositoryByDefault = true;
+#else
+    internal const bool SearchRepositoryByDefault = false;
+#endif
+
     /// <summary>Тека даних користувача (поруч із базою): <c>%LOCALAPPDATA%\LocalMind</c> тощо.</summary>
     public static string UserDataDirectory() => Path.GetDirectoryName(StorageOptions.DefaultDatabasePath())!;
 
@@ -16,13 +26,17 @@ internal static class AppPaths
     /// <list type="number">
     /// <item><paramref name="baseDirectory"/> — модель, покладена поруч із програмою;</item>
     /// <item><paramref name="userDataDirectory"/> — модель, завантажена для встановленої програми;</item>
-    /// <item>корінь репозиторію (папка з <see cref="RepositoryMarker"/>), якщо програма запущена з нього —
-    /// туди кладе <c>models/</c> скрипт <c>scripts/download-models</c>.</item>
+    /// <item>лише в Debug (<paramref name="searchRepository"/>) — корінь репозиторію (папка з <see cref="RepositoryMarker"/>),
+    /// якщо програма запущена з нього: туди кладе <c>models/</c> скрипт <c>scripts/download-models</c>.</item>
     /// </list>
     /// Інші батьківські папки не перевіряємо, інакше чужий <c>C:\models\...</c> підмінив би модель.
     /// Якщо файла немає — шлях відносно <paramref name="baseDirectory"/>, щоб у помилці було видно, де його чекали.
     /// </summary>
-    public static string ResolveAppFile(string path, string baseDirectory, string? userDataDirectory = null)
+    public static string ResolveAppFile(
+        string path,
+        string baseDirectory,
+        string? userDataDirectory = null,
+        bool searchRepository = SearchRepositoryByDefault)
     {
         if (string.IsNullOrWhiteSpace(path) || Path.IsPathRooted(path))
         {
@@ -30,7 +44,7 @@ internal static class AppPaths
         }
 
         var inBase = Path.GetFullPath(Path.Combine(baseDirectory, path));
-        string?[] roots = [userDataDirectory, FindRepositoryRoot(baseDirectory)];
+        string?[] roots = [userDataDirectory, searchRepository ? FindRepositoryRoot(baseDirectory) : null];
         foreach (var root in roots)
         {
             if (File.Exists(inBase) || root is null)

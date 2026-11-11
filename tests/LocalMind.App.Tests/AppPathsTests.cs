@@ -17,7 +17,20 @@ public sealed class AppPathsTests : IDisposable
         Directory.CreateDirectory(baseDirectory);
         File.WriteAllText(Path.Combine(_root, AppPaths.RepositoryMarker), string.Empty);
 
-        Assert.Equal(model, AppPaths.ResolveAppFile("models/model.onnx", baseDirectory));
+        Assert.Equal(model, AppPaths.ResolveAppFile("models/model.onnx", baseDirectory, searchRepository: true));
+    }
+
+    [Fact]
+    public void ResolveAppFile_RepositorySearchOff_IgnoresRepositoryRoot()
+    {
+        CreateModelInRoot();
+        var baseDirectory = Path.Combine(_root, "src", "bin", "Release");
+        Directory.CreateDirectory(baseDirectory);
+        File.WriteAllText(Path.Combine(_root, AppPaths.RepositoryMarker), string.Empty);
+
+        Assert.Equal(
+            Path.Combine(baseDirectory, "models", "model.onnx"),
+            AppPaths.ResolveAppFile(Path.Combine("models", "model.onnx"), baseDirectory, searchRepository: false));
     }
 
     [Fact]
@@ -29,7 +42,7 @@ public sealed class AppPathsTests : IDisposable
 
         Assert.Equal(
             Path.Combine(baseDirectory, "models", "model.onnx"),
-            AppPaths.ResolveAppFile(Path.Combine("models", "model.onnx"), baseDirectory));
+            AppPaths.ResolveAppFile(Path.Combine("models", "model.onnx"), baseDirectory, searchRepository: true));
     }
 
     [Fact]
@@ -42,7 +55,7 @@ public sealed class AppPathsTests : IDisposable
         Directory.CreateDirectory(Path.GetDirectoryName(local)!);
         File.WriteAllText(local, string.Empty);
 
-        Assert.Equal(local, AppPaths.ResolveAppFile("models/model.onnx", baseDirectory));
+        Assert.Equal(local, AppPaths.ResolveAppFile("models/model.onnx", baseDirectory, searchRepository: true));
     }
 
     [Fact]
