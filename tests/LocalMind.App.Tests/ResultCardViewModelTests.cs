@@ -1,4 +1,5 @@
 using LocalMind.App.ViewModels;
+using LocalMind.Core.Errors;
 using LocalMind.Core.Models;
 using LocalMind.TestUtilities;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -9,6 +10,47 @@ public sealed class ResultCardViewModelTests
 {
     private readonly FakeFileLauncher _files = new();
     private readonly string _folder = Path.Combine(Path.GetTempPath(), "localmind-notes");
+
+    [Theory]
+    [InlineData("bad\0path.md")]
+    [InlineData("folder\0/note.md")]
+    public void Constructor_MalformedDocumentPath_PreservesOriginalPath(string path)
+    {
+        var card = Create(Result(path), [_folder]);
+
+        Assert.Equal(path, card.DocumentPath);
+        Assert.Equal(path, card.RelativePath);
+    }
+
+    [Fact]
+    public void Constructor_MalformedSourceFolder_DoesNotHideValidRoot()
+    {
+        var card = Create(Result(Path.Combine(_folder, "note.md")), ["broken\0folder", _folder]);
+
+        Assert.Equal("note.md", card.RelativePath);
+    }
+
+    [Fact]
+    public void Constructor_DifferentFolderCase_FollowsCorePlatformRule()
+    {
+        var result = Result(Path.Combine(_folder, "Sub", "note.md"));
+        var card = Create(result, [_folder.ToUpperInvariant()]);
+        var ignoreCase = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS();
+
+        Assert.Equal(ignoreCase ? Path.Combine("Sub", "note.md") : result.DocumentPath, card.RelativePath);
+    }
+
+    [Fact]
+    public async Task OpenSource_UnsupportedFormat_ShowsServiceMessage()
+    {
+        var card = Create(Result(Path.Combine(_folder, "program.exe")), [_folder]);
+        _files.Handler = (_, _) => throw new LocalMindException("Цей формат файла не підтримується.");
+
+        await card.OpenSourceCommand.ExecuteAsync(null);
+
+        Assert.Equal("Цей формат файла не підтримується.", card.ErrorMessage);
+        Assert.True(card.HasError);
+    }
 
     [Fact]
     public void Constructor_PreservesSnippetAndScore_AndShowsRelativePath()

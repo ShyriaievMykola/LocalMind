@@ -12,6 +12,23 @@ public sealed class ResultCardFactoryTests
     private readonly FakeFileLauncher _files = new();
 
     [Fact]
+    public async Task Create_MalformedPath_DoesNotDropOtherResults()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "notes");
+        await _repository.AddSourceFolderAsync(root);
+        var first = new SearchResult(TestData.Chunk(Guid.NewGuid()), Path.Combine(root, "one.md"), 0.9);
+        var broken = new SearchResult(TestData.Chunk(Guid.NewGuid()), "broken\0path.md", 0.8);
+        var last = new SearchResult(TestData.Chunk(Guid.NewGuid()), Path.Combine(root, "two.md"), 0.7);
+
+        var cards = await Factory().CreateAsync([first, broken, last]);
+
+        Assert.Equal([first, broken, last], cards.Select(c => c.Result));
+        Assert.Equal("one.md", cards[0].RelativePath);
+        Assert.Equal(broken.DocumentPath, cards[1].RelativePath);
+        Assert.Equal("two.md", cards[2].RelativePath);
+    }
+
+    [Fact]
     public async Task Create_UsesTrackedFolders_AndKeepsResultOrderAndServices()
     {
         var root = Path.Combine(Path.GetTempPath(), "notes");

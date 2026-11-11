@@ -235,7 +235,9 @@ public sealed class IndexingServiceTests : IDisposable
     {
         var path = Write("locked.txt", "текст");
         var logger = new ListLogger();
-        var service = CreateService(logger: logger, retryDelay: TimeSpan.FromSeconds(1));
+        // Повідомлення спостерігача проходить через debounce, а в _watcher він годинний: потрібен живий.
+        var watcher = rescanDuringRetry ? LiveWatcher() : null;
+        var service = CreateService(logger: logger, retryDelay: TimeSpan.FromSeconds(1), watcher: watcher);
         var lockStream = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
 
         try
@@ -243,11 +245,10 @@ public sealed class IndexingServiceTests : IDisposable
             await service.AddFolderAsync(_folder);
             await WaitUntilAsync(() => logger.Entries.Any(e => e.Message.Contains("зайнятий", StringComparison.Ordinal)));
 
-            if (rescanDuringRetry)
+            if (watcher is not null)
             {
-                // Звичайний тестовий watcher має debounce на годину (#99), тому запускаємо
-                // повторне сканування напряму: поточний файл знову потрапить у чергу.
-                await service.RescanAsync();
+                // Повторне повідомлення спостерігача ставить поточний файл у чергу ще раз.
+                watcher.OnWatcherError(_folder);
                 await WaitUntilAsync(() => service.Progress.Total >= 2);
             }
         }
