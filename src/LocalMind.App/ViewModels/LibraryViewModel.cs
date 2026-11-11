@@ -9,19 +9,19 @@ namespace LocalMind.App.ViewModels;
 
 /// <summary>
 /// Сторінка бібліотеки: відстежувані папки і документи зі станом індексації.
-/// Події ядра приходять з фонових потоків і переносяться в UI-потік через <see cref="SynchronizationContext"/>,
-/// захоплений під час створення: сторінку створює головне вікно в UI-потоці.
+/// Події ядра приходять з фонових потоків і переносяться в UI-потік через <see cref="IUiDispatcher"/>.
 /// </summary>
 public sealed partial class LibraryViewModel : ViewModelBase
 {
     private const string ModelMissingMessage = "Для індексації потрібна модель. Запустіть scripts/download-models.";
+    private const string LoadFailedMessage = "Не вдалося завантажити бібліотеку.";
 
     private readonly IIndexingService _indexing;
     private readonly IDocumentRepository _repository;
     private readonly IFolderPicker _folderPicker;
+    private readonly IUiDispatcher _dispatcher;
     private readonly CoreStatus _status;
     private readonly ILogger<LibraryViewModel> _logger;
-    private readonly SynchronizationContext? _uiContext = SynchronizationContext.Current;
     private readonly EventHandler<IndexingProgress> _progressHandler;
     private readonly EventHandler _statusHandler;
     private int _refreshVersion;
@@ -31,18 +31,21 @@ public sealed partial class LibraryViewModel : ViewModelBase
         IIndexingService indexing,
         IDocumentRepository repository,
         IFolderPicker folderPicker,
+        IUiDispatcher dispatcher,
         CoreStatus status,
         ILogger<LibraryViewModel> logger)
     {
         ArgumentNullException.ThrowIfNull(indexing);
         ArgumentNullException.ThrowIfNull(repository);
         ArgumentNullException.ThrowIfNull(folderPicker);
+        ArgumentNullException.ThrowIfNull(dispatcher);
         ArgumentNullException.ThrowIfNull(status);
         ArgumentNullException.ThrowIfNull(logger);
 
         _indexing = indexing;
         _repository = repository;
         _folderPicker = folderPicker;
+        _dispatcher = dispatcher;
         _status = status;
         _logger = logger;
 
@@ -129,22 +132,29 @@ public sealed partial class LibraryViewModel : ViewModelBase
                 return;
             }
 
+            // ListBox скидає вибір, коли отримує новий список, і через TwoWay пише null у SelectedFolder.
+            // Тому запам'ятовуємо вибрану папку і повертаємо її, якщо вона лишилась у бібліотеці.
+            var selected = SelectedFolder;
             Folders = [.. folders.Order(StringComparer.OrdinalIgnoreCase)];
+            SelectedFolder = selected is not null && Folders.Contains(selected) ? selected : null;
+
             Documents = [.. documents
                 .Select(d => new LibraryDocumentItem(d.Path, d.Status, chunkCounts.GetValueOrDefault(d.Id), d.Error))
                 .OrderBy(d => d.Path, StringComparer.OrdinalIgnoreCase)];
 
-            if (SelectedFolder is not null && !Folders.Contains(SelectedFolder))
+            // Прибираємо лише помилку завантаження. Помилку дії користувача («Папку не знайдено»)
+            // фонове оновлення не повинно ховати.
+            if (ErrorMessage == LoadFailedMessage)
             {
-                SelectedFolder = null;
+                ErrorMessage = null;
             }
         }
         catch (Exception exception)
         {
             LogRefreshFailed(_logger, exception);
-            if (version == Volatile.Read(ref _refreshVersion))
+            if (version == Volatile.Read(ref _refreshVersion) && !_closed)
             {
-                ErrorMessage = "Не вдалося завантажити бібліотеку.";
+                ErrorMessage = LoadFailedMessage;
             }
         }
     }
@@ -290,25 +300,14 @@ public sealed partial class LibraryViewModel : ViewModelBase
         }
     }
 
-    private void PostToUi(Action action)
-    {
-        if (_uiContext is null)
-        {
-            RunIfOpen(action);
-        }
-        else
-        {
-            _uiContext.Post(_ => RunIfOpen(action), null);
-        }
-    }
-
-    private void RunIfOpen(Action action)
+    /// <summary>Події ядра приходять з фонових потоків; змінювати властивості, прив'язані до UI, можна лише в UI-потоці.</summary>
+    private void PostToUi(Action action) => _dispatcher.Post(() =>
     {
         if (!_closed)
         {
             action();
         }
-    }
+    });
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Не вдалося завантажити бібліотеку")]
     private static partial void LogRefreshFailed(ILogger logger, Exception exception);

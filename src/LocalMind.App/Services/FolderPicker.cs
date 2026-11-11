@@ -11,7 +11,8 @@ internal sealed class FolderPicker : IFolderPicker
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } window })
         {
-            return null;
+            // null означає «користувач скасував»; відсутнє вікно — це помилка, і VM має її показати.
+            throw new InvalidOperationException("Головне вікно ще не відкрите — немає де показати вибір папки.");
         }
 
         var folders = await window.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
