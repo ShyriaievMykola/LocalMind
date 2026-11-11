@@ -34,8 +34,8 @@ public static class AppHost
 
         builder.Services.PostConfigure<EmbeddingModelOptions>(options =>
         {
-            options.ModelPath = AppPaths.ResolveAppFile(options.ModelPath, AppContext.BaseDirectory);
-            options.TokenizerPath = AppPaths.ResolveAppFile(options.TokenizerPath, AppContext.BaseDirectory);
+            options.ModelPath = AppPaths.ResolveAppFile(options.ModelPath, AppContext.BaseDirectory, AppPaths.UserDataDirectory());
+            options.TokenizerPath = AppPaths.ResolveAppFile(options.TokenizerPath, AppContext.BaseDirectory, AppPaths.UserDataDirectory());
         });
         builder.Services.PostConfigure<StorageOptions>(options =>
             options.DatabasePath = AppPaths.ResolveDatabase(options.DatabasePath));

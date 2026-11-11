@@ -45,6 +45,19 @@ public sealed class AppPathsTests : IDisposable
         Assert.Equal(local, AppPaths.ResolveAppFile("models/model.onnx", baseDirectory));
     }
 
+    [Fact]
+    public void ResolveAppFile_FileInUserDataFolder_FindsIt()
+    {
+        var dataFolder = Path.Combine(_root, "data");
+        var model = Path.Combine(dataFolder, "models", "model.onnx");
+        Directory.CreateDirectory(Path.GetDirectoryName(model)!);
+        File.WriteAllText(model, string.Empty);
+        var baseDirectory = Path.Combine(_root, "app");
+        Directory.CreateDirectory(baseDirectory);
+
+        Assert.Equal(model, AppPaths.ResolveAppFile(Path.Combine("models", "model.onnx"), baseDirectory, dataFolder));
+    }
+
     private string CreateModelInRoot()
     {
         var model = Path.Combine(_root, "models", "model.onnx");

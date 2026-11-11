@@ -8,14 +8,21 @@ internal static class AppPaths
     /// <summary>Файл, за яким упізнаємо корінь репозиторію.</summary>
     internal const string RepositoryMarker = "LocalMind.slnx";
 
+    /// <summary>Тека даних користувача (поруч із базою): <c>%LOCALAPPDATA%\LocalMind</c> тощо.</summary>
+    public static string UserDataDirectory() => Path.GetDirectoryName(StorageOptions.DefaultDatabasePath())!;
+
     /// <summary>
-    /// Відносний шлях до файла застосунку (модель, токенізатор). Шукає файл у <paramref name="baseDirectory"/>,
-    /// а якщо програма запущена з репозиторію — ще й у його корені (папка з <see cref="RepositoryMarker"/>):
-    /// так під час розробки знаходиться <c>models/</c>, куди їх кладе <c>scripts/download-models</c>.
+    /// Відносний шлях до файла застосунку (модель, токенізатор). Шукає по черзі:
+    /// <list type="number">
+    /// <item><paramref name="baseDirectory"/> — модель, покладена поруч із програмою;</item>
+    /// <item><paramref name="userDataDirectory"/> — модель, завантажена для встановленої програми;</item>
+    /// <item>корінь репозиторію (папка з <see cref="RepositoryMarker"/>), якщо програма запущена з нього —
+    /// туди кладе <c>models/</c> скрипт <c>scripts/download-models</c>.</item>
+    /// </list>
     /// Інші батьківські папки не перевіряємо, інакше чужий <c>C:\models\...</c> підмінив би модель.
     /// Якщо файла немає — шлях відносно <paramref name="baseDirectory"/>, щоб у помилці було видно, де його чекали.
     /// </summary>
-    public static string ResolveAppFile(string path, string baseDirectory)
+    public static string ResolveAppFile(string path, string baseDirectory, string? userDataDirectory = null)
     {
         if (string.IsNullOrWhiteSpace(path) || Path.IsPathRooted(path))
         {
@@ -23,18 +30,18 @@ internal static class AppPaths
         }
 
         var inBase = Path.GetFullPath(Path.Combine(baseDirectory, path));
-        if (File.Exists(inBase))
+        string?[] roots = [userDataDirectory, FindRepositoryRoot(baseDirectory)];
+        foreach (var root in roots)
         {
-            return inBase;
-        }
-
-        var repository = FindRepositoryRoot(baseDirectory);
-        if (repository is not null)
-        {
-            var inRepository = Path.GetFullPath(Path.Combine(repository, path));
-            if (File.Exists(inRepository))
+            if (File.Exists(inBase) || root is null)
             {
-                return inRepository;
+                continue;
+            }
+
+            var candidate = Path.GetFullPath(Path.Combine(root, path));
+            if (File.Exists(candidate))
+            {
+                return candidate;
             }
         }
 

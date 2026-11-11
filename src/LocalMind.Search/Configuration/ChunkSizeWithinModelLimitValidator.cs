@@ -1,11 +1,18 @@
+using System.Text;
 using LocalMind.Core.Configuration;
+using LocalMind.Search.Embeddings;
 using Microsoft.Extensions.Options;
 
 namespace LocalMind.Search.Configuration;
 
 /// <summary>
-/// Перехресна перевірка: фрагмент не може бути довшим за ліміт моделі, інакше модель
-/// мовчки обріже його і частина тексту не потрапить у вектор.
+/// Перехресна перевірка розміру фрагмента з лімітом моделі. Розмір фрагмента рахується так, як його побачить модель:
+/// <see cref="HfTokenCounter"/> враховує префікс <see cref="EmbeddingModelOptions.PassagePrefix"/>
+/// і службові токени. Тому:
+/// <list type="bullet">
+/// <item>фрагмент не довший за <see cref="EmbeddingModelOptions.MaxTokens"/>, інакше модель мовчки обріже його;</item>
+/// <item>фрагмент більший за резерв під префікс і службові токени, інакше на текст не лишиться місця.</item>
+/// </list>
 /// Якщо налаштування моделі самі некоректні, перевірка пропускається — про це вже повідомляє
 /// <see cref="EmbeddingModelOptionsValidator"/>, і помилки не дублюються.
 /// </summary>
@@ -16,20 +23,40 @@ public sealed class ChunkSizeWithinModelLimitValidator(IOptions<EmbeddingModelOp
     {
         ArgumentNullException.ThrowIfNull(options);
 
-        int maxTokens;
+        EmbeddingModelOptions model;
         try
         {
-            maxTokens = embeddingOptions.Value.MaxTokens;
+            model = embeddingOptions.Value;
         }
         catch (OptionsValidationException)
         {
             return ValidateOptionsResult.Skip;
         }
 
-        return options.ChunkSizeTokens > maxTokens
-            ? ValidateOptionsResult.Fail(
+        if (options.ChunkSizeTokens > model.MaxTokens)
+        {
+            return ValidateOptionsResult.Fail(
                 $"{ChunkingOptions.SectionName}:ChunkSizeTokens ({options.ChunkSizeTokens}) перевищує " +
-                $"{EmbeddingModelOptions.SectionName}:MaxTokens ({maxTokens}) — модель обрізатиме фрагменти.")
+                $"{EmbeddingModelOptions.SectionName}:MaxTokens ({model.MaxTokens}) — модель обрізатиме фрагменти.");
+        }
+
+        var reserve = ReservedTokens(model);
+        return options.ChunkSizeTokens <= reserve
+            ? ValidateOptionsResult.Fail(
+                $"{ChunkingOptions.SectionName}:ChunkSizeTokens ({options.ChunkSizeTokens}) не більший за резерв " +
+                $"під префікс «{model.PassagePrefix}» і службові токени ({reserve}) — на текст не лишається місця.")
             : ValidateOptionsResult.Success;
+    }
+
+    /// <summary>
+    /// Верхня оцінка токенів, які займають префікс і службові токени. Токенізатор тут не завантажуємо
+    /// (застосунок стартує і без моделі). Кожен токен покриває щонайменше один символ, тож токенів не більше,
+    /// ніж байтів UTF-8.
+    /// </summary>
+    public static int ReservedTokens(EmbeddingModelOptions model)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+
+        return ModelTokenizer.SpecialTokenCount + Encoding.UTF8.GetByteCount(model.PassagePrefix ?? string.Empty);
     }
 }

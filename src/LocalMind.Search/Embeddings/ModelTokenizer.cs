@@ -19,7 +19,8 @@ public sealed class ModelTokenizer
     private const long UnknownId = 3;
     private const int SentencePieceUnknownId = 0;
     private const int IdOffset = 1;
-    private const int SpecialTokenCount = 2;
+    /// <summary>Службові токени початку й кінця тексту.</summary>
+    internal const int SpecialTokenCount = 2;
 
     private readonly EmbeddingModelOptions _options;
     private readonly Lazy<SentencePieceTokenizer> _tokenizer;

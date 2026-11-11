@@ -31,6 +31,7 @@
     <!-- Явно піднята транзитивна залежність: 2.0.0 має вразливість GHSA-v5pm-xwqc-g5wc (виправлено в 2.7.5).
          Лише гілка 2.x: Microsoft.AspNetCore.OpenApi 10.x вимагає >= 2.12.2 && < 3.0.0 (див. DR-013). -->
     <PackageVersion Include="Microsoft.OpenApi" Version="2.13.0" />
+    <PackageVersion Include="Swashbuckle.AspNetCore.SwaggerUI" Version="11.0.0" />
   </ItemGroup>
 
   <ItemGroup Label="Vectors">

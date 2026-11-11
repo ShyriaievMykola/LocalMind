@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging;
+
 namespace LocalMind.App.Services;
 
 /// <summary>Етап запуску ядра.</summary>
@@ -17,7 +19,7 @@ public enum CoreStage
 /// Стан запуску ядра для ViewModel-ів. Змінюється з фонового потоку: обробник <see cref="Changed"/>
 /// має сам перейти в UI-потік (<c>Dispatcher.UIThread.Post</c>).
 /// </summary>
-public sealed class CoreStatus
+public sealed partial class CoreStatus(ILogger<CoreStatus> logger)
 {
     private readonly Lock _lock = new();
     private readonly TaskCompletionSource _completed = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -28,7 +30,7 @@ public sealed class CoreStatus
     /// <summary>Файли моделі на місці. Без моделі не працюють семантичний пошук та індексація.</summary>
     public bool IsModelAvailable { get; private set; }
 
-    /// <summary>Чому немає моделі — шлях, де її чекали; <see langword="null"/>, якщо модель є.</summary>
+    /// <summary>Чому немає моделі — шлях, де її чекали; <see langword="null"/>, якщо модель є або ще не перевірена.</summary>
     public string? ModelError { get; private set; }
 
     /// <summary>Причина <see cref="CoreStage.Failed"/>; інакше <see langword="null"/>.</summary>
@@ -37,23 +39,44 @@ public sealed class CoreStatus
     /// <summary>Завершується, коли запуск закінчився — успішно чи ні (без винятку).</summary>
     public Task Completion => _completed.Task;
 
-    /// <summary>Стан змінився. Викликається з фонового потоку.</summary>
+    /// <summary>
+    /// Стан змінився. Викликається з фонового потоку. Виняток в обробнику логується і не зупиняє
+    /// ні запуск, ні інших обробників.
+    /// </summary>
     public event EventHandler? Changed;
 
-    internal void SetModel(bool isAvailable, string? error)
+    internal void SetModelAvailable()
     {
         lock (_lock)
         {
-            IsModelAvailable = isAvailable;
+            IsModelAvailable = true;
+            ModelError = null;
+        }
+
+        RaiseChanged();
+    }
+
+    internal void SetModelMissing(string error)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(error);
+
+        lock (_lock)
+        {
+            IsModelAvailable = false;
             ModelError = error;
         }
 
-        Changed?.Invoke(this, EventArgs.Empty);
+        RaiseChanged();
     }
 
     internal void SetReady() => Finish(CoreStage.Ready, error: null);
 
-    internal void SetFailed(string error) => Finish(CoreStage.Failed, error);
+    internal void SetFailed(string error)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(error);
+
+        Finish(CoreStage.Failed, error);
+    }
 
     private void Finish(CoreStage stage, string? error)
     {
@@ -68,7 +91,31 @@ public sealed class CoreStatus
             Error = error;
         }
 
-        Changed?.Invoke(this, EventArgs.Empty);
+        // Спершу завершуємо Completion: збій обробника події не має лишити очікувачів назавжди.
         _completed.TrySetResult();
+        RaiseChanged();
     }
+
+    private void RaiseChanged()
+    {
+        if (Changed is not { } handlers)
+        {
+            return;
+        }
+
+        foreach (var handler in handlers.GetInvocationList().Cast<EventHandler>())
+        {
+            try
+            {
+                handler(this, EventArgs.Empty);
+            }
+            catch (Exception exception)
+            {
+                LogHandlerFailed(logger, exception);
+            }
+        }
+    }
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Обробник CoreStatus.Changed кинув виняток")]
+    private static partial void LogHandlerFailed(ILogger logger, Exception exception);
 }

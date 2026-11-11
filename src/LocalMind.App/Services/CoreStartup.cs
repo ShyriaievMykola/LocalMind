@@ -37,9 +37,14 @@ internal sealed partial class CoreStartup(
         {
             var model = modelOptions.Value;
             var missing = new[] { model.ModelPath, model.TokenizerPath }.FirstOrDefault(path => !File.Exists(path));
-            status.SetModel(
-                missing is null,
-                missing is null ? null : $"Файл моделі не знайдено: {missing}. Запустіть scripts/download-models.");
+            if (missing is null)
+            {
+                status.SetModelAvailable();
+            }
+            else
+            {
+                status.SetModelMissing($"Файл моделі не знайдено: {missing}. Запустіть scripts/download-models.");
+            }
 
             // Підмінений ISearchService (фейк у тестах) сам вирішує, коли вантажити дані.
             if (search is SearchService searchService)
