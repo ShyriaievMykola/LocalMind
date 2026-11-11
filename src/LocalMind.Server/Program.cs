@@ -1,3 +1,4 @@
+using LocalMind.Server.Audit;
 using LocalMind.Server.Auth;
 using LocalMind.Server.Data;
 using LocalMind.Server.Endpoints;
@@ -43,6 +44,17 @@ builder.Services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationSc
         bearer.TokenValidationParameters = JwtTokenService.CreateValidationParameters(jwt.Value);
     });
 builder.Services.AddAuthorization();
+builder.Services.AddAdminAuthorization();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<AuditLog>();
+builder.Services.AddOptions<AuditOptions>()
+    .BindConfiguration(AuditOptions.SectionName)
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
+builder.Services.AddOptions<AdminSeedOptions>()
+    .BindConfiguration(AdminSeedOptions.SectionName)
+    .Validate(o => o.IsConsistent, "Admin:Email і Admin:Password задаються разом або не задаються взагалі.")
+    .ValidateOnStart();
 builder.Services.AddOptions<BlobStoreOptions>()
     .BindConfiguration(BlobStoreOptions.SectionName)
     .ValidateDataAnnotations()
@@ -69,6 +81,7 @@ builder.Services
     .AddErrorDescriber<UkrainianIdentityErrorDescriber>()
     .AddPasswordValidator<EmailNotInPasswordValidator>()
     .AddUserValidator<EmailFormatValidator>()
+    .AddRoles<IdentityRole>()
     .AddSignInManager()
     .AddEntityFrameworkStores<ServerDbContext>();
 
@@ -81,6 +94,7 @@ _ = app.Services.GetRequiredService<IOptions<JwtOptions>>().Value;
 await using (var scope = app.Services.CreateAsyncScope())
 {
     await scope.ServiceProvider.GetRequiredService<ServerDbContext>().Database.MigrateAsync();
+    await IdentitySeeder.SeedAsync(scope.ServiceProvider);
 }
 
 // Перший у конвеєрі: далі схема й IP клієнта вже мають бути з X-Forwarded-*.
@@ -109,5 +123,6 @@ var api = app.MapGroup("/api/v1");
 api.MapHealthChecks("/health").WithMetadata(new HttpMethodMetadata([HttpMethods.Get, HttpMethods.Head]));
 api.MapAuthEndpoints();
 api.MapBackupEndpoints();
+api.MapAdminEndpoints();
 
 await app.RunAsync();

@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using LocalMind.Core.Backup.Dtos;
+using LocalMind.Server.Audit;
 using LocalMind.Server.Data;
 using LocalMind.Server.Data.Entities;
 using LocalMind.Server.Storage;
@@ -32,7 +33,8 @@ public static class BackupEndpoints
 
     private static async Task<Results<Created<BackupInfo>, ProblemHttpResult, ChallengeHttpResult>> UploadAsync(
         HttpContext context, ClaimsPrincipal principal, ServerDbContext db, FileSystemBlobStore store,
-        IOptions<BlobStoreOptions> options, UserUploadGate gate, TimeProvider time, CancellationToken cancellationToken)
+        IOptions<BlobStoreOptions> options, UserUploadGate gate, AuditLog audit, TimeProvider time,
+        CancellationToken cancellationToken)
     {
         // Токен ще чинний, а користувача видалено — інакше впали б на зовнішньому ключі з 500.
         var userId = UserId(principal);
@@ -104,6 +106,7 @@ public static class BackupEndpoints
             throw;
         }
 
+        await audit.WriteAsync(AuditActions.BackupUploaded, userId);
         return TypedResults.Created($"/api/v1/backups/{id}", ToInfo(snapshot));
     }
 
@@ -131,7 +134,7 @@ public static class BackupEndpoints
     }
 
     private static async Task<Results<NoContent, NotFound>> DeleteAsync(
-        Guid id, ClaimsPrincipal principal, ServerDbContext db, FileSystemBlobStore store,
+        Guid id, ClaimsPrincipal principal, ServerDbContext db, FileSystemBlobStore store, AuditLog audit,
         CancellationToken cancellationToken)
     {
         var snapshot = await FindOwnAsync(id, principal, db, cancellationToken);
@@ -143,6 +146,7 @@ public static class BackupEndpoints
         db.Remove(snapshot);
         await db.SaveChangesAsync(cancellationToken);
         store.Delete(id);
+        await audit.WriteAsync(AuditActions.BackupDeleted, UserId(principal));
         return TypedResults.NoContent();
     }
 

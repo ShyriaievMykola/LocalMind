@@ -13,6 +13,8 @@ public sealed class ServerDbContext(DbContextOptions<ServerDbContext> options) :
 
     public DbSet<SnapshotEntity> Snapshots => Set<SnapshotEntity>();
 
+    public DbSet<AuditEntryEntity> AuditEntries => Set<AuditEntryEntity>();
+
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder builder)
     {
