@@ -9,7 +9,7 @@ public sealed class MainViewModelTests
     private readonly CoreStatus _status = new(NullLogger<CoreStatus>.Instance);
     private readonly SearchViewModel _search = new FakeSearchService().CreateViewModel();
     private readonly LibraryViewModel _library = new FakeIndexingService().CreateViewModel();
-    private readonly SettingsViewModel _settings = new();
+    private readonly SettingsViewModel _settings = new FakeUserSettingsService().CreateViewModel();
     private readonly IndexingProgressViewModel _indexingProgress = new FakeIndexingService().CreateProgressViewModel();
 
     [Fact]

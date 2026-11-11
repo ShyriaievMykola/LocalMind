@@ -23,6 +23,15 @@ public sealed class SearchViewModelTests
         Assert.Null(viewModel.ErrorMessage);
     }
 
+    
+    [Fact]
+    public void Constructor_UsesConfiguredDefaultMode()
+    {
+        var viewModel = _search.CreateViewModel(defaultMode: SearchMode.Keyword);
+
+        Assert.Equal(SearchMode.Keyword, viewModel.SelectedMode);
+    }
+
     [Theory]
     [InlineData(SearchMode.Semantic)]
     [InlineData(SearchMode.Keyword)]

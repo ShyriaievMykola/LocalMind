@@ -20,6 +20,9 @@ internal static class AppPaths
 
     /// <summary>Тека даних користувача (поруч із базою): <c>%LOCALAPPDATA%\LocalMind</c> тощо.</summary>
     public static string UserDataDirectory() => Path.GetDirectoryName(StorageOptions.DefaultDatabasePath())!;
+    
+    /// <summary>Файл налаштувань користувача — у теці даних, поруч із базою.</summary>
+    public static string UserSettingsPath() => Path.Combine(UserDataDirectory(), "settings.json");
 
     /// <summary>
     /// Відносний шлях до файла застосунку (модель, токенізатор). Шукає по черзі:
