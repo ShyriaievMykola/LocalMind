@@ -86,12 +86,12 @@ public static class AuthEndpoints
         return TypedResults.Ok(new TokenResponse(accessToken, expiresAt, string.Empty, expiresAt));
     }
 
-    private static async Task<Results<Ok<UserInfo>, UnauthorizedHttpResult>> MeAsync(
+    private static async Task<Results<Ok<UserInfo>, ChallengeHttpResult>> MeAsync(
         ClaimsPrincipal principal, UserManager<IdentityUser> users)
     {
         var user = principal.Identity?.Name is { } id ? await users.FindByIdAsync(id) : null;
         return user is null
-            ? TypedResults.Unauthorized()
+            ? TypedResults.Challenge()
             : TypedResults.Ok(new UserInfo(user.Id, user.Email ?? string.Empty));
     }
 

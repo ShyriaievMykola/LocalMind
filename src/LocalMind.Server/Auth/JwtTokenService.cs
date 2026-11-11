@@ -1,5 +1,4 @@
 using System.Security.Claims;
-using System.Text;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.JsonWebTokens;
@@ -59,5 +58,5 @@ public sealed class JwtTokenService(IOptions<JwtOptions> options, TimeProvider t
         };
     }
 
-    private static SymmetricSecurityKey CreateKey(JwtOptions options) => new(Encoding.UTF8.GetBytes(options.SigningKey));
+    private static SymmetricSecurityKey CreateKey(JwtOptions options) => new(options.GetKeyBytes());
 }
