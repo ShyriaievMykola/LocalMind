@@ -110,6 +110,8 @@ Cli ──┘
 - `VectorMath` — косинусна схожість (для нормалізованих векторів — скалярний добуток) з SIMD.
 - `ReciprocalRankFusion` — злиття списків keyword і semantic.
 - `SearchService` — режими Keyword / Semantic / Hybrid, формування `SearchResult`.
+- `SnippetBuilder` — уривок фрагмента для картки результату (`SearchResult.Snippet`): вікно з найбільшою кількістю слів запиту,
+  обрізане по межі слова, і діапазони підсвітки відносно уривка (без регістру, прості форми слів, без стоп-слів).
 
 ### 3.5. Backup (`Core/Backup`)
 

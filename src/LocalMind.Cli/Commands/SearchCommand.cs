@@ -1,5 +1,6 @@
 using System.CommandLine;
 using System.Globalization;
+using System.Text;
 using LocalMind.Core.Abstractions;
 using LocalMind.Core.Models;
 using Microsoft.Extensions.DependencyInjection;
@@ -9,8 +10,6 @@ namespace LocalMind.Cli.Commands;
 /// <summary>Команда <c>search "запит"</c>: виводить найближчі за змістом фрагменти.</summary>
 internal static class SearchCommand
 {
-    private const int MaxPreviewLength = 300;
-
     public static Command Create(IServiceProvider services)
     {
         var text = new Argument<string>("запит") { Description = "Текст запиту" };
@@ -55,7 +54,7 @@ internal static class SearchCommand
             {
                 var score = results[i].Score.ToString("0.000", CultureInfo.InvariantCulture);
                 Console.WriteLine($"{i + 1}. [{score}] {results[i].DocumentPath}");
-                Console.WriteLine($"   {Preview(results[i].Chunk.Text)}");
+                Console.WriteLine($"   {Preview(results[i].Snippet)}");
                 Console.WriteLine();
             }
 
@@ -65,9 +64,31 @@ internal static class SearchCommand
         return command;
     }
 
-    private static string Preview(string text)
+    /// <summary>Уривок одним рядком; слова запиту — у квадратних дужках.</summary>
+    internal static string Preview(Snippet snippet)
     {
-        var line = string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
-        return line.Length <= MaxPreviewLength ? line : string.Concat(line.AsSpan(0, MaxPreviewLength), "…");
+        var builder = new StringBuilder();
+        if (snippet.HasTextBefore)
+        {
+            builder.Append('…');
+        }
+
+        var position = 0;
+        foreach (var range in snippet.Highlights)
+        {
+            builder.Append(snippet.Text, position, range.Start - position)
+                .Append('[')
+                .Append(snippet.Text, range.Start, range.Length)
+                .Append(']');
+            position = range.End;
+        }
+
+        builder.Append(snippet.Text, position, snippet.Text.Length - position);
+        if (snippet.HasTextAfter)
+        {
+            builder.Append('…');
+        }
+
+        return string.Join(' ', builder.ToString().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
     }
 }
