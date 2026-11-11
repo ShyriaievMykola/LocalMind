@@ -28,6 +28,8 @@ internal sealed class FakeIndexingService : IIndexingService
     public List<string> RemovedFolders { get; } = [];
 
     public int RescanCount { get; private set; }
+    
+    public int CancelCount { get; private set; }
 
     /// <summary>Якщо задано — <see cref="AddFolderAsync"/> завершується цим винятком.</summary>
     public Exception? AddFolderError { get; set; }
@@ -63,9 +65,7 @@ internal sealed class FakeIndexingService : IIndexingService
         return Task.CompletedTask;
     }
 
-    public void CancelPending()
-    {
-    }
+    public void CancelPending() => CancelCount++;
 
     /// <summary>Імітує подію прогресу від справжнього сервісу.</summary>
     public void Report(IndexingProgress progress)
@@ -85,4 +85,6 @@ internal sealed class FakeIndexingService : IIndexingService
 
         return new LibraryViewModel(this, Repository, Picker, Dispatcher, status, NullLogger<LibraryViewModel>.Instance);
     }
+    
+    public IndexingProgressViewModel CreateProgressViewModel() => new(this, Dispatcher);
 }

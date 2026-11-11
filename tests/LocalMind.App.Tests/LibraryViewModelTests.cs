@@ -172,7 +172,6 @@ public sealed class LibraryViewModelTests
         _indexing.Dispatcher.RunPending();
 
         Assert.True(viewModel.IsIndexing);
-        Assert.Equal("Індексація: 0 з 1", viewModel.ProgressText);
 
         await SaveAsync("/notes/a.md", DocumentStatus.Indexed, "текст");
         _indexing.Report(new IndexingProgress(1, 1));

@@ -21,16 +21,19 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         UnhandledErrorReporter errors,
         SearchViewModel search,
         LibraryViewModel library,
-        SettingsViewModel settings)
+        SettingsViewModel settings,
+        IndexingProgressViewModel indexing)
     {
         ArgumentNullException.ThrowIfNull(status);
         ArgumentNullException.ThrowIfNull(errors);
         ArgumentNullException.ThrowIfNull(search);
         ArgumentNullException.ThrowIfNull(library);
         ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(indexing);
 
         _search = search;
         _library = library;
+        Indexing = indexing;
 
         NavigationItems = Array.AsReadOnly<NavigationItem>([
             new("Пошук", search),
@@ -46,6 +49,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         UpdateStatus();
     }
 
+    /// <summary>Прогрес індексації для рядка стану.</summary>
+    public IndexingProgressViewModel Indexing { get; }
     public IReadOnlyList<NavigationItem> NavigationItems { get; }
 
     [ObservableProperty]
@@ -56,6 +61,10 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
     [ObservableProperty]
     public partial string StatusText { get; private set; } = string.Empty;
+    
+    /// <summary>Ядро не готове або працює без моделі — такий стан видно навіть під час індексації.</summary>
+    [ObservableProperty]
+    public partial bool HasStatusProblem { get; private set; }
 
     /// <summary>Що не так із ядром: база недоступна або немає моделі; <see langword="null"/>, коли все гаразд.</summary>
     [ObservableProperty]
@@ -81,6 +90,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         _errors.Reported -= OnErrorReported;
         _search.Close();
         _library.Close();
+        Indexing.Close();
     }
 
     private void OnStatusChanged(object? sender, EventArgs args) => Dispatcher.UIThread.Post(() =>
@@ -115,5 +125,6 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             _ when _status.ModelError is not null => ModelMissingNotice,
             _ => null,
         };
+        HasStatusProblem = _status.Stage != CoreStage.Ready || !_status.IsModelAvailable;
     }
 }

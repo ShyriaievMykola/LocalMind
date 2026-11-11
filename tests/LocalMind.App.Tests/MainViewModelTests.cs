@@ -12,6 +12,7 @@ public sealed class MainViewModelTests
     private readonly SettingsViewModel _settings = new();
     private readonly FakeUiDispatcher _dispatcher = new();
     private readonly UnhandledErrorReporter _errors;
+    private readonly IndexingProgressViewModel _indexingProgress = new FakeIndexingService().CreateProgressViewModel();
 
     public MainViewModelTests() => _errors = new UnhandledErrorReporter(_dispatcher, NullLogger<UnhandledErrorReporter>.Instance);
 
@@ -45,6 +46,17 @@ public sealed class MainViewModelTests
     {
         var indexing = new FakeIndexingService();
         var viewModel = CreateViewModel(_search, indexing.CreateViewModel());
+
+        viewModel.Dispose();
+
+        Assert.False(indexing.HasSubscribers);
+    }
+
+    [Fact]
+    public void Dispose_StopsProgressUpdates()
+    {
+        var indexing = new FakeIndexingService();
+        var viewModel = CreateViewModel(progress: indexing.CreateProgressViewModel());
 
         viewModel.Dispose();
 
@@ -114,6 +126,7 @@ public sealed class MainViewModelTests
         using var viewModel = CreateViewModel();
 
         Assert.Equal("Готово.", viewModel.StatusText);
+        Assert.False(viewModel.HasStatusProblem);
     }
 
     [Fact]
@@ -134,6 +147,7 @@ public sealed class MainViewModelTests
         using var viewModel = CreateViewModel();
 
         Assert.Equal("Помилка запуску. БД недоступна", viewModel.StatusText);
+        Assert.True(viewModel.HasStatusProblem);
     }
 
     [Fact]
@@ -203,6 +217,9 @@ public sealed class MainViewModelTests
         Assert.False(viewModel.HasUnhandledError);
     }
 
-    private MainViewModel CreateViewModel(SearchViewModel? search = null, LibraryViewModel? library = null) =>
-        new(_status, _errors, search ?? _search, library ?? _library, _settings);
+    private MainViewModel CreateViewModel(
+        SearchViewModel? search = null,
+        LibraryViewModel? library = null,
+        IndexingProgressViewModel? progress = null) =>
+        new(_status, _errors, search ?? _search, library ?? _library, _settings, progress ?? _indexingProgress);
 }
