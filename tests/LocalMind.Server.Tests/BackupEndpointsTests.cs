@@ -160,6 +160,41 @@ public sealed class BackupEndpointsTests(LocalMindServerFactory factory) : IClas
     }
 
     [Fact]
+    public async Task Upload_ParallelRequests_CannotExceedCountQuota()
+    {
+        using var app = factory.WithWebHostBuilder(b => b.UseSetting("Storage:MaxBackupsPerUser", "2"));
+        using var client = await AuthorizedClientAsync(app);
+        var filesBefore = Directory.GetFiles(factory.StorageRoot).Length;
+
+        var responses = await Task.WhenAll(Enumerable.Range(0, 12).Select(i => PostAsync(client, [(byte)i])));
+
+        Assert.Equal(2, responses.Count(r => r.StatusCode == HttpStatusCode.Created));
+        Assert.Equal(10, responses.Count(r => r.StatusCode == HttpStatusCode.Conflict));
+        Assert.Equal(2, (await client.GetFromJsonAsync<BackupInfo[]>(Backups))!.Length);
+        Assert.Equal(filesBefore + 2, Directory.GetFiles(factory.StorageRoot).Length);
+        foreach (var response in responses)
+        {
+            response.Dispose();
+        }
+    }
+
+    [Fact]
+    public async Task Upload_ParallelRequests_CannotExceedBytesQuota()
+    {
+        using var app = factory.WithWebHostBuilder(b => b.UseSetting("Storage:MaxTotalBytesPerUser", "100"));
+        using var client = await AuthorizedClientAsync(app);
+
+        var responses = await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => PostAsync(client, new byte[40])));
+
+        Assert.Equal(2, responses.Count(r => r.StatusCode == HttpStatusCode.Created));
+        Assert.Equal(80, (await client.GetFromJsonAsync<BackupInfo[]>(Backups))!.Sum(b => b.SizeBytes));
+        foreach (var response in responses)
+        {
+            response.Dispose();
+        }
+    }
+
+    [Fact]
     public async Task Quota_IsPerUser()
     {
         using var app = factory.WithWebHostBuilder(b => b.UseSetting("Storage:MaxBackupsPerUser", "1"));

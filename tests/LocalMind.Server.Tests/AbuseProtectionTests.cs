@@ -40,6 +40,21 @@ public sealed class AbuseProtectionTests(LocalMindServerFactory factory) : IClas
     }
 
     [Fact]
+    public async Task RefreshAndMe_HaveSeparateSofterLimit()
+    {
+        using var app = factory.WithWebHostBuilder(b => b.UseSetting("RateLimiting:AuthPermitLimit", "2"));
+        using var client = app.CreateClient();
+        var tokens = await RegisterAndLoginAsync(client);
+        using var secondLogin = await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest(NewEmail(), Password));
+        using var loginLimited = await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest(NewEmail(), Password));
+
+        using var refresh = await client.PostAsJsonAsync("/api/v1/auth/refresh", new RefreshRequest(tokens.RefreshToken));
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, loginLimited.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, refresh.StatusCode);
+    }
+
+    [Fact]
     public async Task RateLimit_DoesNotApplyToHealth()
     {
         using var app = factory.WithWebHostBuilder(b => b.UseSetting("RateLimiting:AuthPermitLimit", "1"));
@@ -104,6 +119,13 @@ public sealed class AbuseProtectionTests(LocalMindServerFactory factory) : IClas
         Assert.True(deleted >= 1);
         Assert.DoesNotContain(RefreshTokenService.Hash(old.RefreshToken), hashes);
         Assert.Contains(RefreshTokenService.Hash(fresh.RefreshToken), hashes);
+    }
+
+    private static async Task<TokenResponse> RegisterAndLoginAsync(HttpClient client)
+    {
+        var email = NewEmail();
+        using var register = await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest(email, Password));
+        return await LoginAsync(client, email);
     }
 
     private static string NewEmail() => $"user-{Guid.NewGuid():N}@example.com";

@@ -32,7 +32,7 @@ public static class BackupEndpoints
 
     private static async Task<Results<Created<BackupInfo>, ProblemHttpResult, ChallengeHttpResult>> UploadAsync(
         HttpContext context, ClaimsPrincipal principal, ServerDbContext db, FileSystemBlobStore store,
-        IOptions<BlobStoreOptions> options, TimeProvider time, CancellationToken cancellationToken)
+        IOptions<BlobStoreOptions> options, UserUploadGate gate, TimeProvider time, CancellationToken cancellationToken)
     {
         // Токен ще чинний, а користувача видалено — інакше впали б на зовнішньому ключі з 500.
         var userId = UserId(principal);
@@ -45,6 +45,9 @@ public static class BackupEndpoints
         {
             return TooLarge(store);
         }
+
+        // Перевірка квоти, запис файла й insert — під замком користувача, щоб паралельні запити не обходили квоту.
+        using var turn = await gate.EnterAsync(userId, cancellationToken);
 
         var quota = options.Value;
         var own = db.Snapshots.Where(s => s.UserId == userId);
