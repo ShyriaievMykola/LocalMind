@@ -6,7 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace LocalMind.Cli.Commands;
 
-/// <summary>Команда <c>search "запит"</c>: виводить найближчі за змістом фрагменти.</summary>
+/// <summary>Команда <c>search "запит" [--mode keyword|semantic|hybrid]</c>: виводить найрелевантніші фрагменти.</summary>
 internal static class SearchCommand
 {
     private const int MaxPreviewLength = 300;
@@ -33,7 +33,12 @@ internal static class SearchCommand
                 result.AddError("--k має бути більше 0.");
             }
         });
-        var command = new Command("search", "Знайти нотатки за змістом") { text, topK };
+        var mode = new Option<SearchMode>("--mode")
+        {
+            Description = "Режим: keyword (ключові слова), semantic (за змістом) або hybrid (обидва)",
+            DefaultValueFactory = _ => SearchMode.Hybrid,
+        };
+        var command = new Command("search", "Знайти нотатки за ключовими словами і змістом") { text, topK, mode };
 
         command.SetAction(async (parseResult, cancellationToken) =>
         {
@@ -41,13 +46,13 @@ internal static class SearchCommand
 
             var query = new SearchQuery(
                 parseResult.GetRequiredValue(text),
-                SearchMode.Semantic,
+                parseResult.GetValue(mode),
                 parseResult.GetValue(topK));
 
             var results = await services.GetRequiredService<ISearchService>().SearchAsync(query, cancellationToken);
             if (results.Count == 0)
             {
-                Console.WriteLine("Нічого не знайдено. Спочатку проіндексуйте папку: localmind index <папка>");
+                Console.WriteLine("Нічого не знайдено. Якщо бібліотека порожня — проіндексуйте папку: localmind index <папка>");
                 return ExitCodes.Success;
             }
 
