@@ -6,13 +6,13 @@
         mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
         x:Class="LocalMind.App.Views.MainWindow"
         x:DataType="vm:MainViewModel"
-        Icon="/Assets/avalonia-logo.ico"
+        Icon="/Assets/app-icon.ico"
         Title="LocalMind">
 
     <!-- DataContext задає App.axaml.cs: MainViewModel береться з DI. -->
     <TextBlock Text="{Binding StatusText}"
                TextWrapping="Wrap"
-               Margin="16"
+               Margin="{DynamicResource Lm.Padding.Page}"
                HorizontalAlignment="Center"
                VerticalAlignment="Center" />
 

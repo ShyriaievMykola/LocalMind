@@ -1,0 +1,61 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!--
+    Палітра в стилі Obsidian. Єдине місце, де записані кольори застосунку:
+    сторінки посилаються лише на ключі Lm.* через DynamicResource, тому тема перемикається без перезапуску.
+    Набори ключів у Dark і Light мають збігатися (це перевіряє ThemeResourcesTests).
+  -->
+  <ResourceDictionary.ThemeDictionaries>
+
+    <ResourceDictionary x:Key="Dark">
+      <!-- Фони: основний, бічна панель, підвищені елементи (картки, поля) -->
+      <Color x:Key="Lm.Color.Background">#1E1E1E</Color>
+      <Color x:Key="Lm.Color.BackgroundSecondary">#262626</Color>
+      <Color x:Key="Lm.Color.BackgroundSidebar">#202020</Color>
+      <Color x:Key="Lm.Color.BackgroundHover">#2B2B2B</Color>
+      <Color x:Key="Lm.Color.BackgroundActive">#363636</Color>
+      <Color x:Key="Lm.Color.Border">#363636</Color>
+      <Color x:Key="Lm.Color.BorderStrong">#4A4A4A</Color>
+      <!-- Текст -->
+      <Color x:Key="Lm.Color.Text">#DADADA</Color>
+      <Color x:Key="Lm.Color.TextMuted">#A3A3A3</Color>
+      <Color x:Key="Lm.Color.TextFaint">#6D6D6D</Color>
+      <!-- Акцент (фіолетовий Obsidian) -->
+      <Color x:Key="Lm.Color.Accent">#7F6DF2</Color>
+      <Color x:Key="Lm.Color.AccentHover">#8E7EF5</Color>
+      <Color x:Key="Lm.Color.AccentPressed">#6E5CE0</Color>
+      <Color x:Key="Lm.Color.OnAccent">#FFFFFF</Color>
+      <!-- Стани -->
+      <Color x:Key="Lm.Color.Error">#FB464C</Color>
+      <Color x:Key="Lm.Color.Warning">#E9973F</Color>
+      <Color x:Key="Lm.Color.Success">#44CF6E</Color>
+      <!-- Підсвітка збігів у картці результату -->
+      <Color x:Key="Lm.Color.HighlightBackground">#5E4F0D</Color>
+      <Color x:Key="Lm.Color.HighlightForeground">#FFE680</Color>
+    </ResourceDictionary>
+
+    <ResourceDictionary x:Key="Light">
+      <Color x:Key="Lm.Color.Background">#FFFFFF</Color>
+      <Color x:Key="Lm.Color.BackgroundSecondary">#F6F6F6</Color>
+      <Color x:Key="Lm.Color.BackgroundSidebar">#F2F3F5</Color>
+      <Color x:Key="Lm.Color.BackgroundHover">#ECEDEF</Color>
+      <Color x:Key="Lm.Color.BackgroundActive">#E3E4E8</Color>
+      <Color x:Key="Lm.Color.Border">#E0E0E0</Color>
+      <Color x:Key="Lm.Color.BorderStrong">#C8C8CC</Color>
+      <Color x:Key="Lm.Color.Text">#2E3338</Color>
+      <Color x:Key="Lm.Color.TextMuted">#5C6370</Color>
+      <Color x:Key="Lm.Color.TextFaint">#9AA0A8</Color>
+      <Color x:Key="Lm.Color.Accent">#705DCF</Color>
+      <Color x:Key="Lm.Color.AccentHover">#8270DA</Color>
+      <Color x:Key="Lm.Color.AccentPressed">#5E4CB8</Color>
+      <Color x:Key="Lm.Color.OnAccent">#FFFFFF</Color>
+      <Color x:Key="Lm.Color.Error">#D1242F</Color>
+      <Color x:Key="Lm.Color.Warning">#BF6A00</Color>
+      <Color x:Key="Lm.Color.Success">#1A7F37</Color>
+      <Color x:Key="Lm.Color.HighlightBackground">#FFF0A6</Color>
+      <Color x:Key="Lm.Color.HighlightForeground">#4A3B00</Color>
+    </ResourceDictionary>
+
+  </ResourceDictionary.ThemeDictionaries>
+</ResourceDictionary>
