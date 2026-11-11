@@ -1,6 +1,7 @@
 using LocalMind.Core.Abstractions;
 using LocalMind.Core.Errors;
 using LocalMind.Core.Models;
+using LocalMind.Search.Snippets;
 
 namespace LocalMind.Search.Hybrid;
 
@@ -44,7 +45,7 @@ public sealed class SearchService(IEmbedder embedder, IVectorIndex index, IDocum
         {
             if (chunks.TryGetValue(chunkId, out var chunk) && paths.TryGetValue(chunk.DocumentId, out var path))
             {
-                results.Add(new SearchResult(chunk, path, score));
+                results.Add(new SearchResult(chunk, path, score, SnippetBuilder.Build(chunk, query.Text)));
             }
         }
 
