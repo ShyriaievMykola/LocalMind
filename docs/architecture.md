@@ -122,14 +122,56 @@ Cli ──┘
 - `SnippetBuilder` — уривок фрагмента для картки результату (`SearchResult.Snippet`): вікно з найбільшою кількістю слів запиту,
   обрізане по межі слова, і діапазони підсвітки відносно уривка (без регістру, прості форми слів, без стоп-слів).
 
-### 3.5. Backup (`Core/Backup`)
+### 3.5. Застосунок (`LocalMind.App`)
+
+**Запуск.** `Program.Main` збирає Generic Host (`Services/AppHost.cs`), стартує його і відкриває вікно.
+Ядро готується у фоні (`Services/CoreStartup.cs`): міграції БД → вектори з БД у `IVectorIndex` →
+`IIndexingService.RescanAsync` (лише якщо модель на місці). Вікно не чекає на це.
+Хід запуску — у синглтоні `CoreStatus`: `Stage` (`Starting` / `Ready` / `Failed`), `IsModelAvailable`, `ModelError`, `Error`,
+подія `Changed` і `Completion`. Без моделі застосунок працює: `Ready`, але `IsModelAvailable = false`, а семантичний
+пошук кидає `LocalMindException` — його треба показати користувачу. Під час закриття хост зупиняється і звільняє сервіси
+(зокрема `IndexingService`).
+
+**Налаштування** — `src/LocalMind.App/appsettings.json`, змінні оточення (`LocalMind__Storage__DatabasePath=...`),
+аргументи командного рядка. Відносні шляхи до моделі шукаються поруч із програмою, потім у теці даних користувача
+(`%LOCALAPPDATA%\LocalMind\models/...`), а в Debug-збірці при запуску з репозиторію — у його корені (`models/`, куди кладе
+`scripts/download-models`). Вище по дереву не шукаємо. Порожній або відносний шлях до БД — у теці даних користувача (див. розділ 6).
+
+**Як додати сторінку**
+
+1. `ViewModels/SearchViewModel.cs` — клас від `ViewModelBase`, сервіси — через конструктор:
+   ```csharp
+   public partial class SearchViewModel(ISearchService search, CoreStatus status) : ViewModelBase { ... }
+   ```
+   Доступні: `ISearchService`, `IIndexingService`, `IDocumentRepository`, `CoreStatus`, `ILogger<T>`, `IOptions<...>`.
+2. `Views/SearchView.axaml` (+ `.axaml.cs`) — `UserControl` з `x:DataType="vm:SearchViewModel"`.
+   `ViewLocator` сам знаходить View за назвою: `...ViewModels.XxxViewModel` → `...Views.XxxView`.
+3. Зареєструвати VM в `AppHost.CreateBuilder`: `builder.Services.AddTransient<SearchViewModel>();`
+   (`MainViewModel` — синглтон, бо живе весь час роботи вікна).
+   Контейнер перевіряється під час збирання (`ValidateOnBuild`) — забута залежність одразу дасть помилку.
+4. Показати: батьківська VM отримує `SearchViewModel` через конструктор (або `IServiceProvider`) і кладе в
+   властивість, до якої прив'язаний `ContentControl`.
+
+**Перед зверненням до сервісів** дивіться `CoreStatus.Stage`: при `Failed` (недоступна БД, некоректні налаштування)
+сервіси з DI резолвляться, але кинуть виняток при першому використанні — покажіть `CoreStatus.Error`.
+Дочекатися кінця запуску: `await status.Completion`.
+
+**Потоки.** `IIndexingService.ProgressChanged` і `CoreStatus.Changed` приходять з фонового потоку — оновлюйте
+властивості через `Dispatcher.UIThread.Post(...)` (приклад — `MainViewModel`).
+
+**Підписки.** Синглтон тримає обробник події, а з ним і VM. Сторінка, що підписується на `CoreStatus.Changed` чи
+`ProgressChanged`, має відписатися, коли її закривають (метод на кшталт `Close()`, який викликає батьківська VM).
+Не робіть Transient-VM `IDisposable`: контейнер тримає такі об'єкти до завершення застосунку. Довгі виклики (`SearchAsync`, `AddFolderAsync`) — через
+`async`-команди `[RelayCommand]` з `CancellationToken`.
+
+### 3.6. Backup (`Core/Backup`)
 
 - `KeyDerivation` — PBKDF2-HMAC-SHA256, ключ із пароля шифрування.
 - `AesGcmCipher` + `EncryptedEnvelope` — шифрування і формат конверта.
 - `BackupApiClient` — HTTP-клієнт до сервера: JWT, автоматичне оновлення через refresh-токен.
 - `BackupService` / `RestoreService` — повний цикл бекапу і відновлення.
 
-### 3.6. Server (`LocalMind.Server`)
+### 3.7. Server (`LocalMind.Server`)
 
 - Minimal API, префікс `/api/v1`, OpenAPI-документація.
 - `AuthEndpoints` — реєстрація, вхід, оновлення токена, вихід.
@@ -215,7 +257,7 @@ SourceFolder 1 ──── * Document 1 ──── * Chunk 1 ──── 0..
 
 | ОС | Тека даних клієнта |
 |---|---|
-| Windows | `%AppData%\LocalMind` |
+| Windows | `%LOCALAPPDATA%\LocalMind` |
 | Linux | `~/.local/share/LocalMind` |
 | macOS | `~/Library/Application Support/LocalMind` |
 
@@ -242,6 +284,7 @@ SourceFolder 1 ──── * Document 1 ──── * Chunk 1 ──── 0..
 |---|---|---|
 | Юніт | Парсери, нарізка, RRF, VectorMath, метрики, криптографія | `tests/LocalMind.Core.Tests`, `tests/LocalMind.Search.Tests` |
 | Інтеграційний | Сховище на SQLite in-memory, FTS5 | `tests/LocalMind.Core.Tests` |
+| Інтеграційний | Хост App: контейнер DI, запуск без моделі і без БД | `tests/LocalMind.App.Tests` |
 | Інтеграційний | API сервера через `WebApplicationFactory`, сценарії безпеки | `tests/LocalMind.Server.Tests` |
 | Приймальний | Сценарії з [acceptance-cases.md](acceptance-cases.md) | Авто + ручний прогін |
 

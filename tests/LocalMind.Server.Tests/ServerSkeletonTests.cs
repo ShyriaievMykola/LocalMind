@@ -1,15 +1,15 @@
 using System.Net;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace LocalMind.Server.Tests;
 
-public sealed class ServerSkeletonTests(WebApplicationFactory<Program> factory)
-    : IClassFixture<WebApplicationFactory<Program>>
+public sealed class ServerSkeletonTests(LocalMindServerFactory factory)
+    : IClassFixture<LocalMindServerFactory>
 {
-    private const string Secret = "секретна-деталь-винятку";
+    // Лише ASCII: кирилицю JSON-серіалізатор екранує в escape-послідовності, і перевірка пройшла б навіть при витоку.
+    private const string Secret = "LEAK-MARKER-7f3a9c";
 
     [Fact]
     public async Task Health_Returns200()
@@ -76,7 +76,7 @@ public sealed class ServerSkeletonTests(WebApplicationFactory<Program> factory)
     [Fact]
     public async Task OpenApi_AvailableOnlyInDevelopment()
     {
-        using var dev = factory.CreateClient();
+        using var dev = factory.WithWebHostBuilder(b => b.UseEnvironment("Development")).CreateClient();
         using var prod = factory.WithWebHostBuilder(b => b.UseEnvironment("Production")).CreateClient();
 
         using var devDoc = await dev.GetAsync(new Uri("/openapi/v1.json", UriKind.Relative));
@@ -85,6 +85,9 @@ public sealed class ServerSkeletonTests(WebApplicationFactory<Program> factory)
         using var prodUi = await prod.GetAsync(new Uri("/swagger/index.html", UriKind.Relative));
 
         Assert.Equal(HttpStatusCode.OK, devDoc.StatusCode);
+        var document = await devDoc.Content.ReadAsStringAsync();
+        Assert.Contains("/api/v1/auth/login", document, StringComparison.Ordinal);
+        Assert.Contains("/api/v1/backups", document, StringComparison.Ordinal);
         Assert.Equal(HttpStatusCode.OK, devUi.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, prodDoc.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, prodUi.StatusCode);
