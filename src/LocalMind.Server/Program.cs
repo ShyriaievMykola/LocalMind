@@ -1,6 +1,7 @@
 using LocalMind.Server.Auth;
 using LocalMind.Server.Data;
 using LocalMind.Server.Endpoints;
+using LocalMind.Server.Hosting;
 using LocalMind.Server.Storage;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
@@ -10,6 +11,7 @@ using Microsoft.Extensions.Options;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddProblemDetails();
+builder.Services.AddReverseProxy();
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks();
 
@@ -79,6 +81,9 @@ await using (var scope = app.Services.CreateAsyncScope())
 {
     await scope.ServiceProvider.GetRequiredService<ServerDbContext>().Database.MigrateAsync();
 }
+
+// Перший у конвеєрі: далі схема й IP клієнта вже мають бути з X-Forwarded-*.
+app.UseReverseProxy();
 
 // Будь-який необроблений виняток → ProblemDetails 500 без деталей винятку (і в Development теж).
 app.UseExceptionHandler();
