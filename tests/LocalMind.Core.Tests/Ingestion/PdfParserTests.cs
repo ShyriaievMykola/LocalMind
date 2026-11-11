@@ -95,6 +95,30 @@ public class PdfParserTests
         Assert.Contains("завеликий", exception.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task ParseAsync_EndlessStream_StopsAtLimit()
+    {
+        var parser = new PdfParser(maxFileSizeBytes: 1024 * 1024);
+        using var stream = new NonSeekableStream(new EndlessStream());
+
+        await Assert.ThrowsAsync<DocumentParseException>(() => parser.ParseAsync(stream));
+    }
+
+    /// <summary>Нескінченний потік нулів: без ліміту копіювання з'їло б усю пам'ять.</summary>
+    private sealed class EndlessStream : Stream
+    {
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override int Read(byte[] buffer, int offset, int count) => count;
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
     private sealed class NonSeekableStream(Stream inner) : Stream
     {
         public override bool CanRead => true;

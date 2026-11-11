@@ -106,7 +106,8 @@ public class ChunkerTests
         var chunks = chunker.Split(DocumentId, text);
 
         Assert.Equal(16, chunks.Count);
-        Assert.InRange(tokenCounter.CallCount, 1, chunks.Count * 11);
+        // Галоп + бінарний пошук: ~2·log₂(розмір фрагмента) викликів на фрагмент.
+        Assert.InRange(tokenCounter.CallCount, 1, chunks.Count * 15);
     }
 
     [Theory]
@@ -166,5 +167,47 @@ public class ChunkerTests
     private sealed class CharTokenCounter : ITokenCounter
     {
         public int CountTokens(string text) => text.Length;
+    }
+
+    [Fact]
+    public void Split_HugeWordAndHugeText_TokenizeLinearAmountOfText()
+    {
+        var word = new string('x', 200_000);
+        var text = word + " " + string.Join(' ', Enumerable.Repeat("слово", 40_000));
+        var counter = new MeasuringTokenCounter();
+        var chunker = new FixedSizeChunker(
+            Options.Create(new ChunkingOptions { ChunkSizeTokens = 256, OverlapPercent = 15 }),
+            counter);
+
+        var chunks = chunker.Split(DocumentId, text);
+
+        Assert.Equal(word.Length, chunks.Sum(c => c.Text.Count(ch => ch == 'x')));
+        Assert.All(chunks, c => Assert.True(c.Text.Length <= 256));
+        // Квадратична нарізка токенізувала б мільярди символів.
+        Assert.InRange(counter.TotalCharacters, text.Length, text.Length * 50L);
+    }
+
+    [Fact]
+    public void Split_LongWordWithCombiningMarks_DoesNotBreakGraphemes()
+    {
+        const string letter = "й"; // «й» у NFD: літера + комбінуючий знак
+        var text = string.Concat(Enumerable.Repeat(letter, 5));
+        var options = Options.Create(new ChunkingOptions { ChunkSizeTokens = 3, OverlapPercent = 0 });
+
+        var chunks = new FixedSizeChunker(options, new CharTokenCounter()).Split(DocumentId, text);
+
+        Assert.All(chunks, c => Assert.Equal(letter, c.Text));
+    }
+
+    /// <summary>Токен — символ; рахує, скільки тексту довелося токенізувати.</summary>
+    private sealed class MeasuringTokenCounter : ITokenCounter
+    {
+        public long TotalCharacters { get; private set; }
+
+        public int CountTokens(string text)
+        {
+            TotalCharacters += text.Length;
+            return text.Length;
+        }
     }
 }
