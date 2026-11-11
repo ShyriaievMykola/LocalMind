@@ -42,19 +42,14 @@ public sealed class PdfParser : IDocumentParser
 
             if (content.Length > _maxFileSizeBytes)
             {
-                throw new InvalidOperationException($"Розмір файлу перевищує максимально допустимий ліміт ({_maxFileSizeBytes} байт).");
+                throw TooLarge();
             }
         }
 
         try
         {
             using var memoryStream = new MemoryStream();
-            await content.CopyToAsync(memoryStream, cancellationToken);
-
-            if (memoryStream.Length > _maxFileSizeBytes)
-            {
-                throw new InvalidOperationException($"Розмір файлу перевищує максимально допустимий ліміт ({_maxFileSizeBytes} байт).");
-            }
+            await CopyWithLimitAsync(content, memoryStream, cancellationToken);
 
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -110,4 +105,23 @@ public sealed class PdfParser : IDocumentParser
             throw new DocumentParseException("Файл пошкоджений або не відповідає формату PDF.", ex);
         }
     }
+
+    /// <summary>Копіює потік, але не більше ліміту: потік без довжини не з'їсть усю пам'ять.</summary>
+    private async Task CopyWithLimitAsync(Stream source, MemoryStream destination, CancellationToken cancellationToken)
+    {
+        var buffer = new byte[81920];
+        int read;
+        while ((read = await source.ReadAsync(buffer, cancellationToken)) > 0)
+        {
+            if (destination.Length + read > _maxFileSizeBytes)
+            {
+                throw TooLarge();
+            }
+
+            destination.Write(buffer, 0, read);
+        }
+    }
+
+    private DocumentParseException TooLarge() =>
+        new($"Файл завеликий: більше {_maxFileSizeBytes} байт.");
 }

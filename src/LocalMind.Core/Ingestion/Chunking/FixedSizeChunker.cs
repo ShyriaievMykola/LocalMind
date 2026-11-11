@@ -1,3 +1,4 @@
+using System.Globalization;
 using LocalMind.Core.Abstractions;
 using LocalMind.Core.Configuration;
 using LocalMind.Core.Models;
@@ -5,7 +6,11 @@ using Microsoft.Extensions.Options;
 
 namespace LocalMind.Core.Ingestion.Chunking;
 
-/// <summary>Ріже текст на фрагменти заданого розміру в токенах із перекриттям.</summary>
+/// <summary>
+/// Ріже текст на фрагменти заданого розміру в токенах із перекриттям. Слова не розриваються,
+/// крім слова, яке саме не вміщується у фрагмент (довге посилання, base64): його ріжемо по символах,
+/// інакше модель мовчки обрізала б кінець.
+/// </summary>
 public sealed class FixedSizeChunker : IChunker
 {
     private readonly ChunkingOptions _options;
@@ -45,22 +50,27 @@ public sealed class FixedSizeChunker : IChunker
 
         while (startWordIndex < words.Count)
         {
-            var endWordIndex = startWordIndex;
-            var low = startWordIndex;
-            var high = words.Count - 1;
-            while (low <= high)
+            var first = words[startWordIndex];
+            var endWordIndex = FindLast(
+                startWordIndex,
+                words.Count - 1,
+                index => _tokenCounter.CountTokens(text[first.Start..words[index].End]) <= _options.ChunkSizeTokens);
+            var fits = endWordIndex >= startWordIndex;
+
+            if (!fits)
             {
-                var wordIndex = low + (high - low) / 2;
-                var candidate = text[words[startWordIndex].Start..words[wordIndex].End];
-                if (_tokenCounter.CountTokens(candidate) > _options.ChunkSizeTokens)
+                // Ріжемо слово, поки решта не вміститься; решта стає першим словом наступного фрагмента.
+                // Перекриття тут не потрібне. Решту цілком не токенізуємо — інакше нарізка квадратична.
+                var word = words[startWordIndex];
+                int cut;
+                while ((cut = FindLongestFittingEnd(text, word)) < word.End)
                 {
-                    high = wordIndex - 1;
+                    chunks.Add(new Chunk(Guid.NewGuid(), documentId, chunks.Count, text[word.Start..cut], word.Start));
+                    word = word with { Start = cut };
                 }
-                else
-                {
-                    endWordIndex = wordIndex;
-                    low = wordIndex + 1;
-                }
+
+                words[startWordIndex] = word;
+                continue;
             }
 
             var firstWord = words[startWordIndex];
@@ -95,6 +105,83 @@ public sealed class FixedSizeChunker : IChunker
         }
 
         return chunks;
+    }
+
+    /// <summary>
+    /// Кінець найдовшого початку слова, що вміщується у фрагмент, по межі графеми (емодзі з ZWJ, літера з
+    /// комбінуючим знаком не розриваються); щонайменше одна графема. <c>word.End</c> — слово вміщується повністю.
+    /// </summary>
+    private int FindLongestFittingEnd(string text, WordRange word)
+    {
+        var end = FindLast(
+            word.Start + 1,
+            word.End,
+            index => _tokenCounter.CountTokens(text[word.Start..index]) <= _options.ChunkSizeTokens);
+
+        // Відступаємо до межі графеми. Йдемо від початку слова, але лише до end — це розмір одного фрагмента.
+        var boundary = word.Start + StringInfo.GetNextTextElementLength(text.AsSpan(word.Start, word.End - word.Start));
+        var position = boundary;
+        while (position < word.End)
+        {
+            var next = position + StringInfo.GetNextTextElementLength(text.AsSpan(position, word.End - position));
+            if (next > end)
+            {
+                break;
+            }
+
+            position = next;
+        }
+
+        return Math.Max(position, boundary);
+    }
+
+    /// <summary>
+    /// Найбільший індекс з [<paramref name="first"/>, <paramref name="last"/>], для якого <paramref name="fits"/>;
+    /// якщо жодного — <c>first - 1</c>. Умова монотонна: спочатку виконується, далі — ні.
+    /// Спершу галоп (first, +1, +3, +7…), потім бінарний пошук: кожна перевірка рахує текст не довший
+    /// за два фрагменти, тож нарізка лінійна навіть для мегабайтного тексту чи слова.
+    /// </summary>
+    private static int FindLast(int first, int last, Func<int, bool> fits)
+    {
+        var good = first - 1;
+        var bad = last + 1;
+        var step = 1;
+        var probe = first;
+        while (probe <= last)
+        {
+            if (!fits(probe))
+            {
+                bad = probe;
+                break;
+            }
+
+            good = probe;
+            if (probe == last)
+            {
+                return good;
+            }
+
+            probe = (int)Math.Min((long)good + step, last);
+            step *= 2;
+        }
+
+        var low = good + 1;
+        var high = bad - 1;
+        while (low <= high)
+        {
+            var middle = low + (high - low) / 2;
+            if (fits(middle))
+            {
+                good = middle;
+                low = middle + 1;
+            }
+            else
+            {
+                high = middle - 1;
+            }
+        }
+
+        return good;
     }
 
     private static List<WordRange> GetWords(string text)
