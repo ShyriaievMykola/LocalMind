@@ -1,0 +1,123 @@
+using System.Security.Cryptography;
+using System.Text;
+using LocalMind.Server.Data;
+using LocalMind.Server.Data.Entities;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.Tokens;
+
+namespace LocalMind.Server.Auth;
+
+/// <summary>
+/// Refresh-токени (SV-05, DR-018): у БД лише хеш, кожне оновлення видає новий токен і гасить старий,
+/// повторне пред'явлення вже використаного токена відкликає всю сесію.
+/// </summary>
+public sealed class RefreshTokenService(ServerDbContext db, IOptions<JwtOptions> options, TimeProvider time)
+{
+    private const int TokenBytes = 32;
+
+    /// <summary>Новий токен для нової сесії (після входу).</summary>
+    public Task<(string Token, DateTimeOffset ExpiresAt)> IssueAsync(IdentityUser user, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+        return IssueAsync(user.Id, Guid.NewGuid(), cancellationToken);
+    }
+
+    /// <summary>
+    /// Обмінює чинний токен на новий у тій самій сесії. Повертає <see langword="null"/>, якщо токен невідомий,
+    /// прострочений, відкликаний або вже використаний (тоді сесію відкликано).
+    /// </summary>
+    public async Task<(IdentityUser User, string Token, DateTimeOffset ExpiresAt)?> RotateAsync(
+        string token, CancellationToken cancellationToken = default)
+    {
+        var stored = await FindAsync(token, cancellationToken);
+        if (stored is null || stored.RevokedAt is not null)
+        {
+            return null;
+        }
+
+        var now = time.GetUtcNow();
+        if (stored.ConsumedAt is not null)
+        {
+            await RevokeSessionAsync(stored.SessionId, cancellationToken);
+            return null;
+        }
+
+        if (stored.ExpiresAt <= now)
+        {
+            return null;
+        }
+
+        // Атомарно «гасимо» токен: з двох одночасних запитів з тим самим токеном виграє лише один,
+        // другий виглядає як повторне використання.
+        var consumed = await db.RefreshTokens
+            .Where(t => t.Id == stored.Id && t.ConsumedAt == null && t.RevokedAt == null)
+            .ExecuteUpdateAsync(s => s.SetProperty(t => t.ConsumedAt, now), cancellationToken);
+        if (consumed == 0)
+        {
+            await RevokeSessionAsync(stored.SessionId, cancellationToken);
+            return null;
+        }
+
+        var user = await db.Users.SingleOrDefaultAsync(u => u.Id == stored.UserId, cancellationToken);
+        if (user is null)
+        {
+            return null;
+        }
+
+        var (next, expiresAt) = await IssueAsync(user.Id, stored.SessionId, cancellationToken);
+        return (user, next, expiresAt);
+    }
+
+    /// <summary>Вихід: відкликає сесію, до якої належить токен. Невідомий токен ігнорується.</summary>
+    public async Task RevokeAsync(string token, CancellationToken cancellationToken = default)
+    {
+        var stored = await FindAsync(token, cancellationToken);
+        if (stored is not null)
+        {
+            await RevokeSessionAsync(stored.SessionId, cancellationToken);
+        }
+    }
+
+    internal static string Hash(string token) =>
+        Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
+
+    private async Task<(string Token, DateTimeOffset ExpiresAt)> IssueAsync(
+        string userId, Guid sessionId, CancellationToken cancellationToken)
+    {
+        var token = Base64UrlEncoder.Encode(RandomNumberGenerator.GetBytes(TokenBytes));
+        var now = time.GetUtcNow();
+        var expiresAt = now.Add(options.Value.RefreshTokenLifetime);
+        db.RefreshTokens.Add(new RefreshTokenEntity
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            SessionId = sessionId,
+            TokenHash = Hash(token),
+            CreatedAt = now,
+            ExpiresAt = expiresAt,
+        });
+        await db.SaveChangesAsync(cancellationToken);
+        return (token, expiresAt);
+    }
+
+    private async Task<RefreshTokenEntity?> FindAsync(string token, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrEmpty(token))
+        {
+            return null;
+        }
+
+        var hash = Hash(token);
+        return await db.RefreshTokens.AsNoTracking().SingleOrDefaultAsync(t => t.TokenHash == hash, cancellationToken);
+    }
+
+    private async Task RevokeSessionAsync(Guid sessionId, CancellationToken cancellationToken)
+    {
+        var now = time.GetUtcNow();
+        await db.RefreshTokens
+            .Where(t => t.SessionId == sessionId && t.RevokedAt == null)
+            .ExecuteUpdateAsync(s => s.SetProperty(t => t.RevokedAt, now), cancellationToken);
+    }
+}
