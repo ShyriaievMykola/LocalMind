@@ -106,7 +106,14 @@ public sealed partial class SearchViewModel : ViewModelBase
     public bool HasNoResults => _noResultsQuery is not null && _noResultsQuery == QueryText;
 
     /// <summary>Скасовує пошук при закритті застосунку; Transient-VM не утримується DI як IDisposable.</summary>
-    public void Close() => _searchCancellation?.Cancel();
+    public void Close()
+    {
+        _searchCancellation?.Cancel();
+        foreach (var card in Results)
+        {
+            card.CloseContext();
+        }
+    }
 
     /// <summary>Ctrl+K / Ctrl+F: курсор у поле пошуку й останні запити під ним.</summary>
     public void RequestFocus()
@@ -153,7 +160,15 @@ public sealed partial class SearchViewModel : ViewModelBase
         UpdateSuggestions();
     }
 
-    partial void OnResultsChanged(IReadOnlyList<ResultCardViewModel> value) => SelectedResult = null;
+    partial void OnResultsChanged(IReadOnlyList<ResultCardViewModel> oldValue, IReadOnlyList<ResultCardViewModel> newValue)
+    {
+        foreach (var card in oldValue.Except(newValue))
+        {
+            card.CloseContext();
+        }
+
+        SelectedResult = null;
+    }
 
     [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task SearchAsync(CancellationToken cancellationToken)

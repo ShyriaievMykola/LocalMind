@@ -143,7 +143,7 @@ public sealed class ResultCardViewModelTests
     }
 
     private ResultCardViewModel Create(SearchResult result, IReadOnlyList<string> folders) =>
-        new(result, folders, _files, NullLogger<ResultCardViewModel>.Instance);
+        new(result, folders, _files, NullLogger<ResultCardViewModel>.Instance, new InMemoryDocumentRepository());
 
     private static SearchResult Result(string path) =>
         new(TestData.Chunk(Guid.NewGuid(), text: "початок чай та кава кінець"), path, 0.123456,

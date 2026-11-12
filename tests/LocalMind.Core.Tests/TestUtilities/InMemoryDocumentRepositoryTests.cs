@@ -7,6 +7,41 @@ public class InMemoryDocumentRepositoryTests
 {
     private const string Model = "fake-model";
 
+    [Fact]
+    public async Task GetChunksByDocument_FollowsRangeOrderAndDocumentContract()
+    {
+        var repository = new InMemoryDocumentRepository();
+        var document = TestData.Document("/notes/context.md");
+        var chunks = TestData.Chunks(document.Id, "перший", "другий", "останній");
+        await repository.SaveAsync(document, [.. chunks.Reverse()], Vectors(3), Model);
+        var other = TestData.Document("/notes/other.md");
+        await repository.SaveAsync(other, TestData.Chunks(other.Id, "чужий"), Vectors(1), Model);
+
+        Assert.Equal(chunks.Skip(1), await repository.GetChunksByDocumentAsync(document.Id, 1, 3));
+        Assert.Equal([chunks[0]], await repository.GetChunksByDocumentAsync(document.Id, 0, 0));
+        Assert.Empty(await repository.GetChunksByDocumentAsync(document.Id, 3, 4));
+        Assert.Empty(await repository.GetChunksByDocumentAsync(Guid.NewGuid(), 0, 1));
+    }
+
+    [Theory]
+    [InlineData(-1, 0)]
+    [InlineData(2, 1)]
+    public async Task GetChunksByDocument_InvalidRange_Throws(int from, int to)
+    {
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
+            () => new InMemoryDocumentRepository().GetChunksByDocumentAsync(Guid.NewGuid(), from, to));
+    }
+
+    [Fact]
+    public async Task GetChunksByDocument_Cancelled_Throws()
+    {
+        using var cancellation = new CancellationTokenSource();
+        await cancellation.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => new InMemoryDocumentRepository().GetChunksByDocumentAsync(Guid.NewGuid(), 0, 1, cancellation.Token));
+    }
+
     private static ReadOnlyMemory<float>[] Vectors(int count) =>
         [.. Enumerable.Range(0, count).Select(i => (ReadOnlyMemory<float>)new float[] { i, 1 })];
 

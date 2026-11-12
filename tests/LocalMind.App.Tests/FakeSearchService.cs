@@ -30,7 +30,8 @@ internal sealed class FakeSearchService : ISearchService
     public SearchViewModel CreateViewModel(
         CoreStatus? status = null,
         int defaultTopK = SearchQuery.DefaultTopK,
-        SearchMode defaultMode = SearchMode.Hybrid)
+        SearchMode defaultMode = SearchMode.Hybrid,
+        IDocumentRepository? repository = null)
     {
         if (status is null)
         {
@@ -41,7 +42,7 @@ internal sealed class FakeSearchService : ISearchService
 
         return new SearchViewModel(this, status, Options.Create(new SearchOptions { DefaultTopK = defaultTopK, DefaultMode = defaultMode }),
             NullLogger<SearchViewModel>.Instance,
-            new ResultCardFactory(new InMemoryDocumentRepository(), Files, NullLogger<ResultCardViewModel>.Instance),
+            new ResultCardFactory(repository ?? new InMemoryDocumentRepository(), Files, NullLogger<ResultCardViewModel>.Instance),
             History);
     }
 }
