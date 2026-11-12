@@ -248,6 +248,7 @@ public sealed class SearchViewModelTests
         Assert.Empty(viewModel.Results);
         Assert.Null(viewModel.ErrorMessage);
         Assert.False(viewModel.IsSearching);
+        Assert.False(viewModel.HasNoResults);
     }
 
     [Fact]
@@ -348,6 +349,71 @@ public sealed class SearchViewModelTests
         }
 
         Assert.False(viewModel.IsSearching);
+    }
+
+    [Fact]
+    public async Task Search_NothingFound_ShowsEmptyStateWithoutError()
+    {
+        _search.Handler = (_, _) => Task.FromResult<IReadOnlyList<SearchResult>>([]);
+        var viewModel = _search.CreateViewModel();
+        viewModel.QueryText = "нотатка";
+
+        await viewModel.SearchCommand.ExecuteAsync(null);
+
+        Assert.True(viewModel.HasNoResults);
+        Assert.Empty(viewModel.Results);
+        Assert.False(viewModel.HasError);
+    }
+
+    [Fact]
+    public async Task Search_NextQueryOrFailure_ClearsEmptyState()
+    {
+        var found = false;
+        _search.Handler = (_, _) => Task.FromResult<IReadOnlyList<SearchResult>>(found ? [Result("нотатка")] : []);
+        var viewModel = _search.CreateViewModel();
+        viewModel.QueryText = "нотатка";
+        await viewModel.SearchCommand.ExecuteAsync(null);
+        Assert.True(viewModel.HasNoResults);
+
+        found = true;
+        await viewModel.SearchCommand.ExecuteAsync(null);
+        Assert.False(viewModel.HasNoResults);
+        Assert.Single(viewModel.Results);
+
+        found = false;
+        await viewModel.SearchCommand.ExecuteAsync(null);
+        Assert.True(viewModel.HasNoResults);
+
+        viewModel.QueryText = "";
+        await viewModel.SearchCommand.ExecuteAsync(null);
+        Assert.False(viewModel.HasNoResults);
+        Assert.True(viewModel.HasError);
+    }
+
+    [Fact]
+    public async Task Search_NothingFound_EmptyStateDisappearsWhenQueryTextChanges()
+    {
+        var viewModel = _search.CreateViewModel();
+        viewModel.QueryText = "нотатка";
+        await viewModel.SearchCommand.ExecuteAsync(null);
+        Assert.True(viewModel.HasNoResults);
+
+        viewModel.QueryText = "інше слово";
+
+        Assert.False(viewModel.HasNoResults);
+    }
+
+    [Fact]
+    public async Task Search_ServiceFails_DoesNotShowEmptyState()
+    {
+        _search.Handler = (_, _) => throw new InvalidOperationException("збій");
+        var viewModel = _search.CreateViewModel();
+        viewModel.QueryText = "нотатка";
+
+        await viewModel.SearchCommand.ExecuteAsync(null);
+
+        Assert.True(viewModel.HasError);
+        Assert.False(viewModel.HasNoResults);
     }
 
     private static SearchResult Result(string text, double score = 0.8) =>

@@ -12,8 +12,26 @@
         Title="LocalMind">
 
     <!-- DataContext задає App.axaml.cs: MainViewModel береться з DI. -->
-    <Grid RowDefinitions="*,Auto">
-      <Grid ColumnDefinitions="220,*">
+    <Grid RowDefinitions="Auto,*,Auto">
+      <!-- Стан ядра (CoreStatus) і необроблені помилки: видно на будь-якій сторінці. -->
+      <StackPanel Grid.Row="0">
+        <Border IsVisible="{Binding HasNotice}" Padding="16,8"
+                Background="{DynamicResource Lm.Brush.BackgroundSecondary}"
+                BorderBrush="{DynamicResource Lm.Brush.Warning}" BorderThickness="0,0,0,2">
+          <TextBlock Text="{Binding NoticeText}" TextWrapping="Wrap" AutomationProperties.Name="Стан ядра: проблема" />
+        </Border>
+        <Border IsVisible="{Binding HasUnhandledError}" Padding="16,8"
+                Background="{DynamicResource Lm.Brush.BackgroundSecondary}"
+                BorderBrush="{DynamicResource Lm.Brush.Error}" BorderThickness="0,0,0,2">
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+            <TextBlock Classes="error" Text="{Binding UnhandledErrorText}" TextWrapping="Wrap"
+                       VerticalAlignment="Center" AutomationProperties.Name="Необроблена помилка" />
+            <Button Grid.Column="1" Content="Закрити" Command="{Binding DismissUnhandledErrorCommand}" />
+          </Grid>
+        </Border>
+      </StackPanel>
+
+      <Grid Grid.Row="1" ColumnDefinitions="220,*">
         <DockPanel Margin="12,16,12,12">
           <TextBlock DockPanel.Dock="Top" Text="LocalMind" FontWeight="SemiBold" Margin="12,0,12,20" />
           <ListBox ItemsSource="{Binding NavigationItems}"
@@ -38,7 +56,7 @@
       </Grid>
 
       <!-- Рядок стану: стан ядра (коли індексації немає або з ядром проблема), прогрес і «Скасувати». -->
-      <Border Grid.Row="1" Padding="16,8" BorderBrush="{DynamicResource Lm.Brush.Border}" BorderThickness="0,1,0,0">
+      <Border Grid.Row="2" Padding="16,8" BorderBrush="{DynamicResource Lm.Brush.Border}" BorderThickness="0,1,0,0">
         <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="12" RowSpacing="4">
           <TextBlock Text="{Binding StatusText}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
                      ToolTip.Tip="{Binding StatusText}" AutomationProperties.Name="Стан ядра">

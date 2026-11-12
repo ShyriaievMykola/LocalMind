@@ -56,6 +56,7 @@ public static class AppHost
         builder.Services.AddSingleton(settingsFile);
         builder.Services.AddSingleton<IUserSettingsService, UserSettingsService>();
         builder.Services.AddSingleton<IThemeService, ThemeService>();
+        builder.Services.AddSingleton<UnhandledErrorReporter>();
         builder.Services.AddHostedService<CoreStartup>();
         builder.Services.AddSingleton<IFileLauncher, SystemFileLauncher>();
         builder.Services.AddSingleton<ResultCardFactory>();
