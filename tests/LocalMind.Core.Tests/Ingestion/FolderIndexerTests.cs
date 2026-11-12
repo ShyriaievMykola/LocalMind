@@ -126,6 +126,31 @@ public sealed class FolderIndexerTests : IDisposable
     }
 
     [Fact]
+    public async Task Index_AfterModelChange_ReindexesUnchangedFilesForTheNewModel()
+    {
+        Write("a.txt", "кава зранку");
+        Write("empty.txt", string.Empty);
+        await _indexer.IndexAsync(_folder);
+        var otherModel = new FakeEmbedder(modelName: "other-model");
+        var otherIndexer = new FolderIndexer(
+            new ParserRegistry([new PlainTextParser()]),
+            new FixedSizeChunker(Options.Create(new ChunkingOptions()), new FakeTokenCounter()),
+            otherModel,
+            _repository,
+            NullLogger<FolderIndexer>.Instance);
+
+        var afterChange = await otherIndexer.IndexAsync(_folder);
+        var again = await otherIndexer.IndexAsync(_folder);
+
+        Assert.Equal(1, afterChange.Indexed);
+        Assert.Equal(1, afterChange.WithoutText + afterChange.Unchanged);
+        Assert.Equal(0, again.Indexed);
+        Assert.Equal(2, again.Unchanged + again.WithoutText);
+        var document = await _repository.GetDocumentByPathAsync(PathOf("a.txt"));
+        Assert.True(await _repository.HasVectorsAsync(document!.Id, "other-model"));
+    }
+
+    [Fact]
     public async Task Index_TextWithPdfExtension_IsMarkedAsErrorBySignature()
     {
         Write("fake.pdf", "Це звичайний текст у файлі з розширенням .pdf.");

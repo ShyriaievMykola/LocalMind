@@ -51,6 +51,14 @@ public interface IDocumentRepository
     /// <returns>Вектори моделі; порожня послідовність, якщо для цієї моделі ще нічого не збережено.</returns>
     IAsyncEnumerable<ChunkVector> GetVectorsAsync(string modelName, CancellationToken cancellationToken = default);
 
+    /// <summary>Ідентифікатори документів, фрагменти яких мають вектори вказаної моделі.</summary>
+    /// <param name="modelName">Назва моделі (<see cref="IEmbedder.ModelName"/>).</param>
+    /// <param name="cancellationToken">Скасування операції.</param>
+    Task<IReadOnlySet<Guid>> GetDocumentIdsWithVectorsAsync(string modelName, CancellationToken cancellationToken = default);
+
+    /// <summary>Чи є в документа вектори вказаної моделі.</summary>
+    Task<bool> HasVectorsAsync(Guid documentId, string modelName, CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Зберігає документ з фрагментами і векторами <b>в одній транзакції</b>. Якщо документ із тим самим
     /// шляхом уже є, його старі фрагменти й вектори повністю замінюються.

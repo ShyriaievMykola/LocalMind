@@ -51,12 +51,15 @@ public sealed partial class FolderIndexer(
             .DistinctBy(d => d.Path, FilePaths.Comparer)
             .ToDictionary(d => d.Path, FilePaths.Comparer);
 
+        // Файл незмінний, лише якщо в нього є вектори поточної моделі: після зміни моделі старі документи треба переіндексувати.
+        var withVectors = await repository.GetDocumentIdsWithVectorsAsync(embedder.ModelName, cancellationToken);
+
         var result = new FolderIndexingResult();
         for (var i = 0; i < files.Count; i++)
         {
             progress?.Report(new IndexingProgress(i, files.Count, result.Failed, files[i]));
             known.TryGetValue(files[i], out var existing);
-            result = await IndexFileAsync(files[i], existing, result, cancellationToken);
+            result = await IndexFileAsync(files[i], existing, withVectors, result, cancellationToken);
         }
 
         result = result with { Removed = await RemoveMissingFilesAsync(root, files, known.Values, cancellationToken) };
@@ -67,6 +70,7 @@ public sealed partial class FolderIndexer(
     private async Task<FolderIndexingResult> IndexFileAsync(
         string path,
         Document? existing,
+        IReadOnlySet<Guid> withVectors,
         FolderIndexingResult result,
         CancellationToken cancellationToken)
     {
@@ -95,7 +99,8 @@ public sealed partial class FolderIndexer(
             return result with { Failed = result.Failed + 1 };
         }
 
-        if (existing is not null && existing.ContentHash == hash)
+        if (existing is not null && existing.ContentHash == hash
+            && (existing.Status != DocumentStatus.Indexed || withVectors.Contains(existing.Id)))
         {
             // Зіпсований файл не змінився, тож він і далі не проіндексований.
             return existing.Status == DocumentStatus.Error
