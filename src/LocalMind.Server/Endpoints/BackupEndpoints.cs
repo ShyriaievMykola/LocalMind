@@ -79,6 +79,13 @@ public static class BackupEndpoints
             return TooLarge(store);
         }
 
+        // Порожній файл не може бути бекапом (навіть заголовок конверта непорожній), а займав би місце в квоті.
+        if (size == 0)
+        {
+            store.Delete(id);
+            return TypedResults.Problem(statusCode: StatusCodes.Status400BadRequest, title: "Бекап порожній.");
+        }
+
         // Без Content-Length розмір відомий лише після запису. Паралельні завантаження можуть разом трохи
         // перевищити квоту — це прийнятно: мета квоти — не дати заповнити диск, а не точний облік (DR-032).
         if (usedBytes + size > quota.MaxTotalBytesPerUser)

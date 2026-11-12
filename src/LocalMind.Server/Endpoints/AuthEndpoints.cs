@@ -58,7 +58,7 @@ public static class AuthEndpoints
 
         return TypedResults.ValidationProblem(result.Errors
             .GroupBy(e => e.Code.StartsWith("Password", StringComparison.Ordinal) ? "password" : "email")
-            .ToDictionary(g => g.Key, g => g.Select(e => e.Description).ToArray()));
+            .ToDictionary(g => g.Key, g => g.Select(e => e.Description).Distinct().ToArray()));
     }
 
     private static async Task<Results<Ok<TokenResponse>, ProblemHttpResult>> LoginAsync(
