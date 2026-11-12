@@ -37,6 +37,14 @@ public interface IDocumentRepository
     /// <summary>Фрагменти за ідентифікаторами; відсутні ідентифікатори пропускаються.</summary>
     Task<IReadOnlyList<Chunk>> GetChunksAsync(IReadOnlyCollection<Guid> chunkIds, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Фрагменти одного документа у включному діапазоні порядкових номерів, за зростанням Ordinal.
+    /// Відсутній документ або діапазон без фрагментів дає порожній список.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">Від'ємна нижня межа або верхня межа менша за нижню.</exception>
+    Task<IReadOnlyList<Chunk>> GetChunksByDocumentAsync(
+        Guid documentId, int fromOrdinal, int toOrdinal, CancellationToken cancellationToken = default);
+
     /// <summary>Усі збережені вектори вказаної моделі — для заповнення <see cref="IVectorIndex"/> під час запуску.</summary>
     /// <param name="modelName">Назва моделі (<see cref="IEmbedder.ModelName"/>); вектори інших моделей пропускаються.</param>
     /// <param name="cancellationToken">Скасування операції.</param>

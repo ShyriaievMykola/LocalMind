@@ -17,6 +17,9 @@ public sealed class InMemoryDocumentRepository : IDocumentRepository
     private readonly Dictionary<Guid, List<Chunk>> _chunksByDocument = [];
     private readonly Dictionary<(Guid ChunkId, string Model), ReadOnlyMemory<float>> _vectors = [];
 
+    /// <summary>Підміна запиту контексту для перевірки затримок, помилок і скасування у VM.</summary>
+    public Func<Guid, int, int, CancellationToken, Task<IReadOnlyList<Chunk>>>? GetChunksByDocumentHandler { get; set; }
+
     /// <summary>Усі збережені фрагменти — для фейкового keyword-індексу і перевірок у тестах.</summary>
     public IReadOnlyList<Chunk> AllChunks
     {
@@ -137,6 +140,26 @@ public sealed class InMemoryDocumentRepository : IDocumentRepository
             var wanted = chunkIds.ToHashSet();
             return Task.FromResult<IReadOnlyList<Chunk>>(
                 [.. _chunksByDocument.Values.SelectMany(c => c).Where(c => wanted.Contains(c.Id))]);
+        }
+    }
+
+    public Task<IReadOnlyList<Chunk>> GetChunksByDocumentAsync(
+        Guid documentId, int fromOrdinal, int toOrdinal, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(fromOrdinal);
+        ArgumentOutOfRangeException.ThrowIfLessThan(toOrdinal, fromOrdinal);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (GetChunksByDocumentHandler is { } handler)
+        {
+            return handler(documentId, fromOrdinal, toOrdinal, cancellationToken);
+        }
+
+        lock (_lock)
+        {
+            return Task.FromResult<IReadOnlyList<Chunk>>(_chunksByDocument.TryGetValue(documentId, out var chunks)
+                ? [.. chunks.Where(c => c.Ordinal >= fromOrdinal && c.Ordinal <= toOrdinal).OrderBy(c => c.Ordinal)]
+                : []);
         }
     }
 
