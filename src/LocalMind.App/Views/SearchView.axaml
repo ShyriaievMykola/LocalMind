@@ -2,21 +2,42 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:LocalMind.App.ViewModels"
              xmlns:views="using:LocalMind.App.Views"
+             xmlns:sys="using:System"
              x:Class="LocalMind.App.Views.SearchView"
              x:DataType="vm:SearchViewModel">
   <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*" RowSpacing="12">
-    <TextBlock Text="Пошук" FontSize="24" FontWeight="SemiBold" />
+    <StackPanel Spacing="2">
+      <TextBlock Text="Пошук" FontSize="24" FontWeight="SemiBold" />
+      <TextBlock Classes="muted" TextWrapping="Wrap"
+                 Text="Ctrl+K — до поля пошуку · ↑/↓ — вибір · Enter — знайти або відкрити · Esc — очистити" />
+    </StackPanel>
 
-    <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="8">
-      <TextBox Text="{Binding QueryText, Mode=TwoWay}" PlaceholderText="Пошук у нотатках"
-               AutomationProperties.Name="Пошуковий запит">
-        <TextBox.KeyBindings>
-          <KeyBinding Gesture="Enter" Command="{Binding SearchCommand}" />
-        </TextBox.KeyBindings>
-      </TextBox>
-      <!-- Кнопка залишається доступною під час пошуку: новий запит скасовує попередній. -->
-      <Button Grid.Column="1" Content="Знайти" Command="{Binding SearchCommand}" />
-    </Grid>
+    <StackPanel Grid.Row="1" Spacing="4">
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+        <!-- Enter, ↑/↓, Esc обробляє SearchView.axaml.cs (Tunnel), щоб TextBox не перехопив стрілки. -->
+        <TextBox x:Name="QueryBox" Text="{Binding QueryText, Mode=TwoWay}" PlaceholderText="Пошук у нотатках"
+                 AutomationProperties.Name="Пошуковий запит" />
+        <!-- Кнопка залишається доступною під час пошуку: новий запит скасовує попередній. -->
+        <Button Grid.Column="1" Content="Знайти" Command="{Binding SearchCommand}" />
+      </Grid>
+
+      <!-- Підказки з історії запитів. -->
+      <Border Classes="card" Padding="4" IsVisible="{Binding HasSuggestions}">
+        <StackPanel Spacing="4">
+          <ListBox x:Name="SuggestionsList" ItemsSource="{Binding Suggestions}"
+                   SelectedItem="{Binding SelectedSuggestion, Mode=TwoWay}"
+                   Background="Transparent" BorderThickness="0" MaxHeight="200"
+                   AutomationProperties.Name="Останні запити">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="sys:String">
+                <TextBlock Text="{Binding}" TextTrimming="CharacterEllipsis" />
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+          <Button Content="Очистити історію" Command="{Binding ClearHistoryCommand}" HorizontalAlignment="Right" />
+        </StackPanel>
+      </Border>
+    </StackPanel>
 
     <WrapPanel Grid.Row="2" Orientation="Horizontal">
       <StackPanel Margin="0,0,16,0" Spacing="4">
@@ -36,7 +57,11 @@
     <TextBlock Grid.Row="4" Text="{Binding ErrorMessage}" IsVisible="{Binding HasError}"
                TextWrapping="Wrap" AutomationProperties.Name="Помилка пошуку" />
 
-    <ListBox Grid.Row="5" ItemsSource="{Binding Results}" Background="Transparent" BorderThickness="0"
+    <TextBlock Grid.Row="5" Classes="muted" Text="Нічого не знайдено. Спробуйте інші слова." IsVisible="{Binding HasNoResults}"
+               TextWrapping="Wrap" AutomationProperties.Name="Нічого не знайдено" />
+
+    <ListBox Grid.Row="5" ItemsSource="{Binding Results}" SelectedItem="{Binding SelectedResult, Mode=TwoWay}"
+             Background="Transparent" BorderThickness="0"
              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
              AutomationProperties.Name="Результати пошуку">
       <ListBox.Styles>

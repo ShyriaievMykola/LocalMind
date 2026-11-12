@@ -1,5 +1,7 @@
 using System.Security.Claims;
+using LocalMind.Core.Backup.Crypto;
 using LocalMind.Core.Backup.Dtos;
+using LocalMind.Server.Audit;
 using LocalMind.Server.Data;
 using LocalMind.Server.Data.Entities;
 using LocalMind.Server.Storage;
@@ -18,6 +20,9 @@ public static class BackupEndpoints
 {
     private const string OctetStream = "application/octet-stream";
 
+    /// <summary>Найменший можливий бекап: заголовок конверта плюс тег автентифікації (DR-014).</summary>
+    internal const int MinBackupBytes = EncryptedEnvelope.HeaderSize + EncryptedEnvelope.TagSize;
+
     public static RouteGroupBuilder MapBackupEndpoints(this RouteGroupBuilder api)
     {
         ArgumentNullException.ThrowIfNull(api);
@@ -32,7 +37,8 @@ public static class BackupEndpoints
 
     private static async Task<Results<Created<BackupInfo>, ProblemHttpResult, ChallengeHttpResult>> UploadAsync(
         HttpContext context, ClaimsPrincipal principal, ServerDbContext db, FileSystemBlobStore store,
-        IOptions<BlobStoreOptions> options, UserUploadGate gate, TimeProvider time, CancellationToken cancellationToken)
+        IOptions<BlobStoreOptions> options, UserUploadGate gate, AuditLog audit, TimeProvider time,
+        CancellationToken cancellationToken)
     {
         // Токен ще чинний, а користувача видалено — інакше впали б на зовнішньому ключі з 500.
         var userId = UserId(principal);
@@ -77,6 +83,16 @@ public static class BackupEndpoints
             return TooLarge(store);
         }
 
+        // Менший за мінімальний конверт (заголовок + тег, шифротекст може бути порожнім) файл не відновити:
+        // відхиляємо його одразу, щоб він не займав слот квоти. Вміст сервер не перевіряє — він зашифрований.
+        if (size < MinBackupBytes)
+        {
+            store.Delete(id);
+            return TypedResults.Problem(
+                statusCode: StatusCodes.Status400BadRequest,
+                title: $"Файл не схожий на бекап LocalMind: менше {MinBackupBytes} байт.");
+        }
+
         // Без Content-Length розмір відомий лише після запису. Паралельні завантаження можуть разом трохи
         // перевищити квоту — це прийнятно: мета квоти — не дати заповнити диск, а не точний облік (DR-032).
         if (usedBytes + size > quota.MaxTotalBytesPerUser)
@@ -104,6 +120,7 @@ public static class BackupEndpoints
             throw;
         }
 
+        await audit.WriteAsync(AuditActions.BackupUploaded, userId);
         return TypedResults.Created($"/api/v1/backups/{id}", ToInfo(snapshot));
     }
 
@@ -131,7 +148,7 @@ public static class BackupEndpoints
     }
 
     private static async Task<Results<NoContent, NotFound>> DeleteAsync(
-        Guid id, ClaimsPrincipal principal, ServerDbContext db, FileSystemBlobStore store,
+        Guid id, ClaimsPrincipal principal, ServerDbContext db, FileSystemBlobStore store, AuditLog audit,
         CancellationToken cancellationToken)
     {
         var snapshot = await FindOwnAsync(id, principal, db, cancellationToken);
@@ -143,6 +160,7 @@ public static class BackupEndpoints
         db.Remove(snapshot);
         await db.SaveChangesAsync(cancellationToken);
         store.Delete(id);
+        await audit.WriteAsync(AuditActions.BackupDeleted, UserId(principal));
         return TypedResults.NoContent();
     }
 

@@ -1,9 +1,11 @@
 using System.Security.Cryptography;
 using LocalMind.Core.Abstractions;
+using LocalMind.Core.Configuration;
 using LocalMind.Core.Errors;
 using LocalMind.Core.Ingestion.Parsers;
 using LocalMind.Core.Models;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace LocalMind.Core.Ingestion;
 
@@ -16,8 +18,10 @@ public sealed partial class FolderIndexer(
     IChunker chunker,
     IEmbedder embedder,
     IDocumentRepository repository,
-    ILogger<FolderIndexer> logger)
+    ILogger<FolderIndexer> logger,
+    IOptions<IngestionOptions>? ingestionOptions = null)
 {
+    private readonly IngestionOptions _limits = ingestionOptions?.Value ?? new IngestionOptions();
     /// <summary>Індексує всі підтримувані файли папки та її підпапок.</summary>
     /// <param name="folder">Шлях до папки.</param>
     /// <param name="progress">Отримує стан після кожного файла.</param>
@@ -66,10 +70,24 @@ public sealed partial class FolderIndexer(
         FolderIndexingResult result,
         CancellationToken cancellationToken)
     {
-        byte[] content;
+        byte[]? content = null;
+        string hash;
+        long length;
         try
         {
-            content = await File.ReadAllBytesAsync(path, cancellationToken);
+            length = new FileInfo(path).Length;
+            if (length > _limits.MaxFileSizeBytes)
+            {
+                // Завеликий файл у пам'ять не читаємо: хеш рахуємо потоком, щоб не індексувати його щоразу наново.
+                await using var file = File.OpenRead(path);
+                hash = Convert.ToHexStringLower(await SHA256.HashDataAsync(file, cancellationToken));
+            }
+            else
+            {
+                content = await File.ReadAllBytesAsync(path, cancellationToken);
+                length = content.Length;
+                hash = Convert.ToHexStringLower(SHA256.HashData(content));
+            }
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
@@ -77,7 +95,6 @@ public sealed partial class FolderIndexer(
             return result with { Failed = result.Failed + 1 };
         }
 
-        var hash = Convert.ToHexStringLower(SHA256.HashData(content));
         if (existing is not null && existing.ContentHash == hash)
         {
             // Зіпсований файл не змінився, тож він і далі не проіндексований.
@@ -93,7 +110,9 @@ public sealed partial class FolderIndexer(
         try
         {
             parsers.TryGetParser(path, out var parser);
-            using var stream = new MemoryStream(content, writable: false);
+            FileGuard.CheckSize(length, _limits);
+            using var stream = new MemoryStream(content!, writable: false);
+            FileGuard.CheckContent(Path.GetExtension(path), stream, _limits);
             parsed = await parser!.ParseAsync(stream, cancellationToken);
         }
         catch (DocumentParseException exception)
@@ -107,7 +126,7 @@ public sealed partial class FolderIndexer(
         var chunks = parsed.HasText ? chunker.Split(id, parsed.Text) : [];
         if (chunks.Count == 0)
         {
-            var status = content.Length == 0 ? DocumentStatus.Empty : DocumentStatus.NoText;
+            var status = length == 0 ? DocumentStatus.Empty : DocumentStatus.NoText;
             var empty = new Document(id, storedPath, hash, status, DateTimeOffset.UtcNow);
             await repository.SaveAsync(empty, [], [], embedder.ModelName, cancellationToken);
             return result with { WithoutText = result.WithoutText + 1 };

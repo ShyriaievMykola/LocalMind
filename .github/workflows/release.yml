@@ -1,0 +1,118 @@
+name: Release
+
+# Тег v* — збірка під 3 ОС і GitHub Release. PR зі зміною цього файла — лише збірка архівів (перевірка без релізу).
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+    paths: ['.github/workflows/release.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  publish:
+    name: publish (${{ matrix.rid }})
+    # Кожна ОС на своєму раннері: apphost під macOS arm64 має бути підписаний, а це вміє лише macOS.
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, rid: win-x64 }
+          - { os: ubuntu-latest, rid: linux-x64 }
+          - { os: macos-latest, rid: osx-arm64 }
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # Реліз лише з коміту, що вже в main (там пройшли CI і рев'ю), а не з довільної гілки.
+      - name: Tag is on main
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Тег не на main: спершу змерджіть зміни в main, потім ставте тег."
+            exit 1
+          fi
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      # Застосунок і CLI — окремі папки: в обох свій appsettings.json.
+      # Модель у архів не кладемо (~470 МБ): її завантажує scripts/download-models у models/ поруч із програмою.
+      - name: Publish
+        shell: bash
+        run: |
+          # Версія з тегу (v0.2.0 → 0.2.0); у PR і ручному запуску — 0.0.0-dev.
+          version="0.0.0-dev"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then version="${GITHUB_REF_NAME#v}"; fi
+          for project in App Cli; do
+            out="dist/LocalMind-$project-${{ matrix.rid }}"
+            dotnet publish "src/LocalMind.$project/LocalMind.$project.csproj" --configuration Release \
+              --runtime ${{ matrix.rid }} --self-contained true --output "$out" -p:Version="$version"
+            # Символи налагодження (SkiaSharp сам по собі ~100 МБ), .lib для лінкування і XML-документація користувачу не потрібні.
+            find "$out" -maxdepth 1 \( -name '*.pdb' -o -name '*.lib' -o -name 'LocalMind.*.xml' \) -delete
+            mkdir -p "$out/scripts"
+            cp scripts/download-models.sh scripts/download-models.ps1 "$out/scripts/"
+          done
+
+      # В архіві одна коренева папка (LocalMind-App-<rid>/...), щоб розпакування не висипало файли в поточну теку.
+      - name: Pack (zip)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-ChildItem dist -Directory | ForEach-Object {
+            Compress-Archive -Path $_.FullName -DestinationPath "dist\$($_.Name).zip"
+          }
+
+      # tar.gz зберігає біт виконання для програм і скриптів.
+      - name: Pack (tar.gz)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          cd dist
+          for dir in */; do
+            tar -czf "${dir%/}.tar.gz" "${dir%/}"
+          done
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: LocalMind-${{ matrix.rid }}
+          path: |
+            dist/*.zip
+            dist/*.tar.gz
+          if-no-files-found: error
+
+  release:
+    name: GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          path: dist
+          merge-multiple: true
+
+      # Ім'я тегу — через env, а не підстановкою в скрипт: тег на кшталт v1$(...) інакше виконався б у shell.
+      # Тег із дефісом (v0.2.0-rc1) — пререліз.
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          prerelease=()
+          if [[ "$TAG" == *-* ]]; then prerelease=(--prerelease); fi
+          gh release create "$TAG" dist/* --repo "$REPO" --title "LocalMind $TAG" --generate-notes "${prerelease[@]}"

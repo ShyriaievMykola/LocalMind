@@ -37,9 +37,16 @@ public static class ServiceCollectionExtensions
         services.TryAddEnumerable(
             ServiceDescriptor.Singleton<IValidateOptions<ChunkingOptions>, ChunkingOptionsValidator>());
 
+        services.AddOptions<IngestionOptions>()
+            .Bind(configuration.GetSection(IngestionOptions.SectionName))
+            .ValidateOnStart();
+        services.TryAddEnumerable(
+            ServiceDescriptor.Singleton<IValidateOptions<IngestionOptions>, IngestionOptionsValidator>());
+
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IDocumentParser, PlainTextParser>());
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IDocumentParser, MarkdownParser>());
-        services.TryAddEnumerable(ServiceDescriptor.Singleton<IDocumentParser, PdfParser>());
+        services.AddSingleton<IDocumentParser>(provider =>
+            new PdfParser(provider.GetRequiredService<IOptions<IngestionOptions>>().Value.MaxFileSizeBytes));
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IDocumentParser, DocxParser>());
         services.TryAddSingleton<ParserRegistry>();
         services.TryAddSingleton<IChunker>(provider =>

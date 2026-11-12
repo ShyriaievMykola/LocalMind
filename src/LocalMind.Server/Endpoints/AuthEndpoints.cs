@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using LocalMind.Core.Backup.Dtos;
+using LocalMind.Server.Audit;
 using LocalMind.Server.Auth;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Identity;
@@ -28,7 +29,7 @@ public static class AuthEndpoints
     }
 
     private static async Task<Results<Created, ValidationProblem>> RegisterAsync(
-        RegisterRequest request, UserManager<IdentityUser> users)
+        RegisterRequest request, UserManager<IdentityUser> users, AuditLog audit)
     {
         if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrEmpty(request.Password))
         {
@@ -41,6 +42,11 @@ public static class AuthEndpoints
         var email = EmailFormatValidator.Normalize(request.Email);
         var user = new IdentityUser { UserName = email, Email = email };
         var result = await users.CreateAsync(user, request.Password);
+        if (result.Succeeded)
+        {
+            await users.AddToRoleAsync(user, AppRoles.User);
+            await audit.WriteAsync(AuditActions.Registered, user.Id);
+        }
 
         // Зайнятий email дає ту саму відповідь, що й успішна реєстрація: інакше реєстрація дозволяла б
         // перевіряти, чи є в сервері такий користувач (DR-032). Пароль Identity перевіряє раніше, ніж унікальність.
@@ -52,12 +58,12 @@ public static class AuthEndpoints
 
         return TypedResults.ValidationProblem(result.Errors
             .GroupBy(e => e.Code.StartsWith("Password", StringComparison.Ordinal) ? "password" : "email")
-            .ToDictionary(g => g.Key, g => g.Select(e => e.Description).ToArray()));
+            .ToDictionary(g => g.Key, g => g.Select(e => e.Description).Distinct().ToArray()));
     }
 
     private static async Task<Results<Ok<TokenResponse>, ProblemHttpResult>> LoginAsync(
         LoginRequest request, UserManager<IdentityUser> users, SignInManager<IdentityUser> signIn,
-        IPasswordHasher<IdentityUser> hasher, JwtTokenService tokens, RefreshTokenService refresh,
+        IPasswordHasher<IdentityUser> hasher, JwtTokenService tokens, RefreshTokenService refresh, AuditLog audit,
         CancellationToken cancellationToken)
     {
         var user = string.IsNullOrWhiteSpace(request.Email) ? null : await users.FindByEmailAsync(EmailFormatValidator.Normalize(request.Email));
@@ -65,6 +71,7 @@ public static class AuthEndpoints
         {
             // Хешуємо й для неіснуючого користувача, щоб час відповіді не видавав, чи є такий email.
             hasher.VerifyHashedPassword(DummyUser, DummyHash.Value, request.Password ?? string.Empty);
+            await audit.WriteAsync(AuditActions.LoginFailed, detail: "unknown_user");
             return Unauthorized();
         }
 
@@ -79,15 +86,18 @@ public static class AuthEndpoints
 
         if (!result.Succeeded)
         {
+            await audit.WriteAsync(AuditActions.LoginFailed, user.Id, detail: result.IsLockedOut ? "locked_out" : "wrong_password");
             return Unauthorized();
         }
 
         var (refreshToken, refreshExpiresAt) = await refresh.IssueAsync(user, cancellationToken);
-        return TypedResults.Ok(CreateResponse(tokens, user, refreshToken, refreshExpiresAt));
+        await audit.WriteAsync(AuditActions.LoginSucceeded, user.Id);
+        return TypedResults.Ok(await CreateResponseAsync(tokens, users, user, refreshToken, refreshExpiresAt));
     }
 
     private static async Task<Results<Ok<TokenResponse>, ProblemHttpResult>> RefreshAsync(
-        RefreshRequest request, RefreshTokenService refresh, JwtTokenService tokens, CancellationToken cancellationToken)
+        RefreshRequest request, RefreshTokenService refresh, JwtTokenService tokens, UserManager<IdentityUser> users,
+        CancellationToken cancellationToken)
     {
         var rotated = await refresh.RotateAsync(request.RefreshToken ?? string.Empty, cancellationToken);
         if (rotated is not { } r)
@@ -95,7 +105,7 @@ public static class AuthEndpoints
             return TypedResults.Problem(statusCode: StatusCodes.Status401Unauthorized, title: InvalidRefreshToken);
         }
 
-        return TypedResults.Ok(CreateResponse(tokens, r.User, r.Token, r.ExpiresAt));
+        return TypedResults.Ok(await CreateResponseAsync(tokens, users, r.User, r.Token, r.ExpiresAt));
     }
 
     private static async Task<NoContent> LogoutAsync(
@@ -106,10 +116,11 @@ public static class AuthEndpoints
         return TypedResults.NoContent();
     }
 
-    private static TokenResponse CreateResponse(
-        JwtTokenService tokens, IdentityUser user, string refreshToken, DateTimeOffset refreshExpiresAt)
+    private static async Task<TokenResponse> CreateResponseAsync(
+        JwtTokenService tokens, UserManager<IdentityUser> users, IdentityUser user, string refreshToken,
+        DateTimeOffset refreshExpiresAt)
     {
-        var (accessToken, expiresAt) = tokens.CreateAccessToken(user);
+        var (accessToken, expiresAt) = tokens.CreateAccessToken(user, await users.GetRolesAsync(user));
         return new TokenResponse(accessToken, expiresAt, refreshToken, refreshExpiresAt);
     }
 

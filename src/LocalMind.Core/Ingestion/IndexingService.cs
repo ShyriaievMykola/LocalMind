@@ -1,9 +1,11 @@
 using System.Threading.Channels;
 using LocalMind.Core.Abstractions;
+using LocalMind.Core.Configuration;
 using LocalMind.Core.Ingestion.Parsers;
 using LocalMind.Core.Ingestion.Watching;
 using LocalMind.Core.Models;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace LocalMind.Core.Ingestion;
 
@@ -41,6 +43,7 @@ public sealed partial class IndexingService : IIndexingService, IDisposable
     private readonly FolderWatcher _watcher;
     private readonly ILogger<IndexingService> _logger;
     private readonly TimeSpan _retryDelay;
+    private readonly IngestionOptions _limits;
 
     private readonly Channel<string> _queue = Channel.CreateUnbounded<string>();
     private readonly Lock _lock = new();
@@ -67,7 +70,8 @@ public sealed partial class IndexingService : IIndexingService, IDisposable
         ChangeDetector changeDetector,
         FolderWatcher watcher,
         ILogger<IndexingService> logger,
-        TimeSpan? retryDelay = null)
+        TimeSpan? retryDelay = null,
+        IOptions<IngestionOptions>? ingestionOptions = null)
     {
         ArgumentNullException.ThrowIfNull(parsers);
         ArgumentNullException.ThrowIfNull(chunker);
@@ -89,6 +93,7 @@ public sealed partial class IndexingService : IIndexingService, IDisposable
         var delay = retryDelay ?? DefaultRetryDelay;
         ArgumentOutOfRangeException.ThrowIfLessThan(delay, TimeSpan.Zero, nameof(retryDelay));
         _retryDelay = delay;
+        _limits = ingestionOptions?.Value ?? new IngestionOptions();
 
         _processing = Task.Run(() => ProcessQueueAsync(_shutdown.Token));
         _watching = Task.Run(() => ConsumeWatcherAsync(_shutdown.Token));
@@ -424,6 +429,8 @@ public sealed partial class IndexingService : IIndexingService, IDisposable
             FileOptions.Asynchronous))
         {
             length = stream.Length;
+            FileGuard.CheckSize(length, _limits);
+            FileGuard.CheckContent(Path.GetExtension(change.Path), stream, _limits);
             parsed = await parser.ParseAsync(stream, cancellationToken);
         }
 

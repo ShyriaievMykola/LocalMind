@@ -1,25 +1,32 @@
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using LocalMind.App.Services;
 
 namespace LocalMind.App.ViewModels;
 
-/// <summary>Навігація головного вікна і стан запуску ядра.</summary>
+/// <summary>Навігація головного вікна, стан запуску ядра і повідомлення про необроблені помилки.</summary>
 public sealed partial class MainViewModel : ViewModelBase, IDisposable
 {
+    private const string ModelMissingNotice =
+        "Модель не завантажена — запустіть scripts/download-models. Без неї не працюють семантичний пошук та індексація; доступний лише пошук Keyword.";
+
     private readonly CoreStatus _status;
+    private readonly UnhandledErrorReporter _errors;
     private readonly SearchViewModel _search;
     private readonly LibraryViewModel _library;
     private bool _disposed;
 
     public MainViewModel(
         CoreStatus status,
+        UnhandledErrorReporter errors,
         SearchViewModel search,
         LibraryViewModel library,
         SettingsViewModel settings,
         IndexingProgressViewModel indexing)
     {
         ArgumentNullException.ThrowIfNull(status);
+        ArgumentNullException.ThrowIfNull(errors);
         ArgumentNullException.ThrowIfNull(search);
         ArgumentNullException.ThrowIfNull(library);
         ArgumentNullException.ThrowIfNull(settings);
@@ -38,6 +45,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
         _status = status;
         _status.Changed += OnStatusChanged;
+        _errors = errors;
+        _errors.Reported += OnErrorReported;
         UpdateStatus();
     }
 
@@ -58,10 +67,49 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     public partial bool HasStatusProblem { get; private set; }
 
+    /// <summary>Що не так із ядром: база недоступна або немає моделі; <see langword="null"/>, коли все гаразд.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasNotice))]
+    public partial string? NoticeText { get; private set; }
+
+    public bool HasNotice => NoticeText is not null;
+
+    /// <summary>Повідомлення про необроблений виняток; лишається, поки користувач його не закриє.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasUnhandledError))]
+    public partial string? UnhandledErrorText { get; private set; }
+
+    public bool HasUnhandledError => UnhandledErrorText is not null;
+
+    [RelayCommand]
+    private void DismissUnhandledError() => UnhandledErrorText = null;
+    
+    /// <summary>Ctrl+K / Ctrl+F: відкриває «Пошук» і ставить курсор у поле запиту.</summary>
+    [RelayCommand]
+    private void FocusSearch()
+    {
+        SelectedItem = NavigationItems.First(item => ReferenceEquals(item.Page, _search));
+        _search.RequestFocus();
+    }
+    
+    /// <summary>Над вікном тягнуть файли — показуємо підказку «відпустіть, щоб додати».</summary>
+    [ObservableProperty]
+    public partial bool IsDragOver { get; set; }
+
+    /// <summary>Перетягнуті у вікно файли й папки: відкриваємо «Бібліотеку» — там видно результат і пояснення.</summary>
+    [RelayCommand]
+    private async Task DropPathsAsync(IReadOnlyList<string> paths)
+    {
+        IsDragOver = false;
+        SelectedItem = NavigationItems.First(item => ReferenceEquals(item.Page, _library));
+        await _library.AddPathsAsync(paths);
+    }
+
     public void Dispose()
     {
         _disposed = true;
         _status.Changed -= OnStatusChanged;
+        _errors.Reported -= OnErrorReported;
         _search.Close();
         _library.Close();
         Indexing.Close();
@@ -75,15 +123,32 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         }
     });
 
+    private void OnErrorReported(object? sender, EventArgs args)
+    {
+        if (!_disposed)
+        {
+            UnhandledErrorText = UnhandledErrorReporter.UserMessage;
+        }
+    }
+
     private void UpdateStatus()
     {
+        // Рядок стану короткий; пояснення («чому» і «що робити») — лише в банері.
         StatusText = _status.Stage switch
         {
             CoreStage.Starting => "Запуск…",
-            CoreStage.Failed => $"Помилка запуску. {_status.Error}",
-            _ when !_status.IsModelAvailable => $"Готово, але без моделі. {_status.ModelError}",
+            CoreStage.Failed => "Помилка запуску.",
+            _ when !_status.IsModelAvailable => "Готово, але без моделі.",
             _ => "Готово.",
         };
+
+        NoticeText = _status.Stage switch
+        {
+            CoreStage.Failed => _status.Error,
+            CoreStage.Ready when !_status.IsModelAvailable => ModelMissingNotice,
+            _ => null,
+        };
+
         HasStatusProblem = _status.Stage != CoreStage.Ready || !_status.IsModelAvailable;
     }
 }
