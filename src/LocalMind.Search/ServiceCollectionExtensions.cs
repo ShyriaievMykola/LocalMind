@@ -31,12 +31,17 @@ public static class ServiceCollectionExtensions
         services.AddOptions<SearchOptions>()
             .Bind(configuration.GetSection(SearchOptions.SectionName))
             .ValidateOnStart();
+        services.AddOptions<VectorIndexOptions>()
+            .Bind(configuration.GetSection(VectorIndexOptions.SectionName))
+            .ValidateOnStart();
         services.AddOptions<EmbeddingModelOptions>()
             .Bind(configuration.GetSection(EmbeddingModelOptions.SectionName))
             .ValidateOnStart();
 
         services.TryAddEnumerable(
             ServiceDescriptor.Singleton<IValidateOptions<SearchOptions>, SearchOptionsValidator>());
+        services.TryAddEnumerable(
+            ServiceDescriptor.Singleton<IValidateOptions<VectorIndexOptions>, VectorIndexOptionsValidator>());
         services.TryAddEnumerable(
             ServiceDescriptor.Singleton<IValidateOptions<EmbeddingModelOptions>, EmbeddingModelOptionsValidator>());
         services.TryAddEnumerable(
@@ -45,10 +50,18 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<ModelTokenizer>();
         services.TryAddSingleton<ITokenCounter, HfTokenCounter>();
         services.TryAddSingleton<IEmbedder, OnnxEmbedder>();
-        services.TryAddSingleton<IVectorIndex>(provider =>
-            new BruteForceIndex(provider.GetRequiredService<IOptions<EmbeddingModelOptions>>().Value.Dimensions));
+        services.TryAddSingleton<IVectorIndex>(CreateVectorIndex);
         services.TryAddSingleton<ISearchService, SearchService>();
 
         return services;
+    }
+
+    private static IVectorIndex CreateVectorIndex(IServiceProvider provider)
+    {
+        var dimensions = provider.GetRequiredService<IOptions<EmbeddingModelOptions>>().Value.Dimensions;
+        var options = provider.GetRequiredService<IOptions<VectorIndexOptions>>().Value;
+        return options.Kind == VectorIndexKind.Hnsw
+            ? new HnswIndex(dimensions, options)
+            : new BruteForceIndex(dimensions);
     }
 }
