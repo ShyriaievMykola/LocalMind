@@ -10,9 +10,12 @@ internal sealed class FakeFolderPicker : IFolderPicker
 
     public int Calls { get; private set; }
 
+    /// <summary>Якщо задано — вибір завершується цим винятком.</summary>
+    public Exception? Error { get; set; }
+
     public Task<string?> PickFolderAsync()
     {
         Calls++;
-        return Task.FromResult(Result);
+        return Error is null ? Task.FromResult(Result) : Task.FromException<string?>(Error);
     }
 }

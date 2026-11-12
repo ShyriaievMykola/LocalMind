@@ -35,6 +35,12 @@ internal sealed class FakeIndexingService : IIndexingService
     /// <summary>Якщо задано — <see cref="AddFolderAsync"/> завершується цим винятком.</summary>
     public Exception? AddFolderError { get; set; }
 
+    /// <summary>Якщо задано — <see cref="RemoveFolderAsync"/> завершується цим винятком.</summary>
+    public Exception? RemoveFolderError { get; set; }
+
+    /// <summary>Якщо задано — <see cref="RescanAsync"/> завершується цим винятком.</summary>
+    public Exception? RescanError { get; set; }
+
     public IndexingProgress Progress { get; private set; } = new(0, 0);
 
     public bool HasSubscribers => ProgressChanged is not null;
@@ -56,12 +62,22 @@ internal sealed class FakeIndexingService : IIndexingService
 
     public Task RemoveFolderAsync(string path, CancellationToken cancellationToken = default)
     {
+        if (RemoveFolderError is not null)
+        {
+            return Task.FromException(RemoveFolderError);
+        }
+
         RemovedFolders.Add(path);
         return Repository.RemoveSourceFolderAsync(path, cancellationToken);
     }
 
     public Task RescanAsync(CancellationToken cancellationToken = default)
     {
+        if (RescanError is not null)
+        {
+            return Task.FromException(RescanError);
+        }
+
         RescanCount++;
         return Task.CompletedTask;
     }
