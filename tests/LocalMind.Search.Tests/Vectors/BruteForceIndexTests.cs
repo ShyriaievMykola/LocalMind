@@ -16,6 +16,20 @@ public class BruteForceIndexTests
         Assert.Throws<ArgumentOutOfRangeException>(() => new BruteForceIndex(dimensions));
     }
 
+    [Theory]
+    [InlineData(float.NaN)]
+    [InlineData(float.PositiveInfinity)]
+    [InlineData(float.NegativeInfinity)]
+    public void NonFiniteVectorOrQuery_IsRejected(float bad)
+    {
+        using var index = new BruteForceIndex(2);
+        index.Add(Guid.NewGuid(), new float[] { 1f, 0f });
+
+        Assert.Throws<ArgumentException>(() => index.Add(Guid.NewGuid(), new float[] { bad, 0f }));
+        Assert.Throws<ArgumentException>(() => index.Search(new float[] { 0f, bad }, 1));
+        Assert.Equal(1, index.Count);
+    }
+
     [Fact]
     public void Search_EmptyIndex_ReturnsNothing()
     {

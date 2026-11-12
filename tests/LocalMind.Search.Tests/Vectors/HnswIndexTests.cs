@@ -25,6 +25,20 @@ public class HnswIndexTests
         Assert.Throws<ArgumentOutOfRangeException>(() => new HnswIndex(4, new VectorIndexOptions { M = 1 }));
     }
 
+    [Theory]
+    [InlineData(float.NaN)]
+    [InlineData(float.PositiveInfinity)]
+    [InlineData(float.NegativeInfinity)]
+    public void NonFiniteVectorOrQuery_IsRejected(float bad)
+    {
+        using var index = new HnswIndex(2, new VectorIndexOptions());
+        index.Add(Guid.NewGuid(), new float[] { 1f, 0f });
+
+        Assert.Throws<ArgumentException>(() => index.Add(Guid.NewGuid(), new float[] { bad, 0f }));
+        Assert.Throws<ArgumentException>(() => index.Search(new float[] { 0f, bad }, 1));
+        Assert.Equal(1, index.Count);
+    }
+
     [Fact]
     public void Search_EmptyIndex_ReturnsNothing()
     {
