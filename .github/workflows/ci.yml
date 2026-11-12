@@ -55,3 +55,28 @@ jobs:
           name: coverage
           path: TestResults/**/coverage.cobertura.xml
           if-no-files-found: ignore
+
+  # Одна перевірка на Ubuntu, а не на всі 3 ОС: залежності в усіх однакові.
+  vulnerable-packages:
+    name: vulnerable packages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      # Попередження NuGet про вразливості (NU1901–NU1904) тут не робимо помилками, щоб ламав збірку наступний крок
+      # із зрозумілим звітом, а не безіменне падіння restore.
+      - name: Restore
+        run: dotnet restore LocalMind.slnx -p:TreatWarningsAsErrors=false
+
+      # dotnet list завжди завершується з кодом 0, тож про вразливість судимо за текстом звіту.
+      - name: Check for vulnerable packages
+        run: |
+          dotnet list LocalMind.slnx package --vulnerable --include-transitive --no-restore | tee vulnerable.txt
+          if grep -q "has the following vulnerable packages" vulnerable.txt; then
+            echo "::error::Знайдено вразливі NuGet-пакети (див. звіт вище). Оновіть пакет у Directory.Packages.props."
+            exit 1
+          fi

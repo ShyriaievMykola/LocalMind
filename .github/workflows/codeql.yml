@@ -1,0 +1,39 @@
+name: CodeQL
+
+# Статичний аналіз безпеки C#. Окремо від CI, щоб не множити тривалість на 3 ОС:
+# на push у main і раз на тиждень (нові правила CodeQL знаходять і в старому коді).
+# Результати: Security → Code scanning.
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "23 4 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: analyze (csharp)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+
+      # build-mode none: CodeQL аналізує вихідний код без збірки, тож не залежить від Avalonia та інших пакетів.
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: csharp
+          build-mode: none
+
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:csharp"
