@@ -263,13 +263,20 @@ public sealed partial class BackupViewModel : ViewModelBase
 
     /// <summary>Скасовує поточну довгу операцію; уже зроблене на сервері чи в базі не відкочується, окрім заміни бази.</summary>
     [RelayCommand]
-    private void CancelOperation() => _operation?.Cancel();
+    private void CancelOperation()
+    {
+        // Поле обнуляється до Dispose (див. RunAsync), тож до завершеної операції сюди не дістатися.
+        var operation = _operation;
+        operation?.Cancel();
+    }
 
     private async Task LoadListAsync(CancellationToken cancellationToken)
     {
+        var selectedId = SelectedBackup?.Id;
         var items = await _backups.ListAsync(cancellationToken);
         Backups = [.. items.OrderByDescending(info => info.CreatedAt).Select(info => new BackupItem(info))];
-        SelectedBackup = null;
+        // Вибір лишається, поки бекап є на сервері; після видалення його вже немає у списку, тож вибір зникає.
+        SelectedBackup = selectedId is { } id ? Backups.FirstOrDefault(item => item.Id == id) : null;
     }
 
     /// <summary>
@@ -286,7 +293,7 @@ public sealed partial class BackupViewModel : ViewModelBase
         ClearMessages();
         BusyText = busyText;
         IsBusy = true;
-        using var operation = new CancellationTokenSource();
+        var operation = new CancellationTokenSource();
         _operation = operation;
         try
         {
@@ -320,7 +327,9 @@ public sealed partial class BackupViewModel : ViewModelBase
         }
         finally
         {
+            // Спершу прибираємо посилання, потім звільняємо: «Скасувати» не зачепить уже звільнене джерело.
             _operation = null;
+            operation.Dispose();
             IsBusy = false;
             BusyText = null;
         }

@@ -319,6 +319,62 @@ public sealed class BackupViewModelTests
         Assert.Equal("довгий-пароль-шифрування", viewModel.Password);
     }
 
+    [Fact]
+    public async Task CancelOperation_AfterOperationFinished_DoesNothing()
+    {
+        _backups.Server.Add(FakeBackupOperations.Backup(1024, Newer));
+        var viewModel = await OpenAsync();
+
+        viewModel.CancelOperationCommand.Execute(null);
+
+        Assert.False(viewModel.IsBusy);
+        Assert.False(viewModel.HasError);
+        Assert.False(viewModel.HasInfo);
+    }
+
+    [Fact]
+    public async Task Refresh_KeepsSelectedBackupWhileItExists()
+    {
+        var kept = FakeBackupOperations.Backup(1024, Older);
+        _backups.Server.Add(kept);
+        _backups.Server.Add(FakeBackupOperations.Backup(2048, Newer));
+        var viewModel = await OpenAsync();
+        viewModel.SelectedBackup = viewModel.Backups.Single(item => item.Id == kept.Id);
+
+        await viewModel.RefreshCommand.ExecuteAsync(null);
+
+        Assert.Equal(kept.Id, viewModel.SelectedBackup?.Id);
+    }
+
+    [Fact]
+    public async Task Delete_Cancelled_KeepsSelectionAfterRefresh()
+    {
+        _backups.Server.Add(FakeBackupOperations.Backup(1024, Newer));
+        var viewModel = await OpenAsync();
+        viewModel.SelectedBackup = viewModel.Backups[0];
+        viewModel.RequestDeleteCommand.Execute(null);
+        viewModel.CancelDeleteCommand.Execute(null);
+
+        await viewModel.RefreshCommand.ExecuteAsync(null);
+
+        Assert.NotNull(viewModel.SelectedBackup);
+        Assert.True(viewModel.CanManage);
+    }
+
+    [Fact]
+    public async Task Delete_Success_ClearsSelectionOfRemovedBackup()
+    {
+        _backups.Server.Add(FakeBackupOperations.Backup(1024, Newer));
+        var viewModel = await OpenAsync();
+        viewModel.SelectedBackup = viewModel.Backups[0];
+        viewModel.RequestDeleteCommand.Execute(null);
+
+        await viewModel.ConfirmDeleteCommand.ExecuteAsync(null);
+
+        Assert.Null(viewModel.SelectedBackup);
+        Assert.False(viewModel.CanManage);
+    }
+
     [Theory]
     [InlineData(512, "512 Б")]
     [InlineData(1536, "1.5 КБ")]

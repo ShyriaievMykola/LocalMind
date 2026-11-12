@@ -16,9 +16,17 @@
         <StackPanel Spacing="8">
           <TextBlock Classes="heading" Text="Створити бекап" />
           <TextBlock Text="Пароль шифрування" />
-          <TextBox Text="{Binding Password, Mode=TwoWay}" PasswordChar="●" AutomationProperties.Name="Пароль шифрування" />
+          <TextBox Text="{Binding Password, Mode=TwoWay}" PasswordChar="●" AutomationProperties.Name="Пароль шифрування">
+            <TextBox.KeyBindings>
+              <KeyBinding Gesture="Enter" Command="{Binding CreateBackupCommand}" />
+            </TextBox.KeyBindings>
+          </TextBox>
           <TextBlock Text="Повторіть пароль" />
-          <TextBox Text="{Binding PasswordRepeat, Mode=TwoWay}" PasswordChar="●" AutomationProperties.Name="Повтор пароля" />
+          <TextBox Text="{Binding PasswordRepeat, Mode=TwoWay}" PasswordChar="●" AutomationProperties.Name="Повтор пароля">
+            <TextBox.KeyBindings>
+              <KeyBinding Gesture="Enter" Command="{Binding CreateBackupCommand}" />
+            </TextBox.KeyBindings>
+          </TextBox>
           <TextBlock Classes="error" Text="{x:Static vm:BackupViewModel.PasswordWarning}" TextWrapping="Wrap"
                      AutomationProperties.Name="Попередження про пароль" />
           <Button Classes="accent" Content="Створити бекап" Command="{Binding CreateBackupCommand}"
@@ -57,7 +65,11 @@
           <TextBlock TextWrapping="Wrap"
                      Text="{Binding RestoreTarget.CreatedText, StringFormat='Відновити бекап від {0}? Поточну бібліотеку буде замінено даними з бекапу. Введіть пароль шифрування цього бекапу.'}" />
           <TextBox Text="{Binding RestorePassword, Mode=TwoWay}" PasswordChar="●"
-                   AutomationProperties.Name="Пароль бекапу для відновлення" />
+                   AutomationProperties.Name="Пароль бекапу для відновлення">
+            <TextBox.KeyBindings>
+              <KeyBinding Gesture="Enter" Command="{Binding ConfirmRestoreCommand}" />
+            </TextBox.KeyBindings>
+          </TextBox>
           <StackPanel Orientation="Horizontal" Spacing="8">
             <Button Classes="accent" Content="Відновити" Command="{Binding ConfirmRestoreCommand}"
                     IsEnabled="{Binding !IsBusy}" />
