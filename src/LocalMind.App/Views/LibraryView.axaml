@@ -14,8 +14,13 @@
       </StackPanel>
     </Grid>
 
-    <TextBlock Grid.Row="1" Classes="error" Text="{Binding ErrorMessage}" IsVisible="{Binding HasError}"
-               TextWrapping="Wrap" AutomationProperties.Name="Помилка бібліотеки" />
+    <StackPanel Grid.Row="1" Spacing="4">
+      <TextBlock Classes="error" Text="{Binding ErrorMessage}" IsVisible="{Binding HasError}"
+                 TextWrapping="Wrap" AutomationProperties.Name="Помилка бібліотеки" />
+      <TextBlock Classes="muted" Text="{Binding NoticeMessage}" TextWrapping="Wrap"
+                 IsVisible="{Binding NoticeMessage, Converter={x:Static ObjectConverters.IsNotNull}}"
+                 AutomationProperties.Name="Пояснення бібліотеки" />
+    </StackPanel>
 
     <StackPanel Grid.Row="2" Spacing="8">
       <TextBlock Text="Папки" FontWeight="SemiBold" />
