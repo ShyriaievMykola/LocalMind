@@ -235,7 +235,30 @@ public sealed class MainViewModelTests
 
         Assert.False(viewModel.HasUnhandledError);
     }
+    
+    [Fact]
+    public async Task DropPaths_OpensLibraryAndAddsFolder()
+    {
+        var indexing = new FakeIndexingService();
+        var library = indexing.CreateViewModel();
+        using var viewModel = CreateViewModel(library: library);
+        var folder = Directory.CreateTempSubdirectory("localmind-drop-").FullName;
 
+        try
+        {
+            viewModel.IsDragOver = true;
+
+            await viewModel.DropPathsCommand.ExecuteAsync([folder]);
+
+            Assert.Same(library, viewModel.CurrentPage);
+            Assert.False(viewModel.IsDragOver);
+            Assert.Equal([folder], indexing.AddedFolders);
+        }
+        finally
+        {
+            Directory.Delete(folder);
+        }
+    }
     private MainViewModel CreateViewModel(
         SearchViewModel? search = null,
         LibraryViewModel? library = null,

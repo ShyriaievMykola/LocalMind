@@ -1,3 +1,4 @@
+using LocalMind.Core.Ingestion.Parsers;
 using System.Collections.Concurrent;
 using LocalMind.App.Services;
 using LocalMind.App.ViewModels;
@@ -83,7 +84,8 @@ internal sealed class FakeIndexingService : IIndexingService
             status.SetReady();
         }
 
-        return new LibraryViewModel(this, Repository, Picker, Dispatcher, status, NullLogger<LibraryViewModel>.Instance);
+        IDocumentParser[] parsers = [new PlainTextParser(), new MarkdownParser(), new PdfParser(), new DocxParser()];
+        return new LibraryViewModel(this, Repository, parsers, Picker, Dispatcher, status, NullLogger<LibraryViewModel>.Instance);
     }
     
     public IndexingProgressViewModel CreateProgressViewModel() => new(this, Dispatcher);
