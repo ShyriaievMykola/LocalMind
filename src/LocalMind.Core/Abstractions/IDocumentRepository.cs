@@ -20,6 +20,13 @@ public interface IDocumentRepository
 
     /// <summary>Документи за ідентифікаторами; відсутні ідентифікатори пропускаються.</summary>
     Task<IReadOnlyList<Document>> GetDocumentsAsync(IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken = default);
+ 
+    /// <summary>Кількість фрагментів кожного документа — для списку бібліотеки.</summary>
+    /// <returns>
+    /// Ідентифікатор документа → кількість фрагментів. Документів без фрагментів (порожніх, без тексту,
+    /// з помилкою) у словнику немає.
+    /// </returns>
+    Task<IReadOnlyDictionary<Guid, int>> GetChunkCountsAsync(CancellationToken cancellationToken = default);
 
     /// <summary>Документ за ідентифікатором або <see langword="null"/>.</summary>
     Task<Document?> GetDocumentAsync(Guid id, CancellationToken cancellationToken = default);

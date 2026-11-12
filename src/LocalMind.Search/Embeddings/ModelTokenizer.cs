@@ -75,13 +75,27 @@ public sealed class ModelTokenizer
                 $"Файл токенізатора не знайдено: {_options.TokenizerPath}. Запустіть scripts/download-models.");
         }
 
+        byte[] bytes;
         try
         {
-            using var stream = File.OpenRead(_options.TokenizerPath);
+            bytes = ModelIntegrity.ReadVerified(_options.TokenizerPath, _options.TokenizerSha256, "Файл токенізатора");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Найчастіше файл зайнятий: його саме завантажує scripts/download-models.
+            throw new LocalMindException(
+                $"Файл токенізатора недоступний: {_options.TokenizerPath} ({ex.Message}). " +
+                "Дочекайтеся завершення завантаження або запустіть scripts/download-models.", ex);
+        }
+
+        try
+        {
+            // Токенізатор будується з тих самих байтів, що пройшли перевірку хеша, а не з файла за шляхом.
+            using var stream = new MemoryStream(bytes, writable: false);
             return SentencePieceTokenizer.Create(stream, false, false);
         }
 #pragma warning disable CA1031 // Бібліотека кидає різні типи на пошкоджений файл; усі вони для нас означають одне.
-        catch (Exception ex) when (ex is not OutOfMemoryException)
+        catch (Exception ex) when (ex is not (OutOfMemoryException or LocalMindException))
 #pragma warning restore CA1031
         {
             throw new LocalMindException(

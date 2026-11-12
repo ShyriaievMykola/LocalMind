@@ -1,4 +1,5 @@
 using LocalMind.Core.Abstractions;
+using LocalMind.Core.Configuration;
 using LocalMind.Core.Errors;
 using LocalMind.Core.Models;
 using UglyToad.PdfPig;
@@ -8,10 +9,14 @@ namespace LocalMind.Core.Ingestion.Parsers;
 
 public sealed class PdfParser : IDocumentParser
 {
-    private const long DefaultMaxFileSizeBytes = 50 * 1024 * 1024; // 50 MB
+    private const long DefaultMaxFileSizeBytes = IngestionOptions.DefaultMaxFileSizeBytes;
 
     private readonly long _maxFileSizeBytes;
 
+    /// <param name="maxFileSizeBytes">
+    /// Страховка для потоків без відомої довжини; для файлів ліміт перевіряє <see cref="FileGuard"/> до читання,
+    /// а DI передає сюди те саме значення з <see cref="IngestionOptions"/>.
+    /// </param>
     public PdfParser(long maxFileSizeBytes = DefaultMaxFileSizeBytes)
     {
         if (maxFileSizeBytes <= 0)
