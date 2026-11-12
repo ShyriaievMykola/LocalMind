@@ -110,6 +110,46 @@ public class ModelCatalogTests
         Assert.Equal("query: ", options.QueryPrefix);
     }
 
+    [Theory]
+    [InlineData("models/multilingual-e5-small/model.onnx", "models/multilingual-e5-small/sentencepiece.bpe.model")]
+    [InlineData("models\\multilingual-e5-small\\model.onnx", "models\\multilingual-e5-small\\sentencepiece.bpe.model")]
+    [InlineData("MODELS/Multilingual-E5-Small/model.onnx", "MODELS/Multilingual-E5-Small/sentencepiece.bpe.model")]
+    [InlineData("C:/app/models/multilingual-e5-small/model.onnx", "C:/app/models/multilingual-e5-small/sentencepiece.bpe.model")]
+    public void Embedding_PathLeftFromAnotherCatalogModel_IsReplacedByTheSelectedModelsPath(string modelPath, string tokenizerPath)
+    {
+        // Застосунок зберігає в settings.json шлях попередньої моделі; нова модель не має вказувати на чужий файл.
+        var configuration = new ConfigurationBuilder()
+            .AddConfiguration(LoadConfiguration("App"))
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                [$"{EmbeddingModelOptions.SectionName}:ModelPath"] = modelPath,
+                [$"{EmbeddingModelOptions.SectionName}:TokenizerPath"] = tokenizerPath,
+            })
+            .Build();
+
+        var options = ResolveEmbedding(configuration, "multilingual-e5-base");
+
+        Assert.Equal("models/multilingual-e5-base/model.onnx", options.ModelPath);
+        Assert.Equal("models/multilingual-e5-base/sentencepiece.bpe.model", options.TokenizerPath);
+        Assert.Equal(768, options.Dimensions);
+    }
+
+    [Fact]
+    public void Embedding_OwnDefaultPathOfTheSelectedModel_IsKept()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddConfiguration(LoadConfiguration("App"))
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                [$"{EmbeddingModelOptions.SectionName}:ModelPath"] = "models/multilingual-e5-base/model.onnx",
+            })
+            .Build();
+
+        var options = ResolveEmbedding(configuration, "multilingual-e5-base");
+
+        Assert.Equal("models/multilingual-e5-base/model.onnx", options.ModelPath);
+    }
+
     [Fact]
     public void Embedding_ModelNotInCatalog_IsLeftAsConfigured()
     {

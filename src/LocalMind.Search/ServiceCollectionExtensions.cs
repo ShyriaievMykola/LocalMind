@@ -60,24 +60,28 @@ public static class ServiceCollectionExtensions
 
     /// <summary>
     /// Якщо <c>ModelName</c> є в каталозі, опис моделі (токенізатор, хеші, розмірність, ліміт токенів, префікси) беремо
-    /// з каталогу, а шляхи — лише якщо їх не задано (так модель можна покласти в іншу теку).
+    /// з каталогу. Шлях лишається, лише якщо його задали свідомо (інша тека): порожній шлях або шлях
+    /// стандартної теки ІНШОЇ моделі каталогу вважається незаданим — так збережений у налаштуваннях застосунку шлях
+    /// попередньої моделі не вказує на файл не тієї моделі.
     /// Модель, якої немає в каталозі, — власна модель користувача — лишається як налаштовано.
     /// </summary>
     private static void ApplyCatalog(EmbeddingModelOptions options, IOptions<ModelCatalogOptions> catalog)
     {
-        var model = catalog.Value.Find(options.ModelName);
+        var models = catalog.Value;
+        var model = models.Find(options.ModelName);
         if (model is null)
         {
             return;
         }
 
+        var others = models.Models.Where(other => !ReferenceEquals(other, model)).ToList();
         options.ModelName = model.Name;
-        if (string.IsNullOrWhiteSpace(options.ModelPath))
+        if (IsUnset(options.ModelPath, others.Select(other => other.LocalModelPath)))
         {
             options.ModelPath = model.LocalModelPath;
         }
 
-        if (string.IsNullOrWhiteSpace(options.TokenizerPath))
+        if (IsUnset(options.TokenizerPath, others.Select(other => other.LocalTokenizerPath)))
         {
             options.TokenizerPath = model.LocalTokenizerPath;
         }
@@ -88,5 +92,19 @@ public static class ServiceCollectionExtensions
         options.MaxTokens = model.MaxTokens;
         options.QueryPrefix = model.QueryPrefix;
         options.PassagePrefix = model.PassagePrefix;
+    }
+
+    /// <summary>Шлях не заданий: порожній або збігається (в тому числі як хвіст абсолютного шляху) зі стандартним шляхом іншої моделі.</summary>
+    private static bool IsUnset(string? path, IEnumerable<string> otherModelsDefaults)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return true;
+        }
+
+        var normalized = path.Replace('\\', '/');
+        return otherModelsDefaults.Any(other =>
+            normalized.Equals(other, StringComparison.OrdinalIgnoreCase)
+            || normalized.EndsWith("/" + other, StringComparison.OrdinalIgnoreCase));
     }
 }
