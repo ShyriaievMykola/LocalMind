@@ -150,6 +150,7 @@ public class ModelCatalogTests
 
         Assert.True(result.Failed);
         Assert.Contains("MaxTokens", result.FailureMessage, StringComparison.Ordinal);
+        Assert.Contains("Зменште LocalMind:Chunking:ChunkSizeTokens до ~120", result.FailureMessage, StringComparison.Ordinal);
     }
 
     [Fact]

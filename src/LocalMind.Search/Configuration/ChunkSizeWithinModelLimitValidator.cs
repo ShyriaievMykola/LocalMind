@@ -37,7 +37,9 @@ public sealed class ChunkSizeWithinModelLimitValidator(IOptions<EmbeddingModelOp
         {
             return ValidateOptionsResult.Fail(
                 $"{ChunkingOptions.SectionName}:ChunkSizeTokens ({options.ChunkSizeTokens}) перевищує " +
-                $"{EmbeddingModelOptions.SectionName}:MaxTokens ({model.MaxTokens}) — модель обрізатиме фрагменти.");
+                $"{EmbeddingModelOptions.SectionName}:MaxTokens ({model.MaxTokens}) — модель обрізатиме фрагменти. " +
+                $"Зменште {ChunkingOptions.SectionName}:ChunkSizeTokens до ~{model.MaxTokens - (model.MaxTokens / 16)} " +
+                "(змінна оточення LocalMind__Chunking__ChunkSizeTokens) або оберіть модель з більшим лімітом.");
         }
 
         var reserve = ReservedTokens(model);
