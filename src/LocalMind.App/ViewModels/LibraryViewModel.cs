@@ -15,9 +15,15 @@ public sealed partial class LibraryViewModel : ViewModelBase
 {
     private const string ModelMissingMessage = "Для індексації потрібна модель. Запустіть scripts/download-models.";
     private const string LoadFailedMessage = "Не вдалося завантажити бібліотеку.";
+    
+    // Windows і macOS за замовчуванням не розрізняють регістр у шляхах, Linux розрізняє.
+    private static readonly StringComparison PathComparison =
+        OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
     private readonly IIndexingService _indexing;
     private readonly IDocumentRepository _repository;
+    private readonly HashSet<string> _supportedExtensions;
+    private readonly string _supportedList;
     private readonly IFolderPicker _folderPicker;
     private readonly IUiDispatcher _dispatcher;
     private readonly CoreStatus _status;
@@ -30,6 +36,7 @@ public sealed partial class LibraryViewModel : ViewModelBase
     public LibraryViewModel(
         IIndexingService indexing,
         IDocumentRepository repository,
+        IEnumerable<IDocumentParser> parsers,
         IFolderPicker folderPicker,
         IUiDispatcher dispatcher,
         CoreStatus status,
@@ -37,6 +44,7 @@ public sealed partial class LibraryViewModel : ViewModelBase
     {
         ArgumentNullException.ThrowIfNull(indexing);
         ArgumentNullException.ThrowIfNull(repository);
+        ArgumentNullException.ThrowIfNull(parsers);
         ArgumentNullException.ThrowIfNull(folderPicker);
         ArgumentNullException.ThrowIfNull(dispatcher);
         ArgumentNullException.ThrowIfNull(status);
@@ -44,6 +52,8 @@ public sealed partial class LibraryViewModel : ViewModelBase
 
         _indexing = indexing;
         _repository = repository;
+        _supportedExtensions = new HashSet<string>(parsers.SelectMany(p => p.SupportedExtensions), StringComparer.OrdinalIgnoreCase);
+        _supportedList = string.Join(", ", _supportedExtensions.Order(StringComparer.Ordinal));
         _folderPicker = folderPicker;
         _dispatcher = dispatcher;
         _status = status;
@@ -100,6 +110,10 @@ public sealed partial class LibraryViewModel : ViewModelBase
     public partial string? ErrorMessage { get; private set; }
 
     public bool HasError => ErrorMessage is not null;
+       
+    /// <summary>Пояснення без помилки (наприклад, що для файла додано його папку); <see langword="null"/> — нічого пояснювати.</summary>
+    [ObservableProperty]
+    public partial string? NoticeMessage { get; private set; }
 
     /// <summary>Відписується від подій ядра при закритті вікна: сторінка Transient, DI її не звільняє.</summary>
     public void Close()
@@ -205,6 +219,133 @@ public sealed partial class LibraryViewModel : ViewModelBase
 
         await RefreshAsync();
     }
+    /// <summary>
+    /// Додає перетягнуті у вікно файли й папки (A-11). Папка стає відстежуваною. Для файла додаємо його папку:
+    /// бібліотека стежить лише за папками, тож так вона побачить і подальші зміни файла, і сусідні нотатки.
+    /// </summary>
+    public async Task AddPathsAsync(IReadOnlyList<string> paths)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+
+        NoticeMessage = null;
+        ErrorMessage = GetIndexingBlocker();
+        if (ErrorMessage is not null)
+        {
+            return;
+        }
+
+        var folders = new List<string>();
+        var viaFolder = new List<string>();
+        var alreadyTracked = new List<string>();
+        var unsupported = new List<string>();
+
+        foreach (var path in paths.Where(p => !string.IsNullOrWhiteSpace(p)).Select(NormalizePath))
+        {
+            string folder;
+            string? fileName = null;
+            if (Directory.Exists(path))
+            {
+                folder = path;
+            }
+            else if (File.Exists(path)
+                     && _supportedExtensions.Contains(Path.GetExtension(path))
+                     && Path.GetDirectoryName(path) is { } parent)
+            {
+                folder = parent;
+                fileName = Path.GetFileName(path);
+            }
+            else
+            {
+                // Непідтримуваний файл або шлях, якого вже немає: користувачу треба знати, що його не додано.
+                unsupported.Add(Path.GetFileName(path));
+                continue;
+            }
+
+            if (Folders.Any(tracked => IsInside(folder, tracked)))
+            {
+                alreadyTracked.Add(fileName ?? Path.GetFileName(folder));
+            }
+            else
+            {
+                if (!folders.Any(added => added.Equals(folder, PathComparison)))
+                {
+                    folders.Add(folder);
+                }
+
+                if (fileName is not null)
+                {
+                    viaFolder.Add(fileName);
+                }
+            }
+        }
+
+        var failed = new List<string>();
+        foreach (var folder in folders)
+        {
+            try
+            {
+                // Перелік файлів великої папки займає час, тому не на UI-потоці.
+                await Task.Run(() => _indexing.AddFolderAsync(folder));
+            }
+            catch (Exception exception)
+            {
+                LogActionFailed(_logger, "додавання перетягнутої папки", exception);
+                failed.Add(folder);
+            }
+        }
+
+        ErrorMessage = DescribeDropProblems(unsupported, failed, nothingRecognized: folders.Count + alreadyTracked.Count == 0);
+        NoticeMessage = DescribeDropNotice(viaFolder, alreadyTracked);
+
+        if (folders.Count > failed.Count)
+        {
+            await RefreshAsync();
+        }
+    }
+
+    private string? DescribeDropProblems(List<string> unsupported, List<string> failed, bool nothingRecognized)
+    {
+        var parts = new List<string>();
+        if (unsupported.Count > 0)
+        {
+            parts.Add($"Не додано: {string.Join(", ", unsupported)} — можна перетягнути папку або файли {_supportedList}.");
+        }
+
+        if (failed.Count > 0)
+        {
+            parts.Add($"Не вдалося додати папку: {string.Join(", ", failed)}.");
+        }
+
+        if (parts.Count == 0 && nothingRecognized)
+        {
+            parts.Add("Перетягніть папку або файл з нотатками.");
+        }
+
+        return parts.Count > 0 ? string.Join(" ", parts) : null;
+    }
+
+    private static string? DescribeDropNotice(List<string> viaFolder, List<string> alreadyTracked)
+    {
+        var parts = new List<string>();
+        if (viaFolder.Count > 0)
+        {
+            parts.Add($"Для файлів {string.Join(", ", viaFolder)} додано їхню папку — бібліотека стежитиме і за сусідніми нотатками.");
+        }
+
+        if (alreadyTracked.Count > 0)
+        {
+            parts.Add($"Уже є в бібліотеці: {string.Join(", ", alreadyTracked)}.");
+        }
+
+        return parts.Count > 0 ? string.Join(" ", parts) : null;
+    }
+
+    private static string NormalizePath(string path) => Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+
+    private static bool IsInside(string path, string folder) =>
+        path.Equals(folder, PathComparison)
+        || (path.StartsWith(folder, PathComparison)
+            && (folder[^1] is '/' or '\\' || path[folder.Length] is '/' or '\\'));
 
     [RelayCommand(CanExecute = nameof(CanRequestRemoveFolder))]
     private void RequestRemoveFolder() => FolderPendingRemoval = SelectedFolder;
