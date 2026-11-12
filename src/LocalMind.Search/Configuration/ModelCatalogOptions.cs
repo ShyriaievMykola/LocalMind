@@ -2,7 +2,9 @@ namespace LocalMind.Search.Configuration;
 
 /// <summary>
 /// Каталог embedding-моделей, які підтримує LocalMind (експеримент E2). Секція конфігурації — <see cref="SectionName"/>.
-/// Модель обирається назвою: <c>LocalMind:Embedding:ModelName</c> без <c>ModelPath</c> бере решту налаштувань звідси.
+/// Модель обирається назвою: якщо <c>LocalMind:Embedding:ModelName</c> є в каталозі, значення звідси
+/// <b>перезаписують</b> розмірність, ліміт токенів, префікси й хеші з конфігурації користувача;
+/// шляхи беруться з каталогу лише якщо не задані.
 /// </summary>
 public sealed class ModelCatalogOptions
 {

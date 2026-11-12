@@ -6,7 +6,7 @@ namespace LocalMind.Search.Configuration;
 public sealed class ModelCatalogOptionsValidator : IValidateOptions<ModelCatalogOptions>
 {
     // Заборонені на будь-якій ОС (набір Windows ширший за Linux), щоб каталог працював однаково всюди.
-    private static readonly char[] ForbiddenChars = ['/', '\\', ':', '*', '?', '"', '<', '>', '|'];
+    private static readonly System.Buffers.SearchValues<char> ForbiddenChars = System.Buffers.SearchValues.Create(['/', '\\', ':', '*', '?', '"', '<', '>', '|']);
 
     public ValidateOptionsResult Validate(string? name, ModelCatalogOptions options)
     {
