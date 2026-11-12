@@ -1,10 +1,13 @@
+using LocalMind.Server.Audit;
 using LocalMind.Server.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace LocalMind.Server.Auth;
 
 /// <summary>Раз на кілька годин видаляє прострочені refresh-токени, щоб таблиця не росла безмежно.</summary>
-public sealed partial class RefreshTokenCleanupService(IServiceScopeFactory scopes, TimeProvider time, ILogger<RefreshTokenCleanupService> logger)
+public sealed partial class RefreshTokenCleanupService(
+    IServiceScopeFactory scopes, TimeProvider time, IOptions<AuditOptions> audit, ILogger<RefreshTokenCleanupService> logger)
     : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromHours(6);
@@ -22,6 +25,16 @@ public sealed partial class RefreshTokenCleanupService(IServiceScopeFactory scop
             $"DELETE FROM \"RefreshTokens\" WHERE \"ExpiresAt\" < {threshold}", cancellationToken);
     }
 
+    /// <summary>Видаляє записи аудиту старші за <see cref="AuditOptions.RetentionDays"/>. Повертає кількість видалених.</summary>
+    public async Task<int> CleanupAuditAsync(CancellationToken cancellationToken = default)
+    {
+        await using var scope = scopes.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ServerDbContext>();
+        var threshold = time.GetUtcNow().AddDays(-audit.Value.RetentionDays);
+        return await db.Database.ExecuteSqlAsync(
+            $"DELETE FROM \"AuditEntries\" WHERE \"OccurredAt\" < {threshold}", cancellationToken);
+    }
+
     /// <inheritdoc />
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -32,6 +45,7 @@ public sealed partial class RefreshTokenCleanupService(IServiceScopeFactory scop
             {
                 var deleted = await CleanupAsync(stoppingToken);
                 LogCleaned(logger, deleted);
+                await CleanupAuditAsync(stoppingToken);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

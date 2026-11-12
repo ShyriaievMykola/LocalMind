@@ -126,6 +126,11 @@ docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
 (`localmind-db`, `localmind-backups`) і переживають перезапуск та оновлення образу. Секретів в образі немає: ключ
 передається лише змінною середовища `Jwt__SigningKey`.
 
+**Адміністратор.** Щоб з'явився адміністратор, задайте в `deploy/.env` `LOCALMIND_ADMIN_EMAIL` і
+`LOCALMIND_ADMIN_PASSWORD` (пароль щонайменше 12 символів): акаунт створюється під час запуску, якщо такого email ще немає.
+Уже зареєстрований email адміністратором не стає. Після першого запуску пароль можна прибрати з `.env`. Адмін-ендпоінти
+(`/api/v1/admin/users`, `/block`, `/unblock`, `/audit`) описані в Swagger у Development.
+
 **HTTPS.** Сервер усередині контейнера працює по HTTP, а TLS має завершувати reverse proxy на тому ж хості
 (Caddy, nginx, Traefik). Клієнт бекапу приймає лише `https://` (HTTP дозволено тільки для localhost). Проксі повинен
 передавати `X-Forwarded-For` і `X-Forwarded-Proto`. Сервер довіряє цим заголовкам лише від адрес із

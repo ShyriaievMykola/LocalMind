@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using LocalMind.Server.Audit;
 using LocalMind.Server.Data;
 using LocalMind.Server.Data.Entities;
 using Microsoft.AspNetCore.Identity;
@@ -14,7 +15,7 @@ namespace LocalMind.Server.Auth;
 /// повторне пред'явлення вже використаного токена відкликає всю сесію. Сесія також стає недійсною, якщо змінився
 /// SecurityStamp користувача (зміна пароля), акаунт заблоковано або минув абсолютний строк сесії.
 /// </summary>
-public sealed class RefreshTokenService(ServerDbContext db, IOptions<JwtOptions> options, TimeProvider time)
+public sealed class RefreshTokenService(ServerDbContext db, IOptions<JwtOptions> options, TimeProvider time, AuditLog audit)
 {
     private const int TokenBytes = 32;
 
@@ -36,6 +37,7 @@ public sealed class RefreshTokenService(ServerDbContext db, IOptions<JwtOptions>
         var stored = await FindAsync(token, cancellationToken);
         if (stored is null || stored.RevokedAt is not null)
         {
+            await audit.WriteAsync(AuditActions.RefreshFailed, stored?.UserId, detail: stored is null ? "unknown_token" : "revoked");
             return null;
         }
 
@@ -43,11 +45,13 @@ public sealed class RefreshTokenService(ServerDbContext db, IOptions<JwtOptions>
         if (stored.ConsumedAt is not null)
         {
             await RevokeSessionAsync(stored.SessionId, cancellationToken);
+            await audit.WriteAsync(AuditActions.RefreshReuseDetected, stored.UserId);
             return null;
         }
 
         if (stored.ExpiresAt <= now || stored.SessionStartedAt + options.Value.SessionMaxLifetime <= now)
         {
+            await audit.WriteAsync(AuditActions.RefreshFailed, stored.UserId, detail: "expired");
             return null;
         }
 
@@ -59,6 +63,7 @@ public sealed class RefreshTokenService(ServerDbContext db, IOptions<JwtOptions>
         if (consumed == 0)
         {
             await RevokeSessionAsync(stored.SessionId, cancellationToken);
+            await audit.WriteAsync(AuditActions.RefreshReuseDetected, stored.UserId);
             return null;
         }
 
@@ -66,10 +71,13 @@ public sealed class RefreshTokenService(ServerDbContext db, IOptions<JwtOptions>
         if (user is null || user.SecurityStamp != stored.SecurityStamp || user.LockoutEnd > now)
         {
             await RevokeSessionAsync(stored.SessionId, cancellationToken);
+            await audit.WriteAsync(AuditActions.RefreshFailed, stored.UserId,
+                detail: user is null ? "user_deleted" : user.LockoutEnd > now ? "locked_out" : "security_stamp_changed");
             return null;
         }
 
         var (next, expiresAt) = await IssueAsync(user, stored.SessionId, stored.SessionStartedAt, cancellationToken);
+        await audit.WriteAsync(AuditActions.RefreshSucceeded, user.Id);
         return (user, next, expiresAt);
     }
 
@@ -80,6 +88,7 @@ public sealed class RefreshTokenService(ServerDbContext db, IOptions<JwtOptions>
         if (stored is not null)
         {
             await RevokeSessionAsync(stored.SessionId, cancellationToken);
+            await audit.WriteAsync(AuditActions.Logout, stored.UserId);
         }
     }
 
@@ -90,6 +99,7 @@ public sealed class RefreshTokenService(ServerDbContext db, IOptions<JwtOptions>
         await db.RefreshTokens
             .Where(t => t.UserId == userId && t.RevokedAt == null)
             .ExecuteUpdateAsync(s => s.SetProperty(t => t.RevokedAt, now), cancellationToken);
+        await audit.WriteAsync(AuditActions.SessionsRevokedAll, userId);
     }
 
     internal static string Hash(string token) =>
