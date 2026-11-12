@@ -186,6 +186,63 @@ public class ModelCatalogTests
         Assert.Contains("повторюється", message, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("../escape")]
+    [InlineData("a/b")]
+    [InlineData("a\\b")]
+    [InlineData("..")]
+    [InlineData("na:me")]
+    [InlineData("na*me")]
+    public void Validator_NameIsNotAPlainFolderName_Fails(string name)
+    {
+        var catalog = new ModelCatalogOptions { Models = [ValidModel(name: name)] };
+
+        var result = new ModelCatalogOptionsValidator().Validate(null, catalog);
+
+        Assert.True(result.Failed);
+        Assert.Contains("Models:0:Name", result.FailureMessage, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("../model.onnx")]
+    [InlineData("onnx/../../model.onnx")]
+    [InlineData("/etc/model.onnx")]
+    [InlineData("C:\\model.onnx")]
+    [InlineData("onnx\\model.onnx")]
+    [InlineData("onnx//model.onnx")]
+    [InlineData("onnx/mo*del.onnx")]
+    public void Validator_FilePathEscapesTheRepository_Fails(string file)
+    {
+        var withModelFile = new ModelCatalogOptions { Models = [ValidModel(modelFile: file)] };
+        var withTokenizerFile = new ModelCatalogOptions { Models = [ValidModel(tokenizerFile: file)] };
+
+        Assert.Contains("ModelFile", new ModelCatalogOptionsValidator().Validate(null, withModelFile).FailureMessage, StringComparison.Ordinal);
+        Assert.Contains("TokenizerFile", new ModelCatalogOptionsValidator().Validate(null, withTokenizerFile).FailureMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Validator_NestedRelativeFilePath_Passes()
+    {
+        var catalog = new ModelCatalogOptions { Models = [ValidModel(modelFile: "onnx/model.onnx")] };
+
+        Assert.True(new ModelCatalogOptionsValidator().Validate(null, catalog).Succeeded);
+    }
+
+    private static CatalogModel ValidModel(string name = "ok", string modelFile = "onnx/model.onnx", string tokenizerFile = "sentencepiece.bpe.model") =>
+        new()
+        {
+            Name = name,
+            Repository = "a/b",
+            License = "MIT",
+            Revision = new string('a', 40),
+            ModelFile = modelFile,
+            TokenizerFile = tokenizerFile,
+            ModelSha256 = new string('b', 64),
+            TokenizerSha256 = new string('c', 64),
+            Dimensions = 4,
+            ModelBytes = 1,
+        };
+
     [CatalogModelTheory]
     [MemberData(nameof(Models))]
     public async Task DownloadedModel_RunsThroughOnnxEmbedder(string name)

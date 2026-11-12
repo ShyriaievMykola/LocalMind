@@ -5,6 +5,9 @@ namespace LocalMind.Search.Configuration;
 /// <summary>Перевіряє <see cref="ModelCatalogOptions"/>: у каталозі кожна модель має повний, перевірний опис.</summary>
 public sealed class ModelCatalogOptionsValidator : IValidateOptions<ModelCatalogOptions>
 {
+    // Заборонені на будь-якій ОС (набір Windows ширший за Linux), щоб каталог працював однаково всюди.
+    private static readonly char[] ForbiddenChars = ['/', '\\', ':', '*', '?', '"', '<', '>', '|'];
+
     public ValidateOptionsResult Validate(string? name, ModelCatalogOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -17,7 +20,7 @@ public sealed class ModelCatalogOptionsValidator : IValidateOptions<ModelCatalog
             var model = options.Models[i];
             var prefix = $"{ModelCatalogOptions.SectionName}:Models:{i}";
 
-            if (string.IsNullOrWhiteSpace(model.Name) || model.Name.IndexOfAny(['/', '\\', ':']) >= 0 || model.Name.Contains("..", StringComparison.Ordinal))
+            if (!IsPlainFileName(model.Name))
             {
                 errors.Add($"{prefix}:Name має бути назвою теки без розділювачів шляху (зараз «{model.Name}»).");
             }
@@ -28,8 +31,8 @@ public sealed class ModelCatalogOptionsValidator : IValidateOptions<ModelCatalog
 
             Require(model.Repository, $"{prefix}:Repository", errors);
             Require(model.License, $"{prefix}:License", errors);
-            Require(model.ModelFile, $"{prefix}:ModelFile", errors);
-            Require(model.TokenizerFile, $"{prefix}:TokenizerFile", errors);
+            RequireRelativePath(model.ModelFile, $"{prefix}:ModelFile", errors);
+            RequireRelativePath(model.TokenizerFile, $"{prefix}:TokenizerFile", errors);
             RequireHex(model.Revision, 40, $"{prefix}:Revision (повний коміт)", errors);
             RequireHex(model.ModelSha256, 64, $"{prefix}:ModelSha256", errors);
             RequireHex(model.TokenizerSha256, 64, $"{prefix}:TokenizerSha256", errors);
@@ -56,6 +59,29 @@ public sealed class ModelCatalogOptionsValidator : IValidateOptions<ModelCatalog
         }
 
         return errors.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(errors);
+    }
+
+    /// <summary>Назва без шляху: без недозволених в імені файла символів, розділювачів і «..».</summary>
+    private static bool IsPlainFileName(string? value) =>
+        !string.IsNullOrWhiteSpace(value)
+        && value is not ("." or "..")
+        && value.IndexOfAny(ForbiddenChars) < 0
+        && !value.Any(char.IsControl);
+
+    /// <summary>Шлях усередині репозиторію Hugging Face: відносний, без «..» і без недозволених символів.</summary>
+    private static void RequireRelativePath(string? value, string key, List<string> errors)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            errors.Add($"{key} не вказано.");
+            return;
+        }
+
+        var valid = !Path.IsPathRooted(value) && value.Split('/').All(IsPlainFileName);
+        if (!valid)
+        {
+            errors.Add($"{key} має бути відносним шляхом усередині репозиторію без «..» і недозволених символів (зараз «{value}»).");
+        }
     }
 
     private static void Require(string? value, string key, List<string> errors)
