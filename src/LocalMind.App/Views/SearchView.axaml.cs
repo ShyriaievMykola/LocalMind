@@ -93,12 +93,13 @@ public partial class SearchView : UserControl
 
     private void OnSuggestionTapped(object? sender, TappedEventArgs e)
     {
-        if (_viewModel?.SelectedSuggestion is { } suggestion)
+        // Tapped приходить і з порожнього місця списку чи смуги прокрутки: їхній DataContext — сама VM.
+        // Реагуємо лише на клік по елементу, у якого DataContext — рядок підказки.
+        if (_viewModel is { } viewModel && e.Source is Control { DataContext: string suggestion })
         {
-            // Спершу фокус: GotFocus відкриває підказки, а пошук одразу після цього їх закриває.
-            // У зворотному порядку список підказок лишився б висіти над результатами.
+            // Спершу фокус: GotFocus може відкрити підказки, а пошук одразу після цього їх закриває.
             QueryBox.Focus();
-            _viewModel.ApplySuggestionCommand.Execute(suggestion);
+            viewModel.ApplySuggestionCommand.Execute(suggestion);
         }
     }
 }

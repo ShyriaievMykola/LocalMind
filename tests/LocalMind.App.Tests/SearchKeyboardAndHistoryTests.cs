@@ -131,6 +131,37 @@ public sealed class SearchKeyboardAndHistoryTests
     }
     
     [Fact]
+    public async Task FocusAfterSearch_ArrowsStillSelectResults()
+    {
+        _search.History.Entries.Add("нотатки старі");
+        IReadOnlyList<SearchResult> found = [Result("notes/a.md")];
+        _search.Handler = (_, _) => Task.FromResult(found);
+        var viewModel = _search.CreateViewModel();
+        viewModel.QueryText = "нотатки";
+        await viewModel.SearchCommand.ExecuteAsync(null);
+
+        viewModel.ShowSuggestions();
+        viewModel.MoveDownCommand.Execute(null);
+
+        Assert.False(viewModel.HasSuggestions);
+        Assert.Same(viewModel.Results[0], viewModel.SelectedResult);
+    }
+
+    [Fact]
+    public async Task FailedSearch_IsNotAddedToHistory()
+    {
+        _search.Handler = (_, _) =>
+            Task.FromException<IReadOnlyList<SearchResult>>(new InvalidOperationException("пошук упав"));
+        var viewModel = _search.CreateViewModel();
+        viewModel.QueryText = "кава";
+
+        await viewModel.SearchCommand.ExecuteAsync(null);
+
+        Assert.True(viewModel.HasError);
+        Assert.Empty(_search.History.Items);
+    }
+
+    [Fact]
     public void RequestFocus_IsTakenOnlyOnce()
     {
         var viewModel = _search.CreateViewModel();

@@ -112,8 +112,7 @@ public sealed partial class SearchViewModel : ViewModelBase
     public void RequestFocus()
     {
         _focusPending = true;
-        AreSuggestionsOpen = true;
-        UpdateSuggestions();
+        ShowSuggestions();
         FocusRequested?.Invoke(this, EventArgs.Empty);
     }
 
@@ -128,11 +127,17 @@ public sealed partial class SearchViewModel : ViewModelBase
         return pending;
     }
 
-    
-    /// <summary>Поле пошуку отримало фокус: показуємо останні запити, навіть якщо ще нічого не введено.</summary>
+    /// <summary>
+    /// Поле пошуку отримало фокус. Останні запити показуємо лише при порожньому полі: після пошуку ↑/↓
+    /// мають ходити по результатах. Щойно почнеш друкувати, підказки з'являться знову.
+    /// </summary>
     public void ShowSuggestions()
     {
-        AreSuggestionsOpen = true;
+        if (string.IsNullOrWhiteSpace(QueryText))
+        {
+            AreSuggestionsOpen = true;
+        }
+
         UpdateSuggestions();
     }
 
@@ -204,7 +209,6 @@ public sealed partial class SearchViewModel : ViewModelBase
 
             var searchedText = QueryText;
             var query = new SearchQuery(QueryText, SelectedMode, (int)topK);
-            await RememberAsync(searchedText);
             IsSearching = true;
 
             // Токенізація й частина пошуку можуть виконуватися синхронно всередині сервісу.
@@ -218,6 +222,8 @@ public sealed partial class SearchViewModel : ViewModelBase
             {
                 Results = results;
                 SetNoResults(results.Count == 0 ? searchedText : null);
+                // Не чекаємо запису на диск: історія не повинна затримувати показ результатів.
+                _ = RememberAsync(searchedText);
             }
         }
         catch (OperationCanceledException) when (request.IsCancellationRequested)
@@ -344,7 +350,10 @@ public sealed partial class SearchViewModel : ViewModelBase
         return items[next];
     }
 
-    /// <summary>Історія — допоміжна річ: якщо файл не записався, пошук усе одно виконується.</summary>
+    /// <summary>
+    /// Історія — допоміжна річ: викликаємо без await, тому помилку запису лише логуємо.
+    /// Підказки оновляться під час наступного фокусу або введення тексту.
+    /// </summary>
     private async Task RememberAsync(string query)
     {
         try
@@ -355,8 +364,6 @@ public sealed partial class SearchViewModel : ViewModelBase
         {
             LogHistoryFailed(_logger, exception);
         }
-
-        UpdateSuggestions();
     }
 
     private void UpdateSuggestions()
