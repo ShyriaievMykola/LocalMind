@@ -162,7 +162,7 @@ public sealed class AccountViewModelTests
 
         Assert.Equal([("user@example.com", "дуже-довгий-пароль")], _client.Registrations);
         Assert.False(viewModel.IsSignedIn);
-        Assert.Contains("Увійдіть", viewModel.InfoMessage, StringComparison.Ordinal);
+        Assert.Contains("увійдіть", viewModel.InfoMessage, StringComparison.Ordinal);
         Assert.False(viewModel.HasError);
     }
 
