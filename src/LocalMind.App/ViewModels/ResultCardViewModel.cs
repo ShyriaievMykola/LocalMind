@@ -141,7 +141,7 @@ public sealed partial class ResultCardViewModel : ViewModelBase
                 return;
             }
 
-            ContextChunks = [.. chunks.Select(chunk => new ResultContextChunk(chunk, match.Ordinal))];
+            ContextChunks = [.. chunks.Select(chunk => new ResultContextChunk(chunk, match.Ordinal, CreateContextSnippet(chunk)))];
         }
         catch (OperationCanceledException) when (request.IsCancellationRequested)
         {
@@ -177,6 +177,12 @@ public sealed partial class ResultCardViewModel : ViewModelBase
 
     private bool IsCurrentContext(CancellationTokenSource request) =>
         ReferenceEquals(_contextCancellation, request) && IsContextExpanded && !request.IsCancellationRequested;
+
+    private Snippet CreateContextSnippet(Chunk chunk) => new(chunk.Text, 0,
+        chunk.Id == Result.Chunk.Id
+            // У картці діапазони відносні до короткого уривка, тут — до повного фрагмента.
+            ? [.. Snippet.Highlights.Select(range => new HighlightRange(Snippet.Offset + range.Start, range.Length))]
+            : []);
 
     [RelayCommand]
     private async Task OpenSourceAsync(CancellationToken cancellationToken)

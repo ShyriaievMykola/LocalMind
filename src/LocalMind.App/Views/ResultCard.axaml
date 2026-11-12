@@ -46,7 +46,8 @@
                           BorderThickness="2,0,0,0">
                     <StackPanel Spacing="4">
                       <TextBlock Classes.highlight="{Binding IsMatch}" Text="{Binding Title}" FontWeight="SemiBold" />
-                      <TextBlock Classes.highlight="{Binding IsMatch}" Text="{Binding Text}" TextWrapping="Wrap" />
+                      <controls:HighlightedSnippet Classes.highlight="{Binding IsMatch}" Snippet="{Binding Snippet}"
+                                                   TextWrapping="Wrap" />
                     </StackPanel>
                   </Border>
                 </DataTemplate>

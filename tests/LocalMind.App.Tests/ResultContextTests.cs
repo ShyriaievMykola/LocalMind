@@ -1,4 +1,5 @@
 using LocalMind.App.ViewModels;
+using LocalMind.App.Controls;
 using LocalMind.Core.Models;
 using LocalMind.TestUtilities;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -304,8 +305,54 @@ public sealed class ResultContextTests
         Assert.Null(card.ContextError);
     }
 
-    private ResultCardViewModel Card(Chunk chunk, string path = "/notes/context.md") =>
-        new(new SearchResult(chunk, path, 1), [], _files, NullLogger<ResultCardViewModel>.Instance, _repository);
+    [Theory]
+    [InlineData(0)]
+    [InlineData(200)]
+    public async Task Expand_MapsSnippetHighlightsToFullChunk_WithoutAddingDocumentOffset(int startOffset)
+    {
+        var document = TestData.Document("/notes/context.md");
+        const string Text = "🫖 вступ. кава та чай. кінець 🫖";
+        var chunk = TestData.Chunk(document.Id, 1, Text, startOffset);
+        var previous = TestData.Chunk(document.Id, 0, "кава перед результатом");
+        var next = TestData.Chunk(document.Id, 2, "чай після результату");
+        await _repository.SaveAsync(document, [previous, chunk, next], Vectors(3), "test");
+        var offset = Text.IndexOf("кава", StringComparison.Ordinal);
+        var snippet = new Snippet("кава та чай", offset, [new(0, 4), new(8, 3)], hasTextBefore: true, hasTextAfter: true);
+        var card = Card(chunk, document.Path, snippet);
+
+        await card.ToggleContextCommand.ExecuteAsync(null);
+
+        var match = Assert.Single(card.ContextChunks, item => item.IsMatch);
+        Assert.Equal(Text, match.Snippet.Text);
+        Assert.Equal(0, match.Snippet.Offset);
+        Assert.False(match.Snippet.HasTextBefore);
+        Assert.False(match.Snippet.HasTextAfter);
+        Assert.Equal([new HighlightRange(offset, 4), new HighlightRange(offset + 8, 3)], match.Snippet.Highlights);
+        var segments = SnippetSegments.Create(match.Snippet);
+        Assert.Equal(Text, string.Concat(segments.Select(segment => segment.Text)));
+        Assert.Equal(["кава", "чай"], segments.Where(segment => segment.IsHighlighted).Select(segment => segment.Text));
+        Assert.All(card.ContextChunks.Where(item => !item.IsMatch), item => Assert.Empty(item.Snippet.Highlights));
+        Assert.Same(snippet, card.Snippet);
+    }
+
+    [Fact]
+    public async Task Expand_WithoutSnippetHighlights_PreservesFullTextWithoutInventingMatches()
+    {
+        var (document, chunks) = await SaveAsync(3);
+        var chunk = chunks[1];
+        var snippet = new Snippet(chunk.Text[5..], 5, [], hasTextBefore: true);
+        var card = Card(chunk, document.Path, snippet);
+
+        await card.ToggleContextCommand.ExecuteAsync(null);
+
+        var match = Assert.Single(card.ContextChunks, item => item.IsMatch);
+        Assert.Equal(chunk.Text, match.Snippet.Text);
+        Assert.Empty(match.Snippet.Highlights);
+        Assert.All(SnippetSegments.Create(match.Snippet), segment => Assert.False(segment.IsHighlighted));
+    }
+
+    private ResultCardViewModel Card(Chunk chunk, string path = "/notes/context.md", Snippet? snippet = null) =>
+        new(new SearchResult(chunk, path, 1, snippet), [], _files, NullLogger<ResultCardViewModel>.Instance, _repository);
 
     private async Task<(Document Document, IReadOnlyList<Chunk> Chunks)> SaveAsync(int count)
     {

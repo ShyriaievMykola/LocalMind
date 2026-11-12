@@ -3,7 +3,7 @@ using LocalMind.Core.Models;
 namespace LocalMind.App.ViewModels;
 
 /// <summary>Повний фрагмент у панелі контексту; знайдений фрагмент виділяється окремо.</summary>
-public sealed record ResultContextChunk(Chunk Chunk, int MatchedOrdinal)
+public sealed record ResultContextChunk(Chunk Chunk, int MatchedOrdinal, Snippet Snippet)
 {
     public string Text => Chunk.Text;
 
