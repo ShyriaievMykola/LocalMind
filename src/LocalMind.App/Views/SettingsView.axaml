@@ -1,7 +1,87 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:LocalMind.App.ViewModels"
+             xmlns:services="using:LocalMind.App.Services"
+             xmlns:models="using:LocalMind.Core.Models"
+             xmlns:converters="using:LocalMind.App.Converters"
+             xmlns:sys="using:System"
              x:Class="LocalMind.App.Views.SettingsView"
              x:DataType="vm:SettingsViewModel">
-  <TextBlock Text="Налаштування" FontSize="24" FontWeight="SemiBold" />
+  <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Spacing="16" MaxWidth="640" HorizontalAlignment="Left">
+      <TextBlock Text="Налаштування" FontSize="24" FontWeight="SemiBold" />
+
+      <Border Classes="card">
+        <StackPanel Spacing="8">
+          <TextBlock Classes="heading" Text="Вигляд" />
+          <TextBlock Text="Тема" />
+          <ComboBox ItemsSource="{Binding Themes}" SelectedItem="{Binding Theme, Mode=TwoWay}"
+                    MinWidth="200" AutomationProperties.Name="Тема">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="services:ThemePreference">
+                <TextBlock Text="{Binding Converter={x:Static converters:ThemeConverters.Title}}" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+          <TextBlock Classes="muted" Text="Застосовується одразу після збереження." TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card">
+        <StackPanel Spacing="8">
+          <TextBlock Classes="heading" Text="Пошук" />
+          <TextBlock Text="Режим за замовчуванням" />
+          <ComboBox ItemsSource="{Binding SearchModes}" SelectedItem="{Binding DefaultSearchMode, Mode=TwoWay}"
+                    MinWidth="200" AutomationProperties.Name="Режим пошуку за замовчуванням">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="models:SearchMode">
+                <TextBlock Text="{Binding}" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+          <TextBlock Text="Кількість результатів за замовчуванням" />
+          <NumericUpDown Value="{Binding DefaultTopK, Mode=TwoWay}" Minimum="1" Maximum="1000"
+                         Increment="1" FormatString="0" ParsingNumberStyle="Integer" MinWidth="200"
+                         HorizontalAlignment="Left" AutomationProperties.Name="Кількість результатів" />
+          <TextBlock Classes="muted" Text="Діє після перезапуску застосунку." TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card">
+        <StackPanel Spacing="8">
+          <TextBlock Classes="heading" Text="Індексація" />
+          <TextBlock Text="Файл моделі (.onnx)" />
+          <TextBox Text="{Binding ModelPath, Mode=TwoWay}" AutomationProperties.Name="Шлях до моделі" />
+          <TextBlock Text="Розмір фрагмента, токенів" />
+          <NumericUpDown Value="{Binding ChunkSizeTokens, Mode=TwoWay}" Minimum="1" Maximum="8192"
+                         Increment="16" FormatString="0" ParsingNumberStyle="Integer" MinWidth="200"
+                         HorizontalAlignment="Left" AutomationProperties.Name="Розмір фрагмента" />
+          <TextBlock Text="Перекриття фрагментів, %" />
+          <NumericUpDown Value="{Binding OverlapPercent, Mode=TwoWay}" Minimum="0" Maximum="50"
+                         Increment="5" FormatString="0" ParsingNumberStyle="Integer" MinWidth="200"
+                         HorizontalAlignment="Left" AutomationProperties.Name="Перекриття" />
+          <TextBlock Classes="muted" TextWrapping="Wrap"
+                     Text="Зміна моделі, розміру фрагмента чи перекриття діє після перезапуску і стосується нових файлів. Щоб застосувати її до вже проіндексованих, приберіть папку в «Бібліотеці» і додайте знову." />
+        </StackPanel>
+      </Border>
+
+      <ItemsControl ItemsSource="{Binding Errors}" IsVisible="{Binding HasErrors}"
+                    AutomationProperties.Name="Помилки налаштувань">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="sys:String">
+            <TextBlock Classes="error" Text="{Binding}" TextWrapping="Wrap" />
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <TextBlock Text="{Binding SavedMessage}" TextWrapping="Wrap"
+                 Foreground="{DynamicResource Lm.Brush.Success}"
+                 IsVisible="{Binding SavedMessage, Converter={x:Static ObjectConverters.IsNotNull}}" />
+
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <Button Classes="accent" Content="Зберегти" Command="{Binding SaveCommand}" />
+        <Button Content="Скасувати зміни" Command="{Binding ResetCommand}" />
+      </StackPanel>
+    </StackPanel>
+  </ScrollViewer>
 </UserControl>

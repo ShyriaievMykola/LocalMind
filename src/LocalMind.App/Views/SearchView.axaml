@@ -1,8 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:LocalMind.App.ViewModels"
-             xmlns:models="using:LocalMind.Core.Models"
-             xmlns:converters="using:LocalMind.App.Converters"
+             xmlns:views="using:LocalMind.App.Views"
              x:Class="LocalMind.App.Views.SearchView"
              x:DataType="vm:SearchViewModel">
   <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*" RowSpacing="12">
@@ -37,6 +36,9 @@
     <TextBlock Grid.Row="4" Text="{Binding ErrorMessage}" IsVisible="{Binding HasError}"
                TextWrapping="Wrap" AutomationProperties.Name="Помилка пошуку" />
 
+    <TextBlock Grid.Row="5" Classes="muted" Text="Нічого не знайдено. Спробуйте інші слова." IsVisible="{Binding HasNoResults}"
+               TextWrapping="Wrap" AutomationProperties.Name="Нічого не знайдено" />
+
     <ListBox Grid.Row="5" ItemsSource="{Binding Results}" Background="Transparent" BorderThickness="0"
              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
              AutomationProperties.Name="Результати пошуку">
@@ -46,15 +48,8 @@
         </Style>
       </ListBox.Styles>
       <ListBox.ItemTemplate>
-        <DataTemplate x:DataType="models:SearchResult">
-          <StackPanel Spacing="6" Margin="4,8">
-            <TextBlock Text="{Binding DocumentPath, Converter={x:Static converters:PathConverters.FileName}}"
-                       FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-            <TextBlock Text="{Binding DocumentPath}" TextTrimming="CharacterEllipsis"
-                       ToolTip.Tip="{Binding DocumentPath}" />
-            <TextBlock Text="{Binding Score, StringFormat='Оцінка: {0:G4}'}" />
-            <TextBlock Text="{Binding Chunk.Text}" TextWrapping="Wrap" />
-          </StackPanel>
+        <DataTemplate x:DataType="vm:ResultCardViewModel">
+          <views:ResultCard />
         </DataTemplate>
       </ListBox.ItemTemplate>
     </ListBox>
