@@ -39,7 +39,8 @@ public static class AppHost
 
         builder.Services
             .AddLocalMindCore(builder.Configuration)
-            .AddLocalMindSearch(builder.Configuration);
+            .AddLocalMindSearch(builder.Configuration)
+            .AddLocalMindBackup(builder.Configuration);
 
         builder.Services.PostConfigure<EmbeddingModelOptions>(options =>
         {
@@ -60,6 +61,8 @@ public static class AppHost
             Path.Combine(Path.GetDirectoryName(settingsFile.Path)!, "search-history.json")));
         builder.Services.AddSingleton<ISearchHistory, SearchHistoryStore>();
         builder.Services.AddSingleton<IThemeService, ThemeService>();
+        builder.Services.AddSingleton<IBackupServerSettings, BackupServerSettings>();
+        builder.Services.AddTransient<IAccountClient, BackupAccountClient>();
         builder.Services.AddSingleton<UnhandledErrorReporter>();
         builder.Services.AddHostedService<CoreStartup>();
         builder.Services.AddSingleton<IFileLauncher, SystemFileLauncher>();
@@ -69,6 +72,7 @@ public static class AppHost
         builder.Services.AddSingleton<MainViewModel>();
         builder.Services.AddTransient<SearchViewModel>();
         builder.Services.AddTransient<LibraryViewModel>();
+        builder.Services.AddTransient<AccountViewModel>();
         builder.Services.AddTransient<SettingsViewModel>();
         builder.Services.AddTransient<IndexingProgressViewModel>();
 

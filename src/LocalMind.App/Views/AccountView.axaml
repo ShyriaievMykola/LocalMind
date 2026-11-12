@@ -1,0 +1,52 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:LocalMind.App.ViewModels"
+             x:Class="LocalMind.App.Views.AccountView"
+             x:DataType="vm:AccountViewModel">
+  <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Spacing="16" MaxWidth="640" HorizontalAlignment="Left">
+      <TextBlock Text="Обліковий запис" FontSize="24" FontWeight="SemiBold" />
+
+      <Border Classes="card">
+        <StackPanel Spacing="8">
+          <TextBlock Classes="heading" Text="Сервер бекапу" />
+          <TextBlock Text="Адреса сервера" />
+          <TextBox Text="{Binding ServerUrl, Mode=TwoWay}" PlaceholderText="https://backup.example.com"
+                   AutomationProperties.Name="Адреса сервера бекапу" />
+          <TextBlock Classes="muted" Text="{Binding ServerStatusText}" TextWrapping="Wrap"
+                     AutomationProperties.Name="Стан сервера" />
+          <Button Content="Зберегти адресу" Command="{Binding SaveServerCommand}"
+                  IsEnabled="{Binding CanSaveServer}" HorizontalAlignment="Left" />
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card" IsVisible="{Binding IsConfigured}">
+        <StackPanel Spacing="8">
+          <TextBlock Classes="heading" Text="Вхід" />
+          <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" AutomationProperties.Name="Стан входу" />
+
+          <StackPanel Spacing="8" IsVisible="{Binding IsSignedOut}">
+            <TextBlock Text="Email" />
+            <TextBox Text="{Binding Email, Mode=TwoWay}" AutomationProperties.Name="Email" />
+            <TextBlock Text="Пароль" />
+            <TextBox Text="{Binding Password, Mode=TwoWay}" PasswordChar="●" AutomationProperties.Name="Пароль" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Button Classes="accent" Content="Увійти" Command="{Binding LoginCommand}"
+                      IsEnabled="{Binding CanLogin}" />
+              <Button Content="Зареєструватися" Command="{Binding RegisterCommand}"
+                      IsEnabled="{Binding CanLogin}" />
+            </StackPanel>
+          </StackPanel>
+
+          <Button Content="Вийти" Command="{Binding LogoutCommand}" IsEnabled="{Binding CanLogout}"
+                  IsVisible="{Binding IsSignedIn}" HorizontalAlignment="Left" />
+        </StackPanel>
+      </Border>
+
+      <TextBlock Classes="error" Text="{Binding ErrorMessage}" TextWrapping="Wrap"
+                 IsVisible="{Binding HasError}" AutomationProperties.Name="Помилка облікового запису" />
+      <TextBlock Text="{Binding InfoMessage}" TextWrapping="Wrap"
+                 Foreground="{DynamicResource Lm.Brush.Success}" IsVisible="{Binding HasInfo}" />
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

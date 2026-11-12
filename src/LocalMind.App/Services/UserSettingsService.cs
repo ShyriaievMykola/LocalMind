@@ -1,4 +1,3 @@
-using System.Text.Json;
 using System.Text.Json.Nodes;
 using LocalMind.Core.Configuration;
 using LocalMind.Search.Configuration;
@@ -13,8 +12,6 @@ namespace LocalMind.App.Services;
 /// </summary>
 internal sealed class UserSettingsService : IUserSettingsService
 {
-    private static readonly JsonSerializerOptions WriteOptions = new() { WriteIndented = true };
-
     private readonly SearchOptions _search;
     private readonly ChunkingOptions _chunking;
     private readonly IEnumerable<IValidateOptions<SearchOptions>> _searchValidators;
@@ -104,31 +101,27 @@ internal sealed class UserSettingsService : IUserSettingsService
             throw new ArgumentException(string.Join(Environment.NewLine, errors), nameof(settings));
         }
 
-        var root = new JsonObject();
-        SetSection(root, AppOptions.SectionName, new JsonObject
+        await UserSettingsJson.UpdateAsync(_file.Path, root =>
         {
-            ["Theme"] = Enum.GetName(settings.Theme),
-        });
-        SetSection(root, SearchOptions.SectionName, new JsonObject
-        {
-            ["DefaultTopK"] = settings.DefaultTopK,
-            ["DefaultMode"] = Enum.GetName(settings.DefaultSearchMode),
-        });
-        SetSection(root, ChunkingOptions.SectionName, new JsonObject
-        {
-            ["ChunkSizeTokens"] = settings.ChunkSizeTokens,
-            ["OverlapPercent"] = settings.OverlapPercent,
-        });
-        SetSection(root, EmbeddingModelOptions.SectionName, new JsonObject
-        {
-            ["ModelPath"] = settings.ModelPath,
-        });
-
-        // Спершу тимчасовий файл, потім заміна: обірваний запис не залишить зіпсованих налаштувань.
-        Directory.CreateDirectory(Path.GetDirectoryName(_file.Path)!);
-        var temporary = _file.Path + ".tmp";
-        await File.WriteAllTextAsync(temporary, root.ToJsonString(WriteOptions), cancellationToken);
-        File.Move(temporary, _file.Path, overwrite: true);
+            UserSettingsJson.SetSection(root, AppOptions.SectionName, new JsonObject
+            {
+                ["Theme"] = Enum.GetName(settings.Theme),
+            });
+            UserSettingsJson.SetSection(root, SearchOptions.SectionName, new JsonObject
+            {
+                ["DefaultTopK"] = settings.DefaultTopK,
+                ["DefaultMode"] = Enum.GetName(settings.DefaultSearchMode),
+            });
+            UserSettingsJson.SetSection(root, ChunkingOptions.SectionName, new JsonObject
+            {
+                ["ChunkSizeTokens"] = settings.ChunkSizeTokens,
+                ["OverlapPercent"] = settings.OverlapPercent,
+            });
+            UserSettingsJson.SetSection(root, EmbeddingModelOptions.SectionName, new JsonObject
+            {
+                ["ModelPath"] = settings.ModelPath,
+            });
+        }, cancellationToken);
     }
 
     private static T Read<T>(IOptions<T> options, T fallback)
@@ -150,23 +143,4 @@ internal sealed class UserSettingsService : IUserSettingsService
             .Select(validator => validator.Validate(Options.DefaultName, options))
             .Where(result => result.Failed)
             .SelectMany(result => result.Failures ?? new[] { result.FailureMessage ?? "Некоректне значення." });
-
-    /// <summary>Кладе значення за шляхом секції <c>LocalMind:Search</c> → <c>{"LocalMind":{"Search":{…}}}</c>.</summary>
-    private static void SetSection(JsonObject root, string sectionPath, JsonObject values)
-    {
-        var keys = sectionPath.Split(':');
-        var node = root;
-        foreach (var key in keys[..^1])
-        {
-            if (node[key] is not JsonObject child)
-            {
-                child = new JsonObject();
-                node[key] = child;
-            }
-
-            node = child;
-        }
-
-        node[keys[^1]] = values;
-    }
 }
