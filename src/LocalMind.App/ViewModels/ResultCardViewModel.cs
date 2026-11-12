@@ -135,7 +135,11 @@ public sealed partial class ResultCardViewModel : ViewModelBase
             }
 
             // Переіндексація замінює фрагменти. Старий результат не змішуємо з новою версією документа.
-            if (!chunks.Contains(match))
+            if (!chunks.Any(chunk => chunk.Id == match.Id
+                && chunk.DocumentId == match.DocumentId
+                && chunk.Ordinal == match.Ordinal
+                && chunk.StartOffset == match.StartOffset
+                && string.Equals(chunk.Text, match.Text, StringComparison.Ordinal)))
             {
                 ContextError = "Документ змінено або видалено. Виконайте пошук знову.";
                 return;
@@ -152,9 +156,9 @@ public sealed partial class ResultCardViewModel : ViewModelBase
         }
         catch (Exception exception)
         {
+            LogContextFailed(_logger, Result.Chunk.DocumentId, exception);
             if (IsCurrentContext(request))
             {
-                LogContextFailed(_logger, Result.Chunk.DocumentId, exception);
                 ContextError = "Не вдалося завантажити контекст. Спробуйте ще раз.";
             }
         }

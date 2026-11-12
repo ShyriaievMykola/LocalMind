@@ -2,6 +2,8 @@ using LocalMind.App.ViewModels;
 using LocalMind.App.Controls;
 using LocalMind.Core.Models;
 using LocalMind.TestUtilities;
+using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace LocalMind.App.Tests;
@@ -351,8 +353,99 @@ public sealed class ResultContextTests
         Assert.All(SnippetSegments.Create(match.Snippet), segment => Assert.False(segment.IsHighlighted));
     }
 
-    private ResultCardViewModel Card(Chunk chunk, string path = "/notes/context.md", Snippet? snippet = null) =>
-        new(new SearchResult(chunk, path, 1, snippet), [], _files, NullLogger<ResultCardViewModel>.Instance, _repository);
+    [Theory]
+    [InlineData("same")]
+    [InlineData("id")]
+    [InlineData("document")]
+    [InlineData("ordinal")]
+    [InlineData("offset")]
+    [InlineData("text")]
+    public async Task Expand_ComparesStoredChunkFields_IndependentlyOfObjectIdentity(string changedField)
+    {
+        var match = TestData.Chunk(Guid.NewGuid(), 1, "Знайдений текст", 20);
+        var stored = new Chunk(
+            changedField == "id" ? Guid.NewGuid() : match.Id,
+            changedField == "document" ? Guid.NewGuid() : match.DocumentId,
+            changedField == "ordinal" ? match.Ordinal + 1 : match.Ordinal,
+            changedField == "text" ? "Інший текст" : new string(match.Text.ToCharArray()),
+            changedField == "offset" ? match.StartOffset + 1 : match.StartOffset);
+        _repository.GetChunksByDocumentHandler = (_, _, _, _) => Task.FromResult<IReadOnlyList<Chunk>>([stored]);
+        var card = Card(match);
+
+        await card.ToggleContextCommand.ExecuteAsync(null);
+
+        Assert.NotSame(match, stored);
+        if (changedField == "same")
+        {
+            Assert.Null(card.ContextError);
+            Assert.Same(stored, Assert.Single(card.ContextChunks).Chunk);
+        }
+        else
+        {
+            Assert.Empty(card.ContextChunks);
+            Assert.Equal("Документ змінено або видалено. Виконайте пошук знову.", card.ContextError);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ContextFailure_AlwaysLogsOriginalException_OnlyUpdatesCurrentPanel(bool collapse)
+    {
+        var logger = new CapturingLogger();
+        var started = Completion();
+        var pending = Completion<IReadOnlyList<Chunk>>();
+        _repository.GetChunksByDocumentHandler = (_, _, _, _) =>
+        {
+            started.SetResult();
+            return pending.Task.WaitAsync(Timeout, CancellationToken.None);
+        };
+        var card = Card(TestData.Chunk(Guid.NewGuid()), logger: logger);
+        var loading = card.ToggleContextCommand.ExecuteAsync(null);
+        await started.Task.WaitAsync(Timeout);
+        if (collapse)
+        {
+            card.CloseContext();
+        }
+
+        var exception = new SqliteException("database is locked", 5);
+        pending.SetException(exception);
+        await loading.WaitAsync(Timeout);
+
+        var entry = Assert.Single(logger.Entries);
+        Assert.Equal(LogLevel.Warning, entry.Level);
+        Assert.Same(exception, entry.Exception);
+        Assert.Equal(!collapse, card.HasContextError);
+        Assert.Equal(!collapse, card.IsContextExpanded);
+        Assert.Empty(card.ContextChunks);
+        Assert.False(card.IsContextLoading);
+    }
+
+    [Fact]
+    public async Task CancelContext_DoesNotLogExpectedCancellation()
+    {
+        var logger = new CapturingLogger();
+        var started = Completion();
+        _repository.GetChunksByDocumentHandler = async (_, _, _, token) =>
+        {
+            started.SetResult();
+            await Task.Delay(System.Threading.Timeout.InfiniteTimeSpan, token);
+            return [];
+        };
+        var card = Card(TestData.Chunk(Guid.NewGuid()), logger: logger);
+        var loading = card.ToggleContextCommand.ExecuteAsync(null);
+        await started.Task.WaitAsync(Timeout);
+
+        card.CloseContext();
+        await loading.WaitAsync(Timeout);
+
+        Assert.Empty(logger.Entries);
+        Assert.Null(card.ContextError);
+    }
+
+    private ResultCardViewModel Card(Chunk chunk, string path = "/notes/context.md", Snippet? snippet = null,
+        ILogger<ResultCardViewModel>? logger = null) =>
+        new(new SearchResult(chunk, path, 1, snippet), [], _files, logger ?? NullLogger<ResultCardViewModel>.Instance, _repository);
 
     private async Task<(Document Document, IReadOnlyList<Chunk> Chunks)> SaveAsync(int count)
     {
@@ -368,4 +461,16 @@ public sealed class ResultContextTests
     private static TaskCompletionSource<T> Completion<T>() => new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     private static TaskCompletionSource Completion() => new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    private sealed class CapturingLogger : ILogger<ResultCardViewModel>
+    {
+        public List<(LogLevel Level, Exception? Exception)> Entries { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter) => Entries.Add((logLevel, exception));
+    }
 }
