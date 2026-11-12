@@ -42,6 +42,12 @@ internal sealed class BackupServerSettings : IBackupServerSettings
             return "Адреса сервера має бути повною, наприклад https://backup.example.com.";
         }
 
+        // Логін і пароль в адресі лягли б у settings.json відкритим текстом.
+        if (uri.UserInfo.Length > 0)
+        {
+            return "Адреса не повинна містити логін чи пароль.";
+        }
+
         // Те саме правило, що й під час запуску: HTTP лише для localhost, решта — HTTPS.
         return uri.Scheme == Uri.UriSchemeHttps || (uri.Scheme == Uri.UriSchemeHttp && uri.IsLoopback)
             ? null

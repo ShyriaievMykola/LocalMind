@@ -46,6 +46,7 @@ public sealed class BackupServerSettingsTests : IDisposable
     [InlineData("backup.example.com")]
     [InlineData("http://backup.example.com")]
     [InlineData("ftp://backup.example.com")]
+    [InlineData("https://user:pw@backup.example.com")]
     public void Validate_UnacceptableAddress_ExplainsWhat(string url) => Assert.NotNull(Create(null).Validate(url));
 
     [Fact]

@@ -61,23 +61,38 @@ internal static class UserSettingsJson
         return node;
     }
 
-    /// <summary>Замінює секцію <c>LocalMind:Search</c> → <c>{"LocalMind":{"Search":{…}}}</c> цілком.</summary>
+    /// <summary>
+    /// Кладе значення в секцію <c>LocalMind:Search</c> → <c>{"LocalMind":{"Search":{…}}}</c> по ключах:
+    /// ключі, яких немає в <paramref name="values"/> (наприклад, задані вручну <c>RrfK</c>), лишаються.
+    /// </summary>
     public static void SetSection(JsonObject root, string sectionPath, JsonObject values)
     {
-        var keys = sectionPath.Split(':');
-        Section(root, string.Join(':', keys[..^1]))[keys[^1]] = values;
+        var section = Section(root, sectionPath);
+        foreach (var (key, value) in values)
+        {
+            section[key] = value?.DeepClone();
+        }
     }
 
+    /// <summary>
+    /// Поточний вміст файла. Пошкоджений файл не губимо мовчки: його копія лишається поруч із розширенням
+    /// <c>.bad</c> (попередня копія замінюється), а запис іде з порожнього об'єкта. Помилки доступу до файла
+    /// піднімаються до викликача — він показує їх користувачу.
+    /// </summary>
     private static JsonObject Load(string path)
     {
+        if (!File.Exists(path))
+        {
+            return new JsonObject();
+        }
+
         try
         {
-            return File.Exists(path) && JsonNode.Parse(File.ReadAllText(path), documentOptions: ReadOptions) is JsonObject root
-                ? root
-                : new JsonObject();
+            return JsonNode.Parse(File.ReadAllText(path), documentOptions: ReadOptions) as JsonObject ?? new JsonObject();
         }
-        catch (Exception exception) when (exception is JsonException or IOException or UnauthorizedAccessException)
+        catch (JsonException)
         {
+            File.Move(path, path + ".bad", overwrite: true);
             return new JsonObject();
         }
     }

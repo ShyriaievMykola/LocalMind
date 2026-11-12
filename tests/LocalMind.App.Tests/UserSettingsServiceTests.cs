@@ -106,6 +106,35 @@ public sealed class UserSettingsServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Save_KeepsKeysOfOwnSectionsThatPageDoesNotChange()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
+        await File.WriteAllTextAsync(SettingsPath, """
+            { "LocalMind": { "Search": { "RrfK": 80, "DefaultTopK": 5 }, "Chunking": { "Strategy": "Paragraph" } } }
+            """);
+
+        await CreateService().SaveAsync(Valid() with { DefaultTopK = 25 });
+
+        var configuration = new ConfigurationBuilder().AddJsonFile(SettingsPath).Build();
+        Assert.Equal("80", configuration["LocalMind:Search:RrfK"]);
+        Assert.Equal("Paragraph", configuration["LocalMind:Chunking:Strategy"]);
+        Assert.Equal("25", configuration["LocalMind:Search:DefaultTopK"]);
+    }
+
+    [Fact]
+    public async Task Save_CorruptedFile_KeepsCopyAsBadAndWritesNewFile()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
+        await File.WriteAllTextAsync(SettingsPath, "{ це не json");
+
+        await CreateService().SaveAsync(Valid() with { DefaultTopK = 25 });
+
+        Assert.Equal("{ це не json", await File.ReadAllTextAsync(SettingsPath + ".bad"));
+        var configuration = new ConfigurationBuilder().AddJsonFile(SettingsPath).Build();
+        Assert.Equal("25", configuration["LocalMind:Search:DefaultTopK"]);
+    }
+
+    [Fact]
     public async Task Save_InvalidSettings_ThrowsAndDoesNotWriteFile()
     {
         await Assert.ThrowsAsync<ArgumentException>(() => CreateService().SaveAsync(Valid() with { DefaultTopK = 0 }));
