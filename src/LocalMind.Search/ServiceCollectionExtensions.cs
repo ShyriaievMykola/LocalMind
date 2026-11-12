@@ -59,16 +59,12 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Якщо вказано лише назву моделі (без <c>ModelPath</c>), решту налаштувань беремо з каталогу.
-    /// Налаштування з явним <c>ModelPath</c> — власна модель користувача — не змінюються.
+    /// Якщо <c>ModelName</c> є в каталозі, опис моделі (токенізатор, хеші, розмірність, ліміт токенів, префікси) беремо
+    /// з каталогу, а шляхи — лише якщо їх не задано (так модель можна покласти в іншу теку).
+    /// Модель, якої немає в каталозі, — власна модель користувача — лишається як налаштовано.
     /// </summary>
     private static void ApplyCatalog(EmbeddingModelOptions options, IOptions<ModelCatalogOptions> catalog)
     {
-        if (!string.IsNullOrWhiteSpace(options.ModelPath))
-        {
-            return;
-        }
-
         var model = catalog.Value.Find(options.ModelName);
         if (model is null)
         {
@@ -76,8 +72,16 @@ public static class ServiceCollectionExtensions
         }
 
         options.ModelName = model.Name;
-        options.ModelPath = model.LocalModelPath;
-        options.TokenizerPath = model.LocalTokenizerPath;
+        if (string.IsNullOrWhiteSpace(options.ModelPath))
+        {
+            options.ModelPath = model.LocalModelPath;
+        }
+
+        if (string.IsNullOrWhiteSpace(options.TokenizerPath))
+        {
+            options.TokenizerPath = model.LocalTokenizerPath;
+        }
+
         options.ModelSha256 = model.ModelSha256;
         options.TokenizerSha256 = model.TokenizerSha256;
         options.Dimensions = model.Dimensions;

@@ -91,7 +91,7 @@ public class ModelCatalogTests
     }
 
     [Fact]
-    public void Embedding_WithExplicitModelPath_IsLeftAsConfigured()
+    public void Embedding_CatalogModelWithCustomPath_KeepsPathButTakesTheRestFromCatalog()
     {
         var configuration = new ConfigurationBuilder()
             .AddConfiguration(LoadConfiguration("App"))
@@ -99,12 +99,32 @@ public class ModelCatalogTests
             {
                 [$"{EmbeddingModelOptions.SectionName}:ModelName"] = "multilingual-e5-small",
                 [$"{EmbeddingModelOptions.SectionName}:ModelPath"] = "custom/model.onnx",
+            })
+            .Build();
+
+        var options = ResolveEmbedding(configuration, "multilingual-e5-small");
+
+        Assert.Equal("custom/model.onnx", options.ModelPath);
+        Assert.Equal("models/multilingual-e5-small/sentencepiece.bpe.model", options.TokenizerPath);
+        Assert.Equal(384, options.Dimensions);
+        Assert.Equal("query: ", options.QueryPrefix);
+    }
+
+    [Fact]
+    public void Embedding_ModelNotInCatalog_IsLeftAsConfigured()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddConfiguration(LoadConfiguration("App"))
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                [$"{EmbeddingModelOptions.SectionName}:ModelName"] = "my-own-model",
+                [$"{EmbeddingModelOptions.SectionName}:ModelPath"] = "custom/model.onnx",
                 [$"{EmbeddingModelOptions.SectionName}:TokenizerPath"] = "custom/tokenizer.model",
                 [$"{EmbeddingModelOptions.SectionName}:Dimensions"] = "7",
             })
             .Build();
 
-        var options = ResolveEmbedding(configuration, "multilingual-e5-small");
+        var options = ResolveEmbedding(configuration, "my-own-model");
 
         Assert.Equal("custom/model.onnx", options.ModelPath);
         Assert.Equal(7, options.Dimensions);

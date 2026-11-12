@@ -513,9 +513,10 @@ Identity до `MaxValue` плюс новий SecurityStamp і відкликан
 | `paraphrase-multilingual-MiniLM-L12-v2` | Apache-2.0 | 384 | 470 МБ | немає | 128 |
 | `paraphrase-multilingual-mpnet-base-v2` | Apache-2.0 | 768 | 1,11 ГБ | немає | 128 |
 
-Модель обирається назвою: `LocalMind:Embedding:ModelName` без `ModelPath` бере решту з каталогу (змінна оточення
-`LocalMind__Embedding__ModelName=multilingual-e5-base`). Якщо `ModelPath` вказано, налаштування вважаються власною
-моделлю користувача і не змінюються. `scripts/download-models.sh|.ps1 [модель|all]` завантажує модель у `models/<назва>/`
+Модель обирається назвою: якщо `LocalMind:Embedding:ModelName` є в каталозі, опис моделі (токенізатор, хеші,
+розмірність, ліміт токенів, префікси) береться з каталогу, а шляхи — лише якщо не задані
+(`LocalMind__Embedding__ModelName=multilingual-e5-base`). Модель, якої немає в каталозі, — власна — лишається як
+налаштована, з усіма полями вручну. `scripts/download-models.sh|.ps1 [модель|all]` завантажує модель у `models/<назва>/`
 за закріпленим комітом і перевіряє SHA-256; без параметра — `multilingual-e5-small`. Хеші в скриптах і в каталозі
 дублюються, тест `ModelCatalogTests` звіряє їх, а також повноту каталогу (без завантаження моделей у CI).
 
