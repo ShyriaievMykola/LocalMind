@@ -22,6 +22,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         UnhandledErrorReporter errors,
         SearchViewModel search,
         LibraryViewModel library,
+        AccountViewModel account,
         SettingsViewModel settings,
         IndexingProgressViewModel indexing)
     {
@@ -29,6 +30,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         ArgumentNullException.ThrowIfNull(errors);
         ArgumentNullException.ThrowIfNull(search);
         ArgumentNullException.ThrowIfNull(library);
+        ArgumentNullException.ThrowIfNull(account);
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(indexing);
 
@@ -39,6 +41,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         NavigationItems = Array.AsReadOnly<NavigationItem>([
             new("Пошук", search),
             new("Бібліотека", library),
+            new("Обліковий запис", account),
             new("Налаштування", settings),
         ]);
         SelectedItem = NavigationItems[0];

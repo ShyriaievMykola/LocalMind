@@ -24,6 +24,6 @@ public sealed class ResultCardFactory(
 
         var folders = await repository.GetSourceFoldersAsync(cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
-        return results.Select(result => new ResultCardViewModel(result, folders, files, logger)).ToArray();
+        return results.Select(result => new ResultCardViewModel(result, folders, files, logger, repository)).ToArray();
     }
 }

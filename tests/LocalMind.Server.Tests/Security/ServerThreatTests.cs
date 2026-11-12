@@ -92,7 +92,7 @@ public sealed class ServerThreatTests(LocalMindServerFactory factory) : IClassFi
     {
         using var client = factory.CreateClient();
         var id = Guid.NewGuid();
-        using var upload = await client.PostAsync(Backups, new ByteArrayContent([1, 2, 3]));
+        using var upload = await client.PostAsync(Backups, new ByteArrayContent(new byte[64]));
         using var list = await client.GetAsync(Backups);
         using var download = await client.GetAsync(new Uri($"/api/v1/backups/{id}", UriKind.Relative));
         using var delete = await client.DeleteAsync(new Uri($"/api/v1/backups/{id}", UriKind.Relative));
@@ -108,7 +108,7 @@ public sealed class ServerThreatTests(LocalMindServerFactory factory) : IClassFi
     {
         using var owner = await AuthorizedClientAsync();
         using var intruder = await AuthorizedClientAsync();
-        var info = await UploadAsync(owner, [7, 7, 7]);
+        var info = await UploadAsync(owner, Enumerable.Repeat((byte)7, 64).ToArray());
         var foreign = new Uri($"/api/v1/backups/{info.Id}", UriKind.Relative);
         var unknown = new Uri($"/api/v1/backups/{Guid.NewGuid()}", UriKind.Relative);
 
@@ -127,7 +127,7 @@ public sealed class ServerThreatTests(LocalMindServerFactory factory) : IClassFi
         Assert.Empty(intruderList ?? []);
 
         // Спроба видалення не зачепила бекап власника.
-        Assert.Equal(new byte[] { 7, 7, 7 }, await owner.GetByteArrayAsync(foreign));
+        Assert.Equal(Enumerable.Repeat((byte)7, 64).ToArray(), await owner.GetByteArrayAsync(foreign));
     }
 
     // ---------- S-11: path traversal ----------
@@ -144,7 +144,7 @@ public sealed class ServerThreatTests(LocalMindServerFactory factory) : IClassFi
     public async Task BackupId_TraversalOrGarbage_NeverReturnsFileContent(string id)
     {
         using var client = await AuthorizedClientAsync();
-        await UploadAsync(client, [1]);
+        await UploadAsync(client, new byte[64]);
 
         using var get = await client.GetAsync(new Uri($"/api/v1/backups/{id}", UriKind.Relative));
         using var delete = await client.DeleteAsync(new Uri($"/api/v1/backups/{id}", UriKind.Relative));

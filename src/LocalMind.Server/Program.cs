@@ -11,6 +11,9 @@ using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Не видаємо назву й версію веб-сервера (SEC-05).
+builder.WebHost.ConfigureKestrel(options => options.AddServerHeader = false);
+
 builder.Services.AddProblemDetails();
 builder.Services.AddReverseProxy();
 builder.Services.AddOpenApi();
@@ -99,6 +102,7 @@ await using (var scope = app.Services.CreateAsyncScope())
 
 // Перший у конвеєрі: далі схема й IP клієнта вже мають бути з X-Forwarded-*.
 app.UseReverseProxy();
+app.UseSecurityHeaders();
 
 // Будь-який необроблений виняток → ProblemDetails 500 без деталей винятку (і в Development теж).
 app.UseExceptionHandler();
