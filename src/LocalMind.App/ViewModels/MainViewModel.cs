@@ -83,7 +83,15 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
 
     [RelayCommand]
     private void DismissUnhandledError() => UnhandledErrorText = null;
-
+    
+    /// <summary>Ctrl+K / Ctrl+F: відкриває «Пошук» і ставить курсор у поле запиту.</summary>
+    [RelayCommand]
+    private void FocusSearch()
+    {
+        SelectedItem = NavigationItems.First(item => ReferenceEquals(item.Page, _search));
+        _search.RequestFocus();
+    }
+    
     /// <summary>Над вікном тягнуть файли — показуємо підказку «відпустіть, щоб додати».</summary>
     [ObservableProperty]
     public partial bool IsDragOver { get; set; }
