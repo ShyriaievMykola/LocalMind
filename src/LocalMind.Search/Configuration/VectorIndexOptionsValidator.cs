@@ -11,6 +11,9 @@ public sealed class VectorIndexOptionsValidator : IValidateOptions<VectorIndexOp
     /// <summary>Верхня межа M, за якою додавання стає непрактично повільним.</summary>
     public const int MaxM = 128;
 
+    /// <summary>Верхня межа efConstruction і efSearch: більші значення лише гальмують, а не покращують результат.</summary>
+    public const int MaxEf = 10_000;
+
     public ValidateOptionsResult Validate(string? name, VectorIndexOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -33,9 +36,14 @@ public sealed class VectorIndexOptionsValidator : IValidateOptions<VectorIndexOp
             errors.Add($"{Section}:EfConstruction ({options.EfConstruction}) має бути не менше за M ({options.M}).");
         }
 
-        if (options.EfSearch <= 0)
+        if (options.EfConstruction > MaxEf)
         {
-            errors.Add($"{Section}:EfSearch має бути більше 0 (зараз {options.EfSearch}).");
+            errors.Add($"{Section}:EfConstruction має бути не більше {MaxEf} (зараз {options.EfConstruction}).");
+        }
+
+        if (options.EfSearch is <= 0 or > MaxEf)
+        {
+            errors.Add($"{Section}:EfSearch має бути від 1 до {MaxEf} (зараз {options.EfSearch}).");
         }
 
         return errors.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(errors);

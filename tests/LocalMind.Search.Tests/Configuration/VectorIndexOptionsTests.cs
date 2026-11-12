@@ -19,6 +19,9 @@ public class VectorIndexOptionsTests
     [InlineData(129, 200, 64)]
     [InlineData(16, 8, 64)]
     [InlineData(16, 200, 0)]
+    [InlineData(16, 10_001, 64)]
+    [InlineData(16, 200, 10_001)]
+    [InlineData(16, 200, 1_000_000)]
     public void Validate_OutOfRange_Fails(int m, int efConstruction, int efSearch)
     {
         var options = new VectorIndexOptions { M = m, EfConstruction = efConstruction, EfSearch = efSearch };
