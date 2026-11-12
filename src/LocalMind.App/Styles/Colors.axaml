@@ -33,7 +33,7 @@
       <Color x:Key="Lm.Color.Success">#44CF6E</Color>
       <!-- Підсвітка збігів у картці результату -->
       <Color x:Key="Lm.Color.HighlightBackground">#5E4F0D</Color>
-      <Color x:Key="Lm.Color.HighlightForeground">#FFE680</Color>
+      <Color x:Key="Lm.Color.HighlightForeground">#FFFFFF</Color>
     </ResourceDictionary>
 
     <ResourceDictionary x:Key="Light">

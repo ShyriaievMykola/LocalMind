@@ -34,6 +34,8 @@ public sealed class ResultContextTests
         Assert.Equal(chunks[ordinal], match.Chunk);
         Assert.Equal(chunks[ordinal].Text, match.Text);
         Assert.Equal("Знайдений фрагмент", match.Title);
+        Assert.Equal(ordinal == 0 ? "Знайдений фрагмент" : "Попередній фрагмент", card.ContextChunks[0].Title);
+        Assert.Equal(ordinal == total - 1 ? "Знайдений фрагмент" : "Наступний фрагмент", card.ContextChunks[^1].Title);
         Assert.Equal("Менше контексту", card.ContextToggleText);
         await card.OpenSourceCommand.ExecuteAsync(null);
         Assert.Equal(document.Path, Assert.Single(_files.Paths));

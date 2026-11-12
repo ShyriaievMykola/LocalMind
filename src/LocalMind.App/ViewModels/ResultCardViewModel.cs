@@ -141,7 +141,7 @@ public sealed partial class ResultCardViewModel : ViewModelBase
                 return;
             }
 
-            ContextChunks = [.. chunks.Select(chunk => new ResultContextChunk(chunk, chunk.Id == match.Id))];
+            ContextChunks = [.. chunks.Select(chunk => new ResultContextChunk(chunk, match.Ordinal))];
         }
         catch (OperationCanceledException) when (request.IsCancellationRequested)
         {
