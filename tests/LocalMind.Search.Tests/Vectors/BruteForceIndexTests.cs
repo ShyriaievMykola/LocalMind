@@ -23,10 +23,13 @@ public class BruteForceIndexTests
     public void NonFiniteVectorOrQuery_IsRejected(float bad)
     {
         using var index = new BruteForceIndex(2);
-        index.Add(Guid.NewGuid(), new float[] { 1f, 0f });
+        float[] valid = [1f, 0f];
+        float[] badVector = [bad, 0f];
+        float[] badQuery = [0f, bad];
+        index.Add(Guid.NewGuid(), valid);
 
-        Assert.Throws<ArgumentException>(() => index.Add(Guid.NewGuid(), new float[] { bad, 0f }));
-        Assert.Throws<ArgumentException>(() => index.Search(new float[] { 0f, bad }, 1));
+        Assert.Throws<ArgumentException>(() => index.Add(Guid.NewGuid(), badVector));
+        Assert.Throws<ArgumentException>(() => index.Search(badQuery, 1));
         Assert.Equal(1, index.Count);
     }
 

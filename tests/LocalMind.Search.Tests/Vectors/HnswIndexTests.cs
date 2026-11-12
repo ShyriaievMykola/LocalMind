@@ -32,10 +32,13 @@ public class HnswIndexTests
     public void NonFiniteVectorOrQuery_IsRejected(float bad)
     {
         using var index = new HnswIndex(2, new VectorIndexOptions());
-        index.Add(Guid.NewGuid(), new float[] { 1f, 0f });
+        float[] valid = [1f, 0f];
+        float[] badVector = [bad, 0f];
+        float[] badQuery = [0f, bad];
+        index.Add(Guid.NewGuid(), valid);
 
-        Assert.Throws<ArgumentException>(() => index.Add(Guid.NewGuid(), new float[] { bad, 0f }));
-        Assert.Throws<ArgumentException>(() => index.Search(new float[] { 0f, bad }, 1));
+        Assert.Throws<ArgumentException>(() => index.Add(Guid.NewGuid(), badVector));
+        Assert.Throws<ArgumentException>(() => index.Search(badQuery, 1));
         Assert.Equal(1, index.Count);
     }
 
@@ -251,6 +254,99 @@ public class HnswIndexTests
         await Task.WhenAll(readers.Append(writer));
 
         Assert.Equal(index.Count, index.Search(queries[0].Vector, 100000).Count);
+    }
+
+    [Fact]
+    public void RemoveRange_RemovesAllKnownIdsAndCountsThem()
+    {
+        using var index = CreateSmallIndex();
+
+        var removed = index.RemoveRange([First, Second, Guid.NewGuid()]);
+
+        Assert.Equal(2, removed);
+        Assert.Equal(1, index.Count);
+        Assert.Equal([Third], index.Search([1f, 0f], 10).Select(r => r.ChunkId));
+    }
+
+    [Fact]
+    public void RemoveRange_ManyVectors_KeepsRecallAtLeast095()
+    {
+        var vectors = RandomVectors(3000, seed: 9);
+        using var hnsw = new HnswIndex(Dimensions, new VectorIndexOptions());
+        using var exact = new BruteForceIndex(Dimensions);
+        Fill(hnsw, exact, vectors);
+
+        var toRemove = vectors.Where((_, i) => i % 2 == 0).Select(v => v.Id).ToList();
+        Assert.Equal(toRemove.Count, hnsw.RemoveRange(toRemove));
+        foreach (var id in toRemove)
+        {
+            exact.Remove(id);
+        }
+
+        Assert.Equal(exact.Count, hnsw.Count);
+        var recall = MeanRecall(hnsw, exact, RandomVectors(200, seed: 10), k: 10);
+        Assert.True(recall >= 0.95, $"Recall@10 = {recall:0.000}");
+    }
+
+    [Fact]
+    public void Search_ClusteredData_RecallAgainstBruteForce_IsAtLeast095()
+    {
+        // Реальні embeddings не рівномірні: спільний для всіх компонент, теми та шум.
+        var vectors = ClusteredVectors(3000, topics: 20, seed: 11);
+        using var hnsw = new HnswIndex(Dimensions, new VectorIndexOptions());
+        using var exact = new BruteForceIndex(Dimensions);
+        Fill(hnsw, exact, vectors);
+
+        var recall = MeanRecall(hnsw, exact, ClusteredVectors(200, topics: 20, seed: 11, idSeed: 12), k: 10);
+
+        Assert.True(recall >= 0.95, $"Recall@10 = {recall:0.000}");
+    }
+
+    private static List<(Guid Id, float[] Vector)> ClusteredVectors(int count, int topics, int seed, int? idSeed = null)
+    {
+        // Центри тем і спільний компонент залежать лише від seed, тож запити беруться з того ж розподілу.
+        var structure = new Random(seed);
+        var common = Gaussian(structure);
+        var centers = Enumerable.Range(0, topics).Select(_ => Gaussian(structure)).ToArray();
+        var random = new Random(idSeed ?? seed + 1000);
+        var result = new List<(Guid, float[])>(count);
+        for (var i = 0; i < count; i++)
+        {
+            var center = centers[random.Next(topics)];
+            var noise = Gaussian(random);
+            var vector = new float[Dimensions];
+            var norm = 0d;
+            for (var d = 0; d < Dimensions; d++)
+            {
+                vector[d] = (0.8f * common[d]) + center[d] + (0.5f * noise[d]);
+                norm += vector[d] * vector[d];
+            }
+
+            var scale = (float)(1d / Math.Sqrt(norm));
+            for (var d = 0; d < Dimensions; d++)
+            {
+                vector[d] *= scale;
+            }
+
+            var bytes = new byte[16];
+            random.NextBytes(bytes);
+            result.Add((new Guid(bytes), vector));
+        }
+
+        return result;
+    }
+
+    private static float[] Gaussian(Random random)
+    {
+        var values = new float[Dimensions];
+        for (var d = 0; d < Dimensions; d++)
+        {
+            var u1 = 1.0 - random.NextDouble();
+            var u2 = random.NextDouble();
+            values[d] = (float)(Math.Sqrt(-2.0 * Math.Log(u1)) * Math.Cos(2.0 * Math.PI * u2));
+        }
+
+        return values;
     }
 
     private static float[] Pair(float x, float y) => [x, y];

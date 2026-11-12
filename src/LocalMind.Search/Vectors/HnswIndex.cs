@@ -107,6 +107,26 @@ public sealed class HnswIndex : IVectorIndex, IDisposable
         }
     }
 
+    /// <summary>
+    /// Видаляє кілька векторів одним проходом по графі: коштує як одне <see cref="Remove"/>, а не як їх сума.
+    /// Вектори, яких немає в індексі, пропускаються.
+    /// </summary>
+    /// <returns>Скільки векторів було видалено.</returns>
+    public int RemoveRange(IEnumerable<Guid> chunkIds)
+    {
+        ArgumentNullException.ThrowIfNull(chunkIds);
+
+        _lock.EnterWriteLock();
+        try
+        {
+            return RemoveNodes(chunkIds);
+        }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
+    }
+
     /// <inheritdoc />
     public IReadOnlyList<ScoredChunk> Search(ReadOnlySpan<float> query, int k)
     {
@@ -213,65 +233,97 @@ public sealed class HnswIndex : IVectorIndex, IDisposable
         }
     }
 
-    private bool RemoveCore(Guid chunkId)
+    private bool RemoveCore(Guid chunkId) => RemoveNodes([chunkId]) == 1;
+
+    /// <summary>Видаляє вузли одним проходом по графі й повертає, скільки з ідентифікаторів було в індексі.</summary>
+    private int RemoveNodes(IEnumerable<Guid> chunkIds)
     {
-        if (!_slots.Remove(chunkId, out var node))
+        var removed = new HashSet<int>();
+        foreach (var chunkId in chunkIds)
         {
-            return false;
+            if (_slots.Remove(chunkId, out var node))
+            {
+                removed.Add(node);
+            }
         }
 
-        var removedLinks = _links[node]!;
+        if (removed.Count == 0)
+        {
+            return 0;
+        }
 
-        // Зв'язки спрямовані, тож усіх, хто посилається на видалений вузол, знаходимо переглядом графа: O(n·M).
+        // Зв'язки спрямовані, тож усіх, хто посилається на видалені вузли, знаходимо переглядом графа: O(n·M)
+        // за один прохід незалежно від кількості видалених.
         for (var other = 0; other < _usedSlots; other++)
         {
             var otherLinks = _links[other];
-            if (other == node || otherLinks is null)
+            if (otherLinks is null || removed.Contains(other))
             {
                 continue;
             }
 
-            for (var layer = 0; layer < otherLinks.Length && layer < removedLinks.Length; layer++)
+            for (var layer = 0; layer < otherLinks.Length; layer++)
             {
-                if (otherLinks[layer].Remove(node))
+                var links = otherLinks[layer];
+                if (links.Exists(removed.Contains))
                 {
-                    Repair(other, layer, otherLinks[layer], removedLinks[layer], node);
+                    Repair(other, layer, links, removed);
                 }
             }
         }
 
-        _links[node] = null;
-        _vectors[node] = null;
-        _freeSlots.Push(node);
+        foreach (var node in removed)
+        {
+            _links[node] = null;
+            _vectors[node] = null;
+            _freeSlots.Push(node);
+        }
 
         if (_slots.Count == 0)
         {
             _entryPoint = -1;
             _topLevel = -1;
         }
-        else if (_entryPoint == node)
+        else if (removed.Contains(_entryPoint))
         {
             ChooseNewEntryPoint();
         }
 
-        return true;
+        return removed.Count;
     }
 
-    /// <summary>Замість втраченого зв'язку вузол може узяти сусідів видаленого вузла.</summary>
-    private void Repair(int owner, int layer, List<int> links, List<int> removedNeighbors, int removed)
+    /// <summary>Замість втрачених зв'язків вузол може узяти сусідів видалених вузлів.</summary>
+    private void Repair(int owner, int layer, List<int> links, HashSet<int> removed)
     {
-        var pool = new List<(int Node, float Distance)>(links.Count + removedNeighbors.Count);
-        var seen = new HashSet<int>(links) { owner, removed };
-        foreach (var existing in links)
+        var pool = new List<(int Node, float Distance)>(links.Count * 2);
+        var seen = new HashSet<int> { owner };
+        foreach (var link in links)
         {
-            pool.Add((existing, Distance(owner, existing)));
+            if (!removed.Contains(link) && seen.Add(link))
+            {
+                pool.Add((link, Distance(owner, link)));
+            }
         }
 
-        foreach (var candidate in removedNeighbors)
+        foreach (var link in links)
         {
-            if (seen.Add(candidate))
+            if (!removed.Contains(link))
             {
-                pool.Add((candidate, Distance(owner, candidate)));
+                continue;
+            }
+
+            var removedNeighbors = _links[link]!;
+            if (layer >= removedNeighbors.Length)
+            {
+                continue;
+            }
+
+            foreach (var candidate in removedNeighbors[layer])
+            {
+                if (!removed.Contains(candidate) && seen.Add(candidate))
+                {
+                    pool.Add((candidate, Distance(owner, candidate)));
+                }
             }
         }
 
