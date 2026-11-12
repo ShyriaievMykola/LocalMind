@@ -16,21 +16,28 @@ public sealed partial class SearchViewModel : ViewModelBase
     private readonly ISearchService _search;
     private readonly CoreStatus _status;
     private readonly ILogger<SearchViewModel> _logger;
+    private readonly ResultCardFactory _cards;
     private CancellationTokenSource? _searchCancellation;
+    private string? _noResultsQuery;
 
-    public SearchViewModel(ISearchService search, CoreStatus status, IOptions<SearchOptions> options, ILogger<SearchViewModel> logger)
+    public SearchViewModel(ISearchService search, CoreStatus status, IOptions<SearchOptions> options,
+        ILogger<SearchViewModel> logger, ResultCardFactory cards)
     {
         ArgumentNullException.ThrowIfNull(search);
         ArgumentNullException.ThrowIfNull(status);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(cards);
 
         _search = search;
         _status = status;
         _logger = logger;
+        _cards = cards;
         // Після помилки ValidateOnStart хост уже повідомив CoreStatus.Failed.
         // Повторне читання невалідних Options не повинно завадити відкриттю вікна.
-        TopK = status.Stage == CoreStage.Failed ? SearchQuery.DefaultTopK : options.Value.DefaultTopK;
+        var defaults = status.Stage == CoreStage.Failed ? new SearchOptions() : options.Value;
+        TopK = defaults.DefaultTopK;
+        SelectedMode = defaults.DefaultMode;
     }
 
     public IReadOnlyList<SearchMode> Modes { get; } = Array.AsReadOnly<SearchMode>([
@@ -38,6 +45,7 @@ public sealed partial class SearchViewModel : ViewModelBase
     ]);
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasNoResults))]
     public partial string QueryText { get; set; } = string.Empty;
 
     [ObservableProperty]
@@ -51,13 +59,16 @@ public sealed partial class SearchViewModel : ViewModelBase
     public partial bool IsSearching { get; private set; }
 
     [ObservableProperty]
-    public partial IReadOnlyList<SearchResult> Results { get; private set; } = [];
+    public partial IReadOnlyList<ResultCardViewModel> Results { get; private set; } = [];
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasError))]
     public partial string? ErrorMessage { get; private set; }
 
     public bool HasError => ErrorMessage is not null;
+
+    /// <summary>Пошук за цим текстом завершився успішно, але нічого не знайшов; зникає зі зміною тексту й з новим запитом.</summary>
+    public bool HasNoResults => _noResultsQuery is not null && _noResultsQuery == QueryText;
 
     /// <summary>Скасовує пошук при закритті застосунку; Transient-VM не утримується DI як IDisposable.</summary>
     public void Close() => _searchCancellation?.Cancel();
@@ -72,6 +83,7 @@ public sealed partial class SearchViewModel : ViewModelBase
 
         IsSearching = false;
         ErrorMessage = null;
+        SetNoResults(null);
         Results = [];
 
         try
@@ -112,15 +124,21 @@ public sealed partial class SearchViewModel : ViewModelBase
                 return;
             }
 
+            var searchedText = QueryText;
             var query = new SearchQuery(QueryText, SelectedMode, (int)topK);
             IsSearching = true;
 
             // Токенізація й частина пошуку можуть виконуватися синхронно всередині сервісу.
             // На UI-потік повертаємося після await, лише щоб опублікувати результат.
-            var results = await Task.Run(() => _search.SearchAsync(query, request.Token), request.Token);
+            var results = await Task.Run(async () =>
+            {
+                var found = await _search.SearchAsync(query, request.Token);
+                return await _cards.CreateAsync(found, request.Token);
+            }, request.Token);
             if (ReferenceEquals(_searchCancellation, request) && !request.IsCancellationRequested)
             {
                 Results = results;
+                SetNoResults(results.Count == 0 ? searchedText : null);
             }
         }
         catch (OperationCanceledException) when (request.IsCancellationRequested)
@@ -145,6 +163,12 @@ public sealed partial class SearchViewModel : ViewModelBase
                 IsSearching = false;
             }
         }
+    }
+
+    private void SetNoResults(string? query)
+    {
+        _noResultsQuery = query;
+        OnPropertyChanged(nameof(HasNoResults));
     }
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Не вдалося виконати пошук")]

@@ -183,6 +183,36 @@ public sealed class IndexingServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task FileLargerThanSharedLimit_GetsErrorStatusAndOthersAreIndexed()
+    {
+        Write("big.txt", new string('я', 100));
+        Write("good.txt", "звичайний текст");
+        var service = CreateService(limits: new IngestionOptions { MaxFileSizeBytes = 64 });
+
+        await service.AddFolderAsync(_folder);
+        await WaitUntilAsync(() => service.Progress is { IsCompleted: true, Total: 2 });
+
+        var documents = (await _repository.GetDocumentsAsync()).ToDictionary(d => Path.GetFileName(d.Path));
+        Assert.Equal(DocumentStatus.Error, documents["big.txt"].Status);
+        Assert.Contains("завеликий", documents["big.txt"].Error, StringComparison.Ordinal);
+        Assert.Equal(DocumentStatus.Indexed, documents["good.txt"].Status);
+    }
+
+    [Fact]
+    public async Task TextWithDocxExtension_IsRejectedBySignature()
+    {
+        Write("fake.docx", "це не docx, а звичайний текст");
+        var service = CreateService();
+
+        await service.AddFolderAsync(_folder);
+        await WaitUntilAsync(() => service.Progress is { IsCompleted: true, Total: 1 });
+
+        var document = Assert.Single(await _repository.GetDocumentsAsync());
+        Assert.Equal(DocumentStatus.Error, document.Status);
+        Assert.Contains("не zip", document.Error, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ChunkerOrEmbedderFailure_MarksOnlyThatFileAsError()
     {
         Write("chunker.txt", "збій-нарізки тут");
@@ -235,7 +265,9 @@ public sealed class IndexingServiceTests : IDisposable
     {
         var path = Write("locked.txt", "текст");
         var logger = new ListLogger();
-        var service = CreateService(logger: logger, retryDelay: TimeSpan.FromSeconds(1));
+        // Повідомлення спостерігача проходить через debounce, а в _watcher він годинний: потрібен живий.
+        var watcher = rescanDuringRetry ? LiveWatcher() : null;
+        var service = CreateService(logger: logger, retryDelay: TimeSpan.FromSeconds(1), watcher: watcher);
         var lockStream = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
 
         try
@@ -243,10 +275,10 @@ public sealed class IndexingServiceTests : IDisposable
             await service.AddFolderAsync(_folder);
             await WaitUntilAsync(() => logger.Entries.Any(e => e.Message.Contains("зайнятий", StringComparison.Ordinal)));
 
-            if (rescanDuringRetry)
+            if (watcher is not null)
             {
                 // Повторне повідомлення спостерігача ставить поточний файл у чергу ще раз.
-                _watcher.OnWatcherError(_folder);
+                watcher.OnWatcherError(_folder);
                 await WaitUntilAsync(() => service.Progress.Total >= 2);
             }
         }
@@ -292,6 +324,29 @@ public sealed class IndexingServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task RemoveFolder_OtherCase_FollowsOsRule()
+    {
+        Write("note.txt", "текст");
+        var service = CreateService();
+        await service.AddFolderAsync(_folder);
+        await WaitUntilAsync(() => service.Progress is { IsCompleted: true, Total: 1 });
+
+        await service.RemoveFolderAsync(_folder.ToUpperInvariant());
+
+        if (FilePaths.IgnoreCase)
+        {
+            Assert.Empty(await _repository.GetDocumentsAsync());
+            Assert.Equal(0, _vectorIndex.Count);
+            Assert.Empty(await service.GetFoldersAsync());
+        }
+        else
+        {
+            Assert.Single(await _repository.GetDocumentsAsync());
+            Assert.Single(await service.GetFoldersAsync());
+        }
+    }
+
+    [Fact]
     public async Task AddFolder_MissingFolder_ThrowsDirectoryNotFoundException()
     {
         var service = CreateService();
@@ -326,7 +381,8 @@ public sealed class IndexingServiceTests : IDisposable
         IChunker? chunker = null,
         ILogger<IndexingService>? logger = null,
         TimeSpan? retryDelay = null,
-        FolderWatcher? watcher = null)
+        FolderWatcher? watcher = null,
+        IngestionOptions? limits = null)
     {
         _service = new IndexingService(
             _parsers,
@@ -337,7 +393,8 @@ public sealed class IndexingServiceTests : IDisposable
             new ChangeDetector(_repository),
             watcher ?? _watcher,
             logger ?? NullLogger<IndexingService>.Instance,
-            retryDelay);
+            retryDelay,
+            limits is null ? null : Options.Create(limits));
         return _service;
     }
 

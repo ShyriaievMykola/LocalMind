@@ -1,0 +1,9 @@
+{"query": "q01", "document": "sqlite.md", "relevance": 3}
+{"query": "q02", "document": "coffee.md", "relevance": 3}
+{"query": "q03", "document": "git-branching.md", "relevance": 3}
+{"query": "q04", "document": "coffee.md", "relevance": 3}
+{"query": "q05", "document": "sleep.md", "relevance": 3}
+{"query": "q06", "document": "embeddings.md", "relevance": 3}
+{"query": "q06", "document": "sqlite.md", "relevance": 1}
+{"query": "q07", "document": "borshch.md", "relevance": 3}
+{"query": "q08", "document": "embeddings.md", "relevance": 3}

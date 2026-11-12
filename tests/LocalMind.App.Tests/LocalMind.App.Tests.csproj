@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\LocalMind.App\LocalMind.App.csproj" />
+    <ProjectReference Include="..\LocalMind.TestUtilities\LocalMind.TestUtilities.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -33,6 +33,15 @@ public sealed class FolderIndexerTests : IDisposable
 
     public void Dispose() => Directory.Delete(_folder, recursive: true);
 
+    private FolderIndexer IndexerWithLimits(IngestionOptions limits) =>
+        new(
+            new ParserRegistry([new PlainTextParser(), new MarkdownParser(), new PdfParser(), new DocxParser()]),
+            new FixedSizeChunker(Options.Create(new ChunkingOptions()), new FakeTokenCounter()),
+            _embedder,
+            _repository,
+            NullLogger<FolderIndexer>.Instance,
+            Options.Create(limits));
+
     [Fact]
     public async Task Index_StoresDocumentsChunksAndVectors()
     {
@@ -94,6 +103,58 @@ public sealed class FolderIndexerTests : IDisposable
         var big = await _repository.GetDocumentByPathAsync(PathOf("big.pdf"));
         Assert.Equal(DocumentStatus.Error, big!.Status);
         Assert.Contains("завеликий", big.Error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Index_FileLargerThanSharedLimit_IsRejectedBeforeParsingAndNotRetried()
+    {
+        var indexer = IndexerWithLimits(new IngestionOptions { MaxFileSizeBytes = 64 });
+        Write("big.txt", new string('я', 100));
+        Write("good.txt", "кава");
+
+        var first = await indexer.IndexAsync(_folder);
+        var second = await indexer.IndexAsync(_folder);
+
+        Assert.Equal(1, first.Failed);
+        Assert.Equal(1, first.Indexed);
+        var big = await _repository.GetDocumentByPathAsync(PathOf("big.txt"));
+        Assert.Equal(DocumentStatus.Error, big!.Status);
+        Assert.Contains("завеликий", big.Error, StringComparison.Ordinal);
+        Assert.Equal(1, second.Failed);
+        Assert.Equal(1, second.Unchanged);
+        Assert.Equal(0, second.Indexed);
+    }
+
+    [Fact]
+    public async Task Index_TextWithPdfExtension_IsMarkedAsErrorBySignature()
+    {
+        Write("fake.pdf", "Це звичайний текст у файлі з розширенням .pdf.");
+
+        var result = await _indexer.IndexAsync(_folder);
+
+        Assert.Equal(1, result.Failed);
+        var document = await _repository.GetDocumentByPathAsync(PathOf("fake.pdf"));
+        Assert.Equal(DocumentStatus.Error, document!.Status);
+        Assert.Contains("%PDF", document.Error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Index_ZipBombNamedDocx_IsMarkedAsError()
+    {
+        var path = PathOf("bomb.docx");
+        using (var archive = System.IO.Compression.ZipFile.Open(path, System.IO.Compression.ZipArchiveMode.Create))
+        {
+            using var entry = archive.CreateEntry("word/document.xml", System.IO.Compression.CompressionLevel.SmallestSize).Open();
+            entry.Write(new byte[8 * 1024 * 1024]);
+        }
+
+        var indexer = IndexerWithLimits(new IngestionOptions { MaxArchiveUncompressedBytes = 1024 * 1024 });
+
+        var result = await indexer.IndexAsync(_folder);
+
+        Assert.Equal(1, result.Failed);
+        var document = await _repository.GetDocumentByPathAsync(path);
+        Assert.Contains("zip-бомб", document!.Error, StringComparison.Ordinal);
     }
 
     [Fact]

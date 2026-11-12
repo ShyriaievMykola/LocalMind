@@ -13,8 +13,9 @@ services:
       Jwt__SigningKey: ${LOCALMIND_JWT_KEY:?Задайте LOCALMIND_JWT_KEY у deploy/.env (див. deploy/.env.example)}
       # Адреса reverse proxy в мережі Docker: лише від нього довіряємо X-Forwarded-For/Proto.
       ReverseProxy__KnownNetworks__0: ${LOCALMIND_PROXY_NETWORK:-172.16.0.0/12}
-      # Дозволені імена хоста (Host); "*" — будь-які.
-      AllowedHosts: ${LOCALMIND_ALLOWED_HOSTS:-*}
+      # Дозволені імена хоста (Host); "*" — будь-які. localhost додається завжди: healthcheck стукає на нього,
+      # і без цього при заданому домені контейнер вважався б нездоровим.
+      AllowedHosts: "${LOCALMIND_ALLOWED_HOSTS:-*};localhost"
     ports:
       # Лише локальний інтерфейс: назовні сервер має дивитися через reverse proxy з HTTPS.
       - "127.0.0.1:${LOCALMIND_PORT:-8080}:8080"

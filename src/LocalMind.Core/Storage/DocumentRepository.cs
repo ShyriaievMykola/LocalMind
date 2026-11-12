@@ -24,7 +24,8 @@ public sealed class DocumentRepository(IDbContextFactory<LocalMindDbContext> con
         var folder = NormalizeFolder(path);
 
         await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
-        if (!await context.SourceFolders.AnyAsync(f => f.Path == folder, cancellationToken))
+        var folders = await context.SourceFolders.Select(f => f.Path).ToListAsync(cancellationToken);
+        if (!folders.Any(f => FilePaths.AreSame(f, folder)))
         {
             context.SourceFolders.Add(new SourceFolderEntity { Path = folder });
             await context.SaveChangesAsync(cancellationToken);
@@ -40,12 +41,16 @@ public sealed class DocumentRepository(IDbContextFactory<LocalMindDbContext> con
         await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
 
-        await context.SourceFolders.Where(f => f.Path == folder).ExecuteDeleteAsync(cancellationToken);
+        // Папку могли додати в іншому регістрі; папок небагато, тому порівнюємо в пам'яті за правилом ОС.
+        var stored = (await context.SourceFolders.Select(f => f.Path).ToListAsync(cancellationToken))
+            .Where(f => FilePaths.AreSame(f, folder))
+            .ToList();
+        await context.SourceFolders.Where(f => stored.Contains(f.Path)).ExecuteDeleteAsync(cancellationToken);
 
         var documents = await context.Documents.AsNoTracking()
             .Select(d => new { d.Id, d.Path })
             .ToListAsync(cancellationToken);
-        var documentIds = documents.Where(d => IsInsideFolder(d.Path, folder)).Select(d => d.Id).ToList();
+        var documentIds = documents.Where(d => FilePaths.IsSameOrInside(d.Path, folder)).Select(d => d.Id).ToList();
         var removed = await RemoveDocumentsAsync(context, documentIds, cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
@@ -73,6 +78,16 @@ public sealed class DocumentRepository(IDbContextFactory<LocalMindDbContext> con
             .ToListAsync(cancellationToken);
         return [.. entities.Select(ToModel)];
     }
+    
+    /// <inheritdoc />
+    public async Task<IReadOnlyDictionary<Guid, int>> GetChunkCountsAsync(CancellationToken cancellationToken = default)
+    {
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+        return await context.Chunks.AsNoTracking()
+            .GroupBy(c => c.DocumentId)
+            .Select(g => new { DocumentId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.DocumentId, x => x.Count, cancellationToken);
+    }
 
     /// <inheritdoc />
     public async Task<Document?> GetDocumentAsync(Guid id, CancellationToken cancellationToken = default)
@@ -88,7 +103,8 @@ public sealed class DocumentRepository(IDbContextFactory<LocalMindDbContext> con
         ArgumentNullException.ThrowIfNull(path);
 
         await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
-        var entity = await context.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Path == path, cancellationToken);
+        var candidates = await SamePathQuery(context.Documents.AsNoTracking(), path).ToListAsync(cancellationToken);
+        var entity = candidates.FirstOrDefault(d => d.Path == path) ?? candidates.FirstOrDefault(d => FilePaths.AreSame(d.Path, path));
         return entity is null ? null : ToModel(entity);
     }
 
@@ -153,10 +169,16 @@ public sealed class DocumentRepository(IDbContextFactory<LocalMindDbContext> con
         await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
 
-        var replacedIds = await context.Documents
-            .Where(d => d.Path == document.Path || d.Id == document.Id)
+        var replacedIds = (await SamePathQuery(context.Documents, document.Path)
+                .Select(d => new { d.Id, d.Path })
+                .ToListAsync(cancellationToken))
+            .Where(d => FilePaths.AreSame(d.Path, document.Path))
             .Select(d => d.Id)
-            .ToListAsync(cancellationToken);
+            .ToList();
+        if (!replacedIds.Contains(document.Id) && await context.Documents.AnyAsync(d => d.Id == document.Id, cancellationToken))
+        {
+            replacedIds.Add(document.Id);
+        }
         var removed = await RemoveDocumentsAsync(context, replacedIds, cancellationToken);
 
         var entity = new DocumentEntity
@@ -244,11 +266,23 @@ public sealed class DocumentRepository(IDbContextFactory<LocalMindDbContext> con
     /// </summary>
     private static string NormalizeFolder(string path) => Path.TrimEndingDirectorySeparator(path);
 
-    /// <summary>Чи лежить файл у папці; шлях кореня вже закінчується роздільником.</summary>
-    private static bool IsInsideFolder(string filePath, string folder) =>
-        filePath.Length > folder.Length
-        && filePath.StartsWith(folder, StringComparison.Ordinal)
-        && (folder[^1] is '/' or '\\' || filePath[folder.Length] is '/' or '\\');
+    /// <summary>
+    /// Кандидати на той самий шлях. SQLite порівнює рядки побайтово, а його <c>NOCASE</c> і <c>lower()</c> знають лише
+    /// латиницю — кириличні шляхи так не зрівняти. Тому, коли регістр не важливий, відбираємо за довжиною
+    /// (зміна регістру її не змінює), а точне порівняння робимо в пам'яті за <see cref="FilePaths"/>.
+    /// SQLite <c>length()</c> рахує символи Unicode, а не UTF-16 одиниці, тому й тут рахуємо руни: інакше шлях
+    /// з емодзі ніколи не знайшовся б.
+    /// </summary>
+    private static IQueryable<DocumentEntity> SamePathQuery(IQueryable<DocumentEntity> documents, string path)
+    {
+        if (!FilePaths.IgnoreCase)
+        {
+            return documents.Where(d => d.Path == path);
+        }
+
+        var length = path.EnumerateRunes().Count();
+        return documents.Where(d => d.Path.Length == length);
+    }
 
     private static Document ToModel(DocumentEntity entity) =>
         new(entity.Id, entity.Path, entity.ContentHash, entity.Status, entity.IndexedAt, entity.Error);
