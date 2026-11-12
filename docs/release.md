@@ -8,7 +8,8 @@ git push origin v0.2.0
 ```
 
 `.github/workflows/release.yml` збирає App і CLI self-contained (.NET ставити не треба) під `win-x64`, `linux-x64`, `osx-arm64`
-і створює GitHub Release з архівами та автоматичними нотатками. Кожна ОС збирається на своєму раннері: на macOS arm64
+і створює GitHub Release з архівами та автоматичними нотатками. Тег ставити лише на коміт, що вже в `main`
+(інакше workflow падає), версія програми береться з тегу, тег з дефісом (`v0.2.0-rc1`) — пререліз. Кожна ОС збирається на своєму раннері: на macOS arm64
 apphost має бути підписаний, а це вміє лише macOS. PR, що змінює workflow, збирає архіви без релізу — так його і перевіряти.
 
 ## Що в архіві
@@ -18,7 +19,7 @@ apphost має бути підписаний, а це вміє лише macOS. P
 | `LocalMind-App-<rid>` | застосунок (`LocalMind.App`), `appsettings.json`, `scripts/download-models.*` |
 | `LocalMind-Cli-<rid>` | CLI (`localmind`), `appsettings.json`, `scripts/download-models.*` |
 
-Windows — `.zip`, Linux і macOS — `.tar.gz` (зберігає біт виконання). Застосунок і CLI окремо, бо в кожного свій
+Windows — `.zip`, Linux і macOS — `.tar.gz` (зберігає біт виконання), усередині одна папка з назвою архіву. Застосунок і CLI окремо, бо в кожного свій
 `appsettings.json`. Символи налагодження й XML-документацію з архіву прибрано (застосунок ~150 МБ без моделі).
 
 ## Модель
