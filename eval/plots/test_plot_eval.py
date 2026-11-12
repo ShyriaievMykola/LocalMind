@@ -23,7 +23,7 @@ class PlotEvalTests(unittest.TestCase):
 
             names = sorted(p.name for p in Path(out).iterdir())
         self.assertEqual(0, code)
-        # E4-графік не будується: в прикладі лише одне k
+        # графік за різними k не будується: в прикладі лише одне k
         self.assertEqual(
             ["by_query_type.png", "by_query_type.svg", "quality_vs_latency.png", "quality_vs_latency.svg"], names)
 

@@ -7,9 +7,13 @@
 |---|---|
 | `quality_vs_latency` | nDCG@k і Recall@k проти затримки: точка — p50, відрізок — до p95; по точці на режим (і на прогін) |
 | `by_query_type` | nDCG@k і Recall@k за типом запиту (`exact`, `paraphrase`, `crossLingual`) для кожного режиму |
-| `recall_vs_latency` | Recall@k проти p50 для прогонів з різним `k` (експеримент E4); будується, лише якщо в CSV є кілька різних `k` |
+| `recall_vs_latency` | Recall@k проти p50 для прогонів з різним `k`; будується, лише якщо в CSV є кілька різних `k` |
 
 ![Якість проти затримки](example/quality_vs_latency.png)
+
+> **Графік E4 (R-06) ще не готовий.** E4 порівнює brute-force і HNSW на 1k / 10k / 100k фрагментів; його дані дасть
+> BenchmarkDotNet з #158, а не CSV `localmind eval`. Графік «recall vs latency» для E4 з'явиться після #158.
+> `recall_vs_latency` вище показує інше: Recall@k для різних глибин `k` на одному датасеті.
 
 ## Запуск
 
@@ -31,7 +35,7 @@ eval/plots/.venv/bin/python eval/plots/plot_eval.py eval/results      # Windows:
 eval/plots/.venv/bin/python eval/plots/plot_eval.py eval/plots/example/demo.csv
 ```
 
-Для E4 запустіть `eval` з конфігом кількох прогонів (`--config`, див. `localmind eval --help`), де прогони відрізняються `k`,
+Щоб побачити залежність від глибини `k`, запустіть `eval` з конфігом кількох прогонів (`--config`, див. `localmind eval --help`), де прогони відрізняються `k`,
 і передайте скрипту отриманий CSV:
 
 ```json

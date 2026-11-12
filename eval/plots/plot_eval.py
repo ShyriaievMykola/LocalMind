@@ -5,7 +5,7 @@
 
 1. quality_vs_latency — якість (nDCG@k і Recall@k) проти затримки пошуку p50 (відрізок до p95);
 2. by_query_type      — nDCG@k і Recall@k за типом запиту (exact / paraphrase / crossLingual) для кожного режиму;
-3. recall_vs_latency  — Recall@k проти p50 для прогонів з різним k (експеримент E4).
+3. recall_vs_latency  — Recall@k проти p50 для прогонів з різним k (це не E4: графік E4 з'явиться після #158).
 
 Формат CSV описано в README.md цієї теки. Запуск:
 
@@ -181,7 +181,7 @@ def plot_by_query_type(rows: list[Row], out: Path) -> list[Path]:
 
 
 def plot_recall_vs_latency(rows: list[Row], out: Path) -> list[Path]:
-    """Recall@k проти p50 для прогонів з різним k (E4): лінія на режим, підпис точки — k."""
+    """Recall@k проти p50 для прогонів з різним k: лінія на режим, підпис точки — k."""
     data = [r for r in rows if r.type == ALL_TYPE]
     if len({r.k for r in data}) < 2:
         return []  # одного k замало для залежності; перший графік уже показує цей прогін
