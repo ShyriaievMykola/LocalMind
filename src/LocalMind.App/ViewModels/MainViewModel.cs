@@ -23,6 +23,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         SearchViewModel search,
         LibraryViewModel library,
         AccountViewModel account,
+        BackupViewModel backup,
         SettingsViewModel settings,
         IndexingProgressViewModel indexing)
     {
@@ -31,6 +32,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         ArgumentNullException.ThrowIfNull(search);
         ArgumentNullException.ThrowIfNull(library);
         ArgumentNullException.ThrowIfNull(account);
+        ArgumentNullException.ThrowIfNull(backup);
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(indexing);
 
@@ -42,6 +44,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             new("Пошук", search),
             new("Бібліотека", library),
             new("Обліковий запис", account),
+            new("Бекап", backup),
             new("Налаштування", settings),
         ]);
         SelectedItem = NavigationItems[0];

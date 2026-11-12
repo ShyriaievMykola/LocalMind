@@ -10,6 +10,7 @@ public sealed class MainViewModelTests
     private readonly SearchViewModel _search = new FakeSearchService().CreateViewModel();
     private readonly LibraryViewModel _library = new FakeIndexingService().CreateViewModel();
     private readonly AccountViewModel _account = new FakeAccountClient().CreateViewModel();
+    private readonly BackupViewModel _backup = new FakeBackupOperations().CreateViewModel();
     private readonly SettingsViewModel _settings = new FakeUserSettingsService().CreateViewModel();
     private readonly FakeUiDispatcher _dispatcher = new();
     private readonly UnhandledErrorReporter _errors;
@@ -75,6 +76,7 @@ public sealed class MainViewModelTests
             item => Assert.Equal(new NavigationItem("Пошук", _search), item),
             item => Assert.Equal(new NavigationItem("Бібліотека", _library), item),
             item => Assert.Equal(new NavigationItem("Обліковий запис", _account), item),
+            item => Assert.Equal(new NavigationItem("Бекап", _backup), item),
             item => Assert.Equal(new NavigationItem("Налаштування", _settings), item));
     }
 
@@ -277,5 +279,5 @@ public sealed class MainViewModelTests
         SearchViewModel? search = null,
         LibraryViewModel? library = null,
         IndexingProgressViewModel? progress = null) =>
-        new(_status, _errors, search ?? _search, library ?? _library, _account, _settings, progress ?? _indexingProgress);
+        new(_status, _errors, search ?? _search, library ?? _library, _account, _backup, _settings, progress ?? _indexingProgress);
 }

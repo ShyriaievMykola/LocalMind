@@ -63,6 +63,7 @@ public static class AppHost
         builder.Services.AddSingleton<IThemeService, ThemeService>();
         builder.Services.AddSingleton<IBackupServerSettings, BackupServerSettings>();
         builder.Services.AddTransient<IAccountClient, BackupAccountClient>();
+        builder.Services.AddTransient<IBackupOperations, BackupOperations>();
         builder.Services.AddSingleton<UnhandledErrorReporter>();
         builder.Services.AddHostedService<CoreStartup>();
         builder.Services.AddSingleton<IFileLauncher, SystemFileLauncher>();
@@ -73,6 +74,7 @@ public static class AppHost
         builder.Services.AddTransient<SearchViewModel>();
         builder.Services.AddTransient<LibraryViewModel>();
         builder.Services.AddTransient<AccountViewModel>();
+        builder.Services.AddTransient<BackupViewModel>();
         builder.Services.AddTransient<SettingsViewModel>();
         builder.Services.AddTransient<IndexingProgressViewModel>();
 
