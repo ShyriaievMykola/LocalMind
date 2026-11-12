@@ -22,7 +22,7 @@ public sealed partial class BackupViewModel : ViewModelBase
         "Сервер не налаштовано. Вкажіть його адресу на сторінці «Обліковий запис».";
 
     private const string NotSignedInMessage = "Увійдіть на сторінці «Обліковий запис», щоб працювати з бекапами.";
-    private const string RestartMessage = "Бібліотеку відновлено з бекапу. Перезапустіть застосунок, щоб оновити пошук і бібліотеку.";
+    private const string RestartMessage = AppRestartState.Message;
     private const string SessionExpiredMessage = "Сесія завершилась. Увійдіть знову на сторінці «Обліковий запис».";
     private const string TooManyRequestsMessage = "Забагато запитів. Зачекайте кілька хвилин і спробуйте ще раз.";
     private const string PasswordRequiredMessage = "Вкажіть пароль шифрування.";
@@ -34,6 +34,7 @@ public sealed partial class BackupViewModel : ViewModelBase
     private readonly IBackupOperations _backups;
     private readonly IAccountClient _account;
     private readonly IBackupServerSettings _server;
+    private readonly AppRestartState _restart;
     private readonly ILogger<BackupViewModel> _logger;
     private CancellationTokenSource? _operation;
 
@@ -41,18 +42,22 @@ public sealed partial class BackupViewModel : ViewModelBase
         IBackupOperations backups,
         IAccountClient account,
         IBackupServerSettings server,
+        AppRestartState restart,
         ILogger<BackupViewModel> logger)
     {
         ArgumentNullException.ThrowIfNull(backups);
         ArgumentNullException.ThrowIfNull(account);
         ArgumentNullException.ThrowIfNull(server);
+        ArgumentNullException.ThrowIfNull(restart);
         ArgumentNullException.ThrowIfNull(logger);
 
         _backups = backups;
         _account = account;
         _server = server;
+        _restart = restart;
         _logger = logger;
         IsSignedIn = IsConfigured && account.IsSignedIn;
+        IsRestartRequired = restart.IsRequired;
     }
 
     /// <summary>Клієнт має адресу сервера з запуску.</summary>
@@ -64,6 +69,19 @@ public sealed partial class BackupViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(CanCreate))]
     [NotifyPropertyChangedFor(nameof(CanManage))]
     public partial bool IsSignedIn { get; private set; }
+
+    // Вийшли з облікового запису або сесія скінчилась: паролі й відкриті підтвердження не повинні лишатись у пам'яті.
+    partial void OnIsSignedInChanged(bool value)
+    {
+        if (!value)
+        {
+            Password = string.Empty;
+            PasswordRepeat = string.Empty;
+            RestorePassword = string.Empty;
+            RestoreTarget = null;
+            DeleteTarget = null;
+        }
+    }
 
     /// <summary>База замінена бекапом: до перезапуску нові операції вимкнені.</summary>
     [ObservableProperty]
@@ -258,6 +276,7 @@ public sealed partial class BackupViewModel : ViewModelBase
             RestoreTarget = null;
             InfoMessage = $"Відновлено бекап від {target.CreatedText}.";
             IsRestartRequired = true;
+            _restart.Require();
         }
     }
 
@@ -302,7 +321,8 @@ public sealed partial class BackupViewModel : ViewModelBase
         }
         catch (OperationCanceledException)
         {
-            InfoMessage = "Операцію скасовано.";
+            // Скасування не відкликає те, що сервер уже встиг зробити.
+            InfoMessage = "Операцію скасовано. Якщо сервер уже встиг відповісти, дія могла виконатися — перевірте список бекапів.";
         }
         catch (BackupDecryptionException)
         {

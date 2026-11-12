@@ -15,6 +15,8 @@ internal sealed class FakeIndexingService : IIndexingService
     public InMemoryDocumentRepository Repository { get; } = new();
 
     public FakeFolderPicker Picker { get; } = new();
+
+    public AppRestartState Restart { get; } = new();
     
     public FakeUiDispatcher Dispatcher { get; } = new();
 
@@ -101,7 +103,7 @@ internal sealed class FakeIndexingService : IIndexingService
         }
 
         IDocumentParser[] parsers = [new PlainTextParser(), new MarkdownParser(), new PdfParser(), new DocxParser()];
-        return new LibraryViewModel(this, Repository, parsers, Picker, Dispatcher, status, NullLogger<LibraryViewModel>.Instance);
+        return new LibraryViewModel(this, Repository, parsers, Picker, Dispatcher, status, NullLogger<LibraryViewModel>.Instance, Restart);
     }
     
     public IndexingProgressViewModel CreateProgressViewModel() => new(this, Dispatcher);

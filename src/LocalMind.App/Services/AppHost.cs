@@ -62,6 +62,7 @@ public static class AppHost
         builder.Services.AddSingleton<ISearchHistory, SearchHistoryStore>();
         builder.Services.AddSingleton<IThemeService, ThemeService>();
         builder.Services.AddSingleton<IBackupServerSettings, BackupServerSettings>();
+        builder.Services.AddSingleton<AppRestartState>();
         builder.Services.AddTransient<IAccountClient, BackupAccountClient>();
         builder.Services.AddTransient<IBackupOperations, BackupOperations>();
         builder.Services.AddSingleton<UnhandledErrorReporter>();

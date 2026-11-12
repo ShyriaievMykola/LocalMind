@@ -56,11 +56,14 @@ internal sealed class FakeBackupOperations : IBackupOperations
     public static BackupInfo Backup(long sizeBytes, DateTimeOffset createdAt) =>
         new(Guid.NewGuid(), sizeBytes, "00", createdAt);
 
+    public AppRestartState Restart { get; } = new();
+
     public BackupViewModel CreateViewModel(FakeAccountClient? account = null, IBackupServerSettings? server = null) =>
         new(
             this,
             account ?? new FakeAccountClient { IsSignedIn = true },
             server ?? new FakeBackupServerSettings(),
+            Restart,
             NullLogger<BackupViewModel>.Instance);
 
     private async Task EnterAsync(CancellationToken cancellationToken)

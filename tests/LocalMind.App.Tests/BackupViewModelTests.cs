@@ -146,6 +146,52 @@ public sealed class BackupViewModelTests
     }
 
     [Fact]
+    public async Task SignOut_ClearsPasswordsAndOpenConfirmations()
+    {
+        _backups.Server.Add(FakeBackupOperations.Backup(1024, Newer));
+        var viewModel = await OpenAsync();
+        viewModel.Password = "довгий-пароль-шифрування";
+        viewModel.PasswordRepeat = "довгий-пароль-шифрування";
+        viewModel.SelectedBackup = viewModel.Backups[0];
+        viewModel.RequestRestoreCommand.Execute(null);
+        viewModel.RestorePassword = "довгий-пароль-шифрування";
+
+        _account.IsSignedIn = false;
+        await viewModel.RefreshCommand.ExecuteAsync(null);
+
+        Assert.False(viewModel.IsSignedIn);
+        Assert.Equal(string.Empty, viewModel.Password);
+        Assert.Equal(string.Empty, viewModel.PasswordRepeat);
+        Assert.Equal(string.Empty, viewModel.RestorePassword);
+        Assert.False(viewModel.IsConfirmingRestore);
+    }
+
+    [Fact]
+    public async Task SessionExpired_ClearsPasswords()
+    {
+        _backups.Error = new BackupApiException(HttpStatusCode.Unauthorized, "Сесія завершилась. Увійдіть знову.");
+        var viewModel = _backups.CreateViewModel(_account, _server);
+        viewModel.Password = "довгий-пароль-шифрування";
+        viewModel.PasswordRepeat = "довгий-пароль-шифрування";
+
+        await viewModel.CreateBackupCommand.ExecuteAsync(null);
+
+        Assert.Equal(string.Empty, viewModel.Password);
+        Assert.Equal(string.Empty, viewModel.PasswordRepeat);
+    }
+
+    [Fact]
+    public void Constructor_RestartAlreadyRequired_KeepsPageUnavailable()
+    {
+        _backups.Restart.Require();
+
+        var viewModel = _backups.CreateViewModel(_account, _server);
+
+        Assert.True(viewModel.IsRestartRequired);
+        Assert.False(viewModel.IsAvailable);
+    }
+
+    [Fact]
     public async Task Create_TooLarge_ShowsServerMessage()
     {
         _backups.Error = new BackupApiException(HttpStatusCode.RequestEntityTooLarge, "Бекап завеликий для сервера.");
@@ -222,7 +268,8 @@ public sealed class BackupViewModelTests
         Assert.False(viewModel.IsConfirmingRestore);
         Assert.Equal(string.Empty, viewModel.RestorePassword);
         Assert.True(viewModel.IsRestartRequired);
-        Assert.Contains("Перезапустіть", viewModel.AvailabilityText, StringComparison.Ordinal);
+        Assert.Contains("перезапуск", viewModel.AvailabilityText, StringComparison.OrdinalIgnoreCase);
+        Assert.True(_backups.Restart.IsRequired);
         Assert.False(viewModel.CanCreate);
         Assert.False(viewModel.HasError);
     }
@@ -314,6 +361,7 @@ public sealed class BackupViewModelTests
         Assert.False(viewModel.IsBusy);
         Assert.Null(viewModel.BusyText);
         Assert.Contains("скасовано", viewModel.InfoMessage, StringComparison.Ordinal);
+        Assert.Contains("перевірте список", viewModel.InfoMessage, StringComparison.Ordinal);
         Assert.False(viewModel.HasError);
         Assert.Empty(_backups.CreatedWith);
         Assert.Equal("довгий-пароль-шифрування", viewModel.Password);

@@ -12,6 +12,7 @@ public sealed class MainViewModelTests
     private readonly AccountViewModel _account = new FakeAccountClient().CreateViewModel();
     private readonly BackupViewModel _backup = new FakeBackupOperations().CreateViewModel();
     private readonly SettingsViewModel _settings = new FakeUserSettingsService().CreateViewModel();
+    private readonly AppRestartState _restart = new();
     private readonly FakeUiDispatcher _dispatcher = new();
     private readonly UnhandledErrorReporter _errors;
     private readonly IndexingProgressViewModel _indexingProgress = new FakeIndexingService().CreateProgressViewModel();
@@ -78,6 +79,20 @@ public sealed class MainViewModelTests
             item => Assert.Equal(new NavigationItem("Обліковий запис", _account), item),
             item => Assert.Equal(new NavigationItem("Бекап", _backup), item),
             item => Assert.Equal(new NavigationItem("Налаштування", _settings), item));
+    }
+
+    [Fact]
+    public void RestartRequired_ShowsBannerOnAnyPage()
+    {
+        using var viewModel = CreateViewModel();
+        var changed = new List<string?>();
+        viewModel.PropertyChanged += (_, args) => changed.Add(args.PropertyName);
+        Assert.False(viewModel.IsRestartRequired);
+
+        _restart.Require();
+
+        Assert.True(viewModel.IsRestartRequired);
+        Assert.Contains(nameof(MainViewModel.IsRestartRequired), changed);
     }
 
     [Fact]
@@ -279,5 +294,5 @@ public sealed class MainViewModelTests
         SearchViewModel? search = null,
         LibraryViewModel? library = null,
         IndexingProgressViewModel? progress = null) =>
-        new(_status, _errors, search ?? _search, library ?? _library, _account, _backup, _settings, progress ?? _indexingProgress);
+        new(_status, _errors, search ?? _search, library ?? _library, _account, _backup, _settings, progress ?? _indexingProgress, _restart);
 }
