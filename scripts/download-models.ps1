@@ -60,27 +60,33 @@ function Save-ModelFile([string] $TargetDir, [string] $BaseUrl, [string] $Remote
 
     Write-Host "${FileName}: завантаження..."
     $temp = "$target.tmp"
-    # Відносний шлях: curl.exe не відкриває файли за шляхом із кирилицею.
-    Push-Location $TargetDir
     try {
-        & curl.exe -fL --retry 3 --output "$FileName.tmp" "$BaseUrl/$RemotePath"
+        # Відносний шлях: curl.exe не відкриває файли за шляхом із кирилицею.
+        Push-Location $TargetDir
+        try {
+            & curl.exe -fL --retry 3 --output "$FileName.tmp" "$BaseUrl/$RemotePath"
+            $curlExit = $LASTEXITCODE
+        }
+        finally {
+            Pop-Location
+        }
+
+        if ($curlExit -ne 0) {
+            throw "${FileName}: не вдалося завантажити (curl: $curlExit)"
+        }
+
+        $actual = Get-Sha256 $temp
+        if ($actual -ne $ExpectedHash) {
+            throw "${FileName}: хеш не збігається (очікувався $ExpectedHash, отримано $actual)"
+        }
+
+        Move-Item $temp $target -Force
+        Write-Host "${FileName}: готово"
     }
     finally {
-        Pop-Location
+        # Обірване або невдале завантаження не лишає .tmp на сотні мегабайтів.
+        if (Test-Path $temp) { Remove-Item $temp -Force }
     }
-
-    if ($LASTEXITCODE -ne 0) {
-        throw "${FileName}: не вдалося завантажити (curl: $LASTEXITCODE)"
-    }
-
-    $actual = Get-Sha256 $temp
-    if ($actual -ne $ExpectedHash) {
-        Remove-Item $temp -Force
-        throw "${FileName}: хеш не збігається (очікувався $ExpectedHash, отримано $actual)"
-    }
-
-    Move-Item $temp $target -Force
-    Write-Host "${FileName}: готово"
 }
 
 function Save-Model([string] $Name) {
@@ -96,10 +102,14 @@ function Save-Model([string] $Name) {
 if ($Model -eq 'all') {
     foreach ($name in $catalog.Keys) { Save-Model $name }
 }
-elseif ($catalog.Contains($Model)) {
-    Save-Model $Model
-}
 else {
-    Write-Error "Невідома модель «$Model». Доступні: $($catalog.Keys -join ', ') або all."
-    exit 2
+    # Назву порівнюємо без урахування регістру, як і в конфігурації застосунку.
+    $name = $catalog.Keys | Where-Object { $_ -ieq $Model } | Select-Object -First 1
+    if ($null -eq $name) {
+        # Write-Error при ErrorActionPreference=Stop завершив би скрипт з кодом 1.
+        [Console]::Error.WriteLine("Невідома модель «$Model». Доступні: $($catalog.Keys -join ', ') або all.")
+        exit 2
+    }
+
+    Save-Model $name
 }
