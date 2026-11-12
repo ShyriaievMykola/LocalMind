@@ -69,12 +69,18 @@ public sealed class IndexingProgressViewModelTests
         Assert.Equal("Скасувати", viewModel.CancelText);
     }
 
-        [Fact]
+    [Fact]
     public void Cancel_ThenNewWorkArrives_EnablesCancelAgain()
     {
         _indexing.Report(new IndexingProgress(1, 5, 0, "/notes/a.md"));
         var viewModel = _indexing.CreateProgressViewModel();
         viewModel.CancelCommand.Execute(null);
+
+        // Скасування справді почалося: без цього перевірки нижче пройшли б і за порожньої команди.
+        Assert.Equal(1, _indexing.CancelCount);
+        Assert.True(viewModel.IsCancelling);
+        var canExecuteChanged = 0;
+        viewModel.CancelCommand.CanExecuteChanged += (_, _) => canExecuteChanged++;
 
         // Поки поточний файл завершується, watcher ставить у чергу новий файл: всього стало більше.
         _indexing.Report(new IndexingProgress(1, 6, 0, "/notes/a.md"));
@@ -83,6 +89,9 @@ public sealed class IndexingProgressViewModelTests
         Assert.True(viewModel.IsIndexing);
         Assert.False(viewModel.IsCancelling);
         Assert.True(viewModel.CancelCommand.CanExecute(null));
+
+        // UI оновлює кнопку лише за CanExecuteChanged.
+        Assert.True(canExecuteChanged > 0);
     }
 
     [Fact]
@@ -137,6 +146,10 @@ public sealed class IndexingProgressViewModelTests
         var viewModel = _indexing.CreateProgressViewModel();
         viewModel.CancelCommand.Execute(null);
 
+        // Скасування справді почалося: без цього перевірки нижче пройшли б і за порожньої команди.
+        Assert.Equal(1, _indexing.CancelCount);
+        Assert.True(viewModel.IsCancelling);
+
         _indexing.Report(new IndexingProgress(2, 5, 0, "/notes/b.md"));
         _indexing.Dispatcher.RunPending();
 
@@ -152,10 +165,19 @@ public sealed class IndexingProgressViewModelTests
         var viewModel = _indexing.CreateProgressViewModel();
         viewModel.CancelCommand.Execute(null);
 
+        // Скасування справді почалося: без цього перевірки нижче пройшли б і за порожньої команди.
+        Assert.Equal(1, _indexing.CancelCount);
+        Assert.True(viewModel.IsCancelling);
+        var canExecuteChanged = 0;
+        viewModel.CancelCommand.CanExecuteChanged += (_, _) => canExecuteChanged++;
+
         _indexing.Report(new IndexingProgress(0, 5, 0, "/notes/new.md"));
         _indexing.Dispatcher.RunPending();
 
         Assert.False(viewModel.IsCancelling);
         Assert.True(viewModel.CancelCommand.CanExecute(null));
+
+        // UI оновлює кнопку лише за CanExecuteChanged.
+        Assert.True(canExecuteChanged > 0);
     }
 }
