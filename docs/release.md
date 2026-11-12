@@ -31,7 +31,7 @@ Windows — `.zip`, Linux і macOS — `.tar.gz` (зберігає біт вик
 .\scripts\download-models.ps1       # Windows
 ```
 
-Скрипт кладе `models/` поруч із програмою і перевіряє SHA-256. Застосунок шукає модель поруч із собою або в теці даних
+Скрипт кладе `models/` поруч із програмою і перевіряє SHA-256. Інші моделі каталогу (для експериментів) — `download-models.sh multilingual-e5-base` або `-Model multilingual-e5-base` у PowerShell, `all` — усі; обирається `LocalMind__Embedding__ModelName`, див. DR-024. Застосунок шукає модель поруч із собою або в теці даних
 користувача. CLI бере відносний `ModelPath` від поточної папки, тож запускати його з папки архіву або задати
 `LocalMind__Embedding__ModelPath` / `LocalMind__Embedding__TokenizerPath`.
 

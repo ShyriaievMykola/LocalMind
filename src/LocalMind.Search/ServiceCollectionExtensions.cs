@@ -31,9 +31,15 @@ public static class ServiceCollectionExtensions
         services.AddOptions<SearchOptions>()
             .Bind(configuration.GetSection(SearchOptions.SectionName))
             .ValidateOnStart();
+        services.AddOptions<ModelCatalogOptions>()
+            .Bind(configuration.GetSection(ModelCatalogOptions.SectionName))
+            .ValidateOnStart();
         services.AddOptions<EmbeddingModelOptions>()
             .Bind(configuration.GetSection(EmbeddingModelOptions.SectionName))
+            .PostConfigure<IOptions<ModelCatalogOptions>>(ApplyCatalog)
             .ValidateOnStart();
+        services.TryAddEnumerable(
+            ServiceDescriptor.Singleton<IValidateOptions<ModelCatalogOptions>, ModelCatalogOptionsValidator>());
 
         services.TryAddEnumerable(
             ServiceDescriptor.Singleton<IValidateOptions<SearchOptions>, SearchOptionsValidator>());
@@ -50,5 +56,33 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<ISearchService, SearchService>();
 
         return services;
+    }
+
+    /// <summary>
+    /// Якщо вказано лише назву моделі (без <c>ModelPath</c>), решту налаштувань беремо з каталогу.
+    /// Налаштування з явним <c>ModelPath</c> — власна модель користувача — не змінюються.
+    /// </summary>
+    private static void ApplyCatalog(EmbeddingModelOptions options, IOptions<ModelCatalogOptions> catalog)
+    {
+        if (!string.IsNullOrWhiteSpace(options.ModelPath))
+        {
+            return;
+        }
+
+        var model = catalog.Value.Find(options.ModelName);
+        if (model is null)
+        {
+            return;
+        }
+
+        options.ModelName = model.Name;
+        options.ModelPath = model.LocalModelPath;
+        options.TokenizerPath = model.LocalTokenizerPath;
+        options.ModelSha256 = model.ModelSha256;
+        options.TokenizerSha256 = model.TokenizerSha256;
+        options.Dimensions = model.Dimensions;
+        options.MaxTokens = model.MaxTokens;
+        options.QueryPrefix = model.QueryPrefix;
+        options.PassagePrefix = model.PassagePrefix;
     }
 }
