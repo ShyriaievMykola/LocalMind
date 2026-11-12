@@ -91,6 +91,21 @@ public sealed class UserSettingsServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Save_KeepsSectionsOfOtherSettings()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
+        await File.WriteAllTextAsync(SettingsPath, """
+            { "LocalMind": { "Backup": { "ServerUrl": "https://backup.example.com/" } } }
+            """);
+
+        await CreateService().SaveAsync(Valid() with { DefaultTopK = 25 });
+
+        var configuration = new ConfigurationBuilder().AddJsonFile(SettingsPath).Build();
+        Assert.Equal("https://backup.example.com/", configuration["LocalMind:Backup:ServerUrl"]);
+        Assert.Equal("25", configuration["LocalMind:Search:DefaultTopK"]);
+    }
+
+    [Fact]
     public async Task Save_InvalidSettings_ThrowsAndDoesNotWriteFile()
     {
         await Assert.ThrowsAsync<ArgumentException>(() => CreateService().SaveAsync(Valid() with { DefaultTopK = 0 }));

@@ -103,9 +103,11 @@ public sealed class AppHostTests : IDisposable
         // Підміна доводить, що навігація отримує VM з контейнера, а не створює їх через new.
         var search = new FakeSearchService().CreateViewModel();
         var library = new FakeIndexingService().CreateViewModel();
+        var account = new FakeAccountClient().CreateViewModel();
         var settings = new FakeUserSettingsService().CreateViewModel();
         builder.Services.AddSingleton(search);
         builder.Services.AddSingleton(library);
+        builder.Services.AddSingleton(account);
         builder.Services.AddSingleton(settings);
         using var host = builder.Build();
 
@@ -115,7 +117,34 @@ public sealed class AppHostTests : IDisposable
         Assert.Collection(navigation.NavigationItems,
             item => Assert.Same(search, item.Page),
             item => Assert.Same(library, item.Page),
+            item => Assert.Same(account, item.Page),
             item => Assert.Same(settings, item.Page));
+    }
+
+    [Fact]
+    public void Build_WithoutServerUrl_AccountPageReportsNotConfigured()
+    {
+        using var host = AppHost.CreateBuilder([], SettingsPath).Build();
+
+        var account = host.Services.GetRequiredService<AccountViewModel>();
+
+        Assert.False(account.IsConfigured);
+        Assert.False(account.IsSignedIn);
+        Assert.Contains("не налаштовано", account.ServerStatusText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Build_ServerUrlFromUserSettings_AccountPageIsConfigured()
+    {
+        await File.WriteAllTextAsync(SettingsPath, """
+            { "LocalMind": { "Backup": { "ServerUrl": "http://localhost:5133" } } }
+            """);
+        using var host = AppHost.CreateBuilder([], SettingsPath).Build();
+
+        var account = host.Services.GetRequiredService<AccountViewModel>();
+
+        Assert.True(account.IsConfigured);
+        Assert.Equal("http://localhost:5133/", account.ServerUrl);
     }
 
     [Fact]
