@@ -48,6 +48,34 @@ public sealed class SearchHistoryStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task Add_TooLongQuery_IsIgnored()
+    {
+        using var store = CreateStore();
+        var longest = new string('б', SearchHistoryStore.MaxQueryLength);
+
+        await store.AddAsync(new string('а', SearchHistoryStore.MaxQueryLength + 1));
+        await store.AddAsync(longest);
+
+        Assert.Equal([longest], store.Items);
+    }
+
+    [Fact]
+    public async Task ParallelAdds_FileAlwaysMatchesItems()
+    {
+        using var store = CreateStore();
+
+        // Гонка проявлялася не щоразу, тому повторюємо багато раундів.
+        for (var round = 0; round < 50; round++)
+        {
+            await Task.WhenAll(Enumerable.Range(0, 8)
+                .Select(i => Task.Run(() => store.AddAsync($"запит {round}-{i}"))));
+
+            using var reloaded = CreateStore();
+            Assert.Equal(store.Items, reloaded.Items);
+        }
+    }
+
+    [Fact]
     public async Task History_SurvivesRestart()
     {
         using (var first = CreateStore())

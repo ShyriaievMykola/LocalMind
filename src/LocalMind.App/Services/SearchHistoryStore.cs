@@ -9,6 +9,9 @@ internal sealed partial class SearchHistoryStore : ISearchHistory, IDisposable
     /// <summary>Скільки останніх запитів зберігаємо.</summary>
     public const int MaxItems = 20;
 
+    /// <summary>Довші запити (зазвичай вставлений шматок тексту) не зберігаємо: вони роздувають файл і підказки.</summary>
+    public const int MaxQueryLength = 500;
+
     private static readonly JsonSerializerOptions WriteOptions = new() { WriteIndented = true };
 
     private readonly SearchHistoryFile _file;
@@ -43,12 +46,11 @@ internal sealed partial class SearchHistoryStore : ISearchHistory, IDisposable
         ArgumentNullException.ThrowIfNull(query);
 
         var text = query.Trim();
-        if (text.Length == 0)
+        if (text.Length == 0 || text.Length > MaxQueryLength)
         {
             return Task.CompletedTask;
         }
 
-        string[] snapshot;
         lock (_lock)
         {
             _items.RemoveAll(item => item.Equals(text, StringComparison.OrdinalIgnoreCase));
@@ -57,11 +59,9 @@ internal sealed partial class SearchHistoryStore : ISearchHistory, IDisposable
             {
                 _items.RemoveRange(MaxItems, _items.Count - MaxItems);
             }
-
-            snapshot = [.. _items];
         }
 
-        return SaveAsync(snapshot, cancellationToken);
+        return SaveAsync(cancellationToken);
     }
 
     public Task ClearAsync(CancellationToken cancellationToken = default)
@@ -71,7 +71,7 @@ internal sealed partial class SearchHistoryStore : ISearchHistory, IDisposable
             _items.Clear();
         }
 
-        return SaveAsync([], cancellationToken);
+        return SaveAsync(cancellationToken);
     }
 
     public void Dispose() => _saveLock.Dispose();
@@ -89,6 +89,7 @@ internal sealed partial class SearchHistoryStore : ISearchHistory, IDisposable
             return [.. items
                 .Where(item => !string.IsNullOrWhiteSpace(item))
                 .Select(item => item.Trim())
+                .Where(item => item.Length <= MaxQueryLength)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Take(MaxItems)];
         }
@@ -100,15 +101,25 @@ internal sealed partial class SearchHistoryStore : ISearchHistory, IDisposable
         }
     }
 
-    /// <summary>Записи по черзі: два пошуки поспіль не пишуть файл одночасно.</summary>
-    private async Task SaveAsync(string[] items, CancellationToken cancellationToken)
+    /// <summary>
+    /// Записи йдуть по черзі, і знімок списку береться вже всередині <c>_saveLock</c>. Якщо брати його раніше,
+    /// паралельні Add можуть записати старіший знімок останнім, і після перезапуску найновіший запит губиться.
+    /// Так останній запис завжди містить актуальний стан.
+    /// </summary>
+    private async Task SaveAsync(CancellationToken cancellationToken)
     {
         await _saveLock.WaitAsync(cancellationToken);
         try
         {
+            string[] snapshot;
+            lock (_lock)
+            {
+                snapshot = [.. _items];
+            }
+
             Directory.CreateDirectory(Path.GetDirectoryName(_file.Path)!);
             var temporary = _file.Path + ".tmp";
-            await File.WriteAllTextAsync(temporary, JsonSerializer.Serialize(items, WriteOptions), cancellationToken);
+            await File.WriteAllTextAsync(temporary, JsonSerializer.Serialize(snapshot, WriteOptions), cancellationToken);
             File.Move(temporary, _file.Path, overwrite: true);
         }
         finally
