@@ -96,7 +96,7 @@ dotnet run --project src/LocalMind.Server -c Release --no-launch-profile
 | Рівно 1 МБ | `--data-binary @big1m.bin` | 201 | 201 | ✅ |
 | Недописані файли після відмов | `ls backups/` | немає сиріт | лише файли успішних бекапів | ✅ |
 | Квота кількості | 25 завантажень поспіль | 20 успішних, далі 409 | 201 ×17 (+3 раніше) → 409 ×8, у списку 20, на диску 20 файлів | ✅ |
-| Порожнє тіло | `--data-binary ''` | відмова | **201, бекап на 0 байт** | ❌ F-3, виправлено |
+| Порожнє тіло, 1 байт | `--data-binary ''`; `--data-binary 'x'` | відмова | **201 — бекап на 0 і 1 байт**; конверт менший за 49 байт відновити неможливо | ❌ F-3, виправлено |
 | JSON 10 МБ у `login` | `--data-binary @bigjson.txt` | швидка відмова | 401 за 0,33 с | ✅ |
 | JSON 40 МБ | те саме | 413 | 413 за 4 мс | ✅ |
 | Пароль 10 МБ у реєстрації | `POST $B/auth/register` | 400 | 400 за 0,30 с | ✅ |
@@ -104,7 +104,7 @@ dotnet run --project src/LocalMind.Server -c Release --no-launch-profile
 | Пагінація адміна | `GET $B/admin/users?take=999999&skip=-5` | обмежено | повернуто без помилки, `take` обрізається до 500 | ✅ |
 | Rate limit | див. API2 | 429 | 429 + `Retry-After` | ✅ |
 
-**Висновок:** розмір, кількість і частота обмежені. Знахідка F-3 (порожні бекапи) виправлена.
+**Висновок:** розмір, кількість і частота обмежені. Знахідка F-3 (бекапи менші за мінімальний конверт) виправлена.
 
 ## API5:2023 — Broken Function Level Authorization
 
@@ -157,7 +157,7 @@ dotnet run --project src/LocalMind.Server -c Release --no-launch-profile
 | Host header | `-H 'Host: evil.example'` | відмова при заданому `AllowedHosts` | 200, бо за замовчуванням `AllowedHosts: *` | ⚠ у Docker задається `LOCALMIND_ALLOWED_HOSTS` (DR-033) |
 | HSTS / переспрямування HTTPS | — | HSTS поза Development | не перевірено вручну: стенд слухає HTTP; ввімкнено в коді (`UseHsts`), TLS завершує reverse proxy (DR-033) | ⚠ не перевірено наживо |
 
-Після виправлень (`curl -i`): `Cache-Control: no-store` і `X-Content-Type-Options: nosniff` на login, download,
+Після виправлень (`curl -i`, без автотеста для `Server` — див. F-2): `Cache-Control: no-store` і `X-Content-Type-Options: nosniff` на login, download,
 health; заголовка `Server` немає; у журналі 16 рядків за сеанс.
 
 ## API9:2023 — Improper Inventory Management
@@ -184,9 +184,9 @@ health; заголовка `Server` немає; у журналі 16 рядкі�
 | № | Пункт | Опис | Серйозність | Стан |
 |---|---|---|---|---|
 | F-1 | API8 | Відповіді з токенами й шифротекстом без `Cache-Control: no-store` і `X-Content-Type-Options: nosniff` | низька | виправлено: `Hosting/SecurityHeaders.cs`, `OwaspHardeningTests` |
-| F-2 | API8 | `Server: Kestrel` розкриває веб-сервер | інформаційна | виправлено: `AddServerHeader = false` |
-| F-3 | API4 | Порожній бекап (0 байт) приймався й займав місце в квоті | низька | виправлено: 400 «Бекап порожній», `Upload_EmptyBody_Returns400AndStoresNothing` |
-| F-4 | API8 | Журнал у Production засмічений SQL-запитами EF (параметри маскуються) | інформаційна | виправлено: `Microsoft.EntityFrameworkCore: Warning` у `appsettings.json` |
+| F-2 | API8 | `Server: Kestrel` розкриває веб-сервер | інформаційна | виправлено: `AddServerHeader = false`. Перевірено вручну `curl`-ом на Kestrel; автотеста немає, бо тестовий сервер (TestServer) заголовок `Server` не додає взагалі |
+| F-3 | API4 | Бекап менший за мінімальний конверт (заголовок + тег = `EncryptedEnvelope.HeaderSize + TagSize` = 49 байт) приймався: 0 і 1 байт давали 201, займали слот квоти й не відновлювались | низька | виправлено: 400 для менших за 49 байт, `Upload_SmallerThanMinimalEnvelope_Returns400AndStoresNothing`, `Upload_MinimalEnvelopeSize_IsAccepted` |
+| F-4 | API8 | Журнал у Production засмічений SQL-запитами EF (параметри маскуються) | інформаційна | виправлено: `Microsoft.EntityFrameworkCore: Warning` у `appsettings.json`, повідомлення про міграції лишено (`…Migrations: Information`) |
 | F-5 | API3 | Некоректний email: повідомлення «Некоректний email.» повторювалося двічі (перевірки email і логіна) | косметична | виправлено: `Distinct()`, `Register_InvalidEmail_ReportsEachMessageOnce` |
 
 ## Залишкові ризики (не виправляли — відомі й прийняті)

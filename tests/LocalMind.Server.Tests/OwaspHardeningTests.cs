@@ -1,12 +1,17 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using LocalMind.Core.Backup.Crypto;
 using LocalMind.Core.Backup.Dtos;
 using Microsoft.AspNetCore.Mvc;
 
 namespace LocalMind.Server.Tests;
 
-/// <summary>Дрібні виправлення за результатами ручного тестування OWASP API Top 10 (SEC-05).</summary>
+/// <summary>
+/// Дрібні виправлення за результатами ручного тестування OWASP API Top 10 (SEC-05).
+/// Прибирання заголовка <c>Server</c> тут не перевіряється: TestServer його не додає, а Kestrel — так;
+/// це перевірено вручну <c>curl</c>-ом (docs/security-testing.md, F-2).
+/// </summary>
 public sealed class OwaspHardeningTests(LocalMindServerFactory factory) : IClassFixture<LocalMindServerFactory>
 {
     private const string Password = "довгий пароль для тесту";
@@ -39,17 +44,28 @@ public sealed class OwaspHardeningTests(LocalMindServerFactory factory) : IClass
         Assert.True(login.Headers.CacheControl?.NoStore);
     }
 
-    [Fact]
-    public async Task Upload_EmptyBody_Returns400AndStoresNothing()
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(EncryptedEnvelope.HeaderSize + EncryptedEnvelope.TagSize - 1)]
+    public async Task Upload_SmallerThanMinimalEnvelope_Returns400AndStoresNothing(int size)
     {
         using var client = await AuthorizedClientAsync();
 
-        using var empty = new ByteArrayContent([]);
-        empty.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
-        using var response = await client.PostAsync(new Uri("/api/v1/backups", UriKind.Relative), empty);
+        using var response = await PostBackupAsync(client, size);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Empty(await client.GetFromJsonAsync<BackupInfo[]>(new Uri("/api/v1/backups", UriKind.Relative)) ?? []);
+    }
+
+    [Fact]
+    public async Task Upload_MinimalEnvelopeSize_IsAccepted()
+    {
+        using var client = await AuthorizedClientAsync();
+
+        using var response = await PostBackupAsync(client, EncryptedEnvelope.HeaderSize + EncryptedEnvelope.TagSize);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
     }
 
     [Fact]
@@ -64,6 +80,13 @@ public sealed class OwaspHardeningTests(LocalMindServerFactory factory) : IClass
         var problem = await response.Content.ReadFromJsonAsync<ValidationProblemDetails>();
         var messages = problem!.Errors["email"];
         Assert.Equal(messages.Length, messages.Distinct().Count());
+    }
+
+    private static async Task<HttpResponseMessage> PostBackupAsync(HttpClient client, int size)
+    {
+        using var content = new ByteArrayContent(new byte[size]);
+        content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+        return await client.PostAsync(new Uri("/api/v1/backups", UriKind.Relative), content);
     }
 
     private async Task<HttpClient> AuthorizedClientAsync()

@@ -41,8 +41,8 @@ public sealed class BackupEndpointsTests(LocalMindServerFactory factory) : IClas
     public async Task List_NewestFirst()
     {
         using var client = await AuthorizedClientAsync(factory);
-        var first = await UploadOkAsync(client, [1]);
-        var second = await UploadOkAsync(client, [2]);
+        var first = await UploadOkAsync(client, Blob(1));
+        var second = await UploadOkAsync(client, Blob(2));
 
         var list = await client.GetFromJsonAsync<BackupInfo[]>(Backups);
 
@@ -54,7 +54,7 @@ public sealed class BackupEndpointsTests(LocalMindServerFactory factory) : IClas
     {
         using var owner = await AuthorizedClientAsync(factory);
         using var stranger = await AuthorizedClientAsync(factory);
-        var info = await UploadOkAsync(owner, [1, 2, 3]);
+        var info = await UploadOkAsync(owner, Blob(3));
         var url = new Uri($"/api/v1/backups/{info.Id}", UriKind.Relative);
 
         using var download = await stranger.GetAsync(url);
@@ -127,12 +127,12 @@ public sealed class BackupEndpointsTests(LocalMindServerFactory factory) : IClas
     {
         using var app = factory.WithWebHostBuilder(b => b.UseSetting("Storage:MaxBackupsPerUser", "2"));
         using var client = await AuthorizedClientAsync(app);
-        var first = await UploadOkAsync(client, [1]);
-        await UploadOkAsync(client, [2]);
+        var first = await UploadOkAsync(client, Blob(1));
+        await UploadOkAsync(client, Blob(2));
 
-        using var third = await PostAsync(client, [3]);
+        using var third = await PostAsync(client, Blob(3));
         using var delete = await client.DeleteAsync(new Uri($"/api/v1/backups/{first.Id}", UriKind.Relative));
-        using var afterDelete = await PostAsync(client, [3]);
+        using var afterDelete = await PostAsync(client, Blob(3));
 
         Assert.Equal(HttpStatusCode.Conflict, third.StatusCode);
         Assert.Equal(HttpStatusCode.Created, afterDelete.StatusCode);
@@ -143,14 +143,14 @@ public sealed class BackupEndpointsTests(LocalMindServerFactory factory) : IClas
     [InlineData(false)]
     public async Task Upload_OverTotalBytesQuota_Returns409AndStoresNothing(bool sendContentLength)
     {
-        using var app = factory.WithWebHostBuilder(b => b.UseSetting("Storage:MaxTotalBytesPerUser", "100"));
+        using var app = factory.WithWebHostBuilder(b => b.UseSetting("Storage:MaxTotalBytesPerUser", "200"));
         using var client = await AuthorizedClientAsync(app);
-        await UploadOkAsync(client, new byte[60]);
+        await UploadOkAsync(client, new byte[120]);
         var filesBefore = Directory.GetFiles(factory.StorageRoot).Length;
 
         HttpContent content = sendContentLength
-            ? new ByteArrayContent(new byte[41])
-            : new StreamContent(new UnknownLengthStream(new byte[41]));
+            ? new ByteArrayContent(new byte[81])
+            : new StreamContent(new UnknownLengthStream(new byte[81]));
         using var response = await client.PostAsync(Backups, content);
         content.Dispose();
 
@@ -166,7 +166,7 @@ public sealed class BackupEndpointsTests(LocalMindServerFactory factory) : IClas
         using var client = await AuthorizedClientAsync(app);
         var filesBefore = Directory.GetFiles(factory.StorageRoot).Length;
 
-        var responses = await Task.WhenAll(Enumerable.Range(0, 12).Select(i => PostAsync(client, [(byte)i])));
+        var responses = await Task.WhenAll(Enumerable.Range(0, 12).Select(i => PostAsync(client, Blob((byte)i))));
 
         Assert.Equal(2, responses.Count(r => r.StatusCode == HttpStatusCode.Created));
         Assert.Equal(10, responses.Count(r => r.StatusCode == HttpStatusCode.Conflict));
@@ -181,13 +181,13 @@ public sealed class BackupEndpointsTests(LocalMindServerFactory factory) : IClas
     [Fact]
     public async Task Upload_ParallelRequests_CannotExceedBytesQuota()
     {
-        using var app = factory.WithWebHostBuilder(b => b.UseSetting("Storage:MaxTotalBytesPerUser", "100"));
+        using var app = factory.WithWebHostBuilder(b => b.UseSetting("Storage:MaxTotalBytesPerUser", "200"));
         using var client = await AuthorizedClientAsync(app);
 
-        var responses = await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => PostAsync(client, new byte[40])));
+        var responses = await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => PostAsync(client, new byte[60])));
 
-        Assert.Equal(2, responses.Count(r => r.StatusCode == HttpStatusCode.Created));
-        Assert.Equal(80, (await client.GetFromJsonAsync<BackupInfo[]>(Backups))!.Sum(b => b.SizeBytes));
+        Assert.Equal(3, responses.Count(r => r.StatusCode == HttpStatusCode.Created));
+        Assert.Equal(180, (await client.GetFromJsonAsync<BackupInfo[]>(Backups))!.Sum(b => b.SizeBytes));
         foreach (var response in responses)
         {
             response.Dispose();
@@ -200,11 +200,11 @@ public sealed class BackupEndpointsTests(LocalMindServerFactory factory) : IClas
         using var app = factory.WithWebHostBuilder(b => b.UseSetting("Storage:MaxBackupsPerUser", "1"));
         using var first = await AuthorizedClientAsync(app);
         using var second = await AuthorizedClientAsync(app);
-        await UploadOkAsync(first, [1]);
+        await UploadOkAsync(first, Blob(1));
 
-        var info = await UploadOkAsync(second, [2]);
+        var info = await UploadOkAsync(second, Blob(2));
 
-        Assert.Equal(1, info.SizeBytes);
+        Assert.Equal(Blob(2).Length, info.SizeBytes);
     }
 
     [Fact]
@@ -214,10 +214,10 @@ public sealed class BackupEndpointsTests(LocalMindServerFactory factory) : IClas
         using var app = factory.WithWebHostBuilder(b => b.UseSetting("Storage:RootPath", root));
         using var client = await AuthorizedClientAsync(app);
 
-        var info = await UploadOkAsync(client, [1, 2, 3]);
+        var info = await UploadOkAsync(client, Blob(3));
         var downloaded = await client.GetByteArrayAsync(new Uri($"/api/v1/backups/{info.Id}", UriKind.Relative));
 
-        Assert.Equal([1, 2, 3], downloaded);
+        Assert.Equal(Blob(3), downloaded);
     }
 
     [Fact]
@@ -241,7 +241,7 @@ public sealed class BackupEndpointsTests(LocalMindServerFactory factory) : IClas
     public async Task Delete_WhileDownloadStreamOpen_Succeeds()
     {
         using var client = await AuthorizedClientAsync(factory);
-        var info = await UploadOkAsync(client, new byte[10]);
+        var info = await UploadOkAsync(client, Blob(0));
         var store = factory.Services.GetRequiredService<FileSystemBlobStore>();
 
         await using (var reading = store.OpenRead(info.Id))
@@ -295,6 +295,8 @@ public sealed class BackupEndpointsTests(LocalMindServerFactory factory) : IClas
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", tokens!.AccessToken);
         return client;
     }
+
+    private static byte[] Blob(byte fill) => Enumerable.Repeat(fill, EncryptedEnvelope.HeaderSize + EncryptedEnvelope.TagSize).ToArray();
 
     private static async Task<BackupInfo> UploadOkAsync(HttpClient client, byte[] data)
     {
