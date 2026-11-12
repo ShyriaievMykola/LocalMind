@@ -11,7 +11,15 @@
         Icon="/Assets/app-icon.ico"
         Title="LocalMind"
         DragDrop.AllowDrop="True">
-
+    
+    <!-- Гарячі клавіші на рівні вікна — працюють з будь-якої сторінки (A-13). Meta — Cmd на macOS. -->
+    <Window.KeyBindings>
+      <KeyBinding Gesture="Ctrl+K" Command="{Binding FocusSearchCommand}" />
+      <KeyBinding Gesture="Ctrl+F" Command="{Binding FocusSearchCommand}" />
+      <KeyBinding Gesture="Meta+K" Command="{Binding FocusSearchCommand}" />
+      <KeyBinding Gesture="Meta+F" Command="{Binding FocusSearchCommand}" />
+    </Window.KeyBindings>
+    
     <!-- DataContext задає App.axaml.cs: MainViewModel береться з DI. -->
     <Grid RowDefinitions="Auto,*,Auto">
       <!-- Стан ядра (CoreStatus) і необроблені помилки: видно на будь-якій сторінці. -->

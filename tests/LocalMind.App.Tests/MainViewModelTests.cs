@@ -259,6 +259,18 @@ public sealed class MainViewModelTests
             Directory.Delete(folder);
         }
     }
+    
+    [Fact]
+    public void FocusSearch_OpensSearchPageAndRequestsFocus()
+    {
+        using var viewModel = CreateViewModel();
+        viewModel.SelectedItem = viewModel.NavigationItems[1];
+
+        viewModel.FocusSearchCommand.Execute(null);
+
+        Assert.Same(_search, viewModel.CurrentPage);
+        Assert.True(_search.TakeFocusRequest());
+    }
     private MainViewModel CreateViewModel(
         SearchViewModel? search = null,
         LibraryViewModel? library = null,

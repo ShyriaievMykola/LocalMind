@@ -14,6 +14,10 @@ internal sealed class FakeSearchService : ISearchService
 {
     public ConcurrentQueue<(SearchQuery Query, CancellationToken Token)> Calls { get; } = new();
 
+    public FakeSearchHistory History { get; } = new();
+
+    public FakeFileLauncher Files { get; } = new();
+
     public Func<SearchQuery, CancellationToken, Task<IReadOnlyList<SearchResult>>> Handler { get; set; } =
         (_, _) => Task.FromResult<IReadOnlyList<SearchResult>>([]);
 
@@ -37,6 +41,7 @@ internal sealed class FakeSearchService : ISearchService
 
         return new SearchViewModel(this, status, Options.Create(new SearchOptions { DefaultTopK = defaultTopK, DefaultMode = defaultMode }),
             NullLogger<SearchViewModel>.Instance,
-            new ResultCardFactory(new InMemoryDocumentRepository(), new FakeFileLauncher(), NullLogger<ResultCardViewModel>.Instance));
+            new ResultCardFactory(new InMemoryDocumentRepository(), Files, NullLogger<ResultCardViewModel>.Instance),
+            History);
     }
 }

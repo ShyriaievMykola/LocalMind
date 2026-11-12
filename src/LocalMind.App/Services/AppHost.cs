@@ -55,6 +55,10 @@ public static class AppHost
         builder.Services.AddOptions<AppOptions>().Bind(builder.Configuration.GetSection(AppOptions.SectionName));
         builder.Services.AddSingleton(settingsFile);
         builder.Services.AddSingleton<IUserSettingsService, UserSettingsService>();
+        // Історія поруч із settings.json: тести, що передають власний файл налаштувань, не чіпають справжню історію.
+        builder.Services.AddSingleton(new SearchHistoryFile(
+            Path.Combine(Path.GetDirectoryName(settingsFile.Path)!, "search-history.json")));
+        builder.Services.AddSingleton<ISearchHistory, SearchHistoryStore>();
         builder.Services.AddSingleton<IThemeService, ThemeService>();
         builder.Services.AddSingleton<UnhandledErrorReporter>();
         builder.Services.AddHostedService<CoreStartup>();
