@@ -26,5 +26,5 @@ public sealed class VectorIndexOptions
     public int EfConstruction { get; set; } = 200;
 
     /// <summary>HNSW, efSearch: ширина пошуку під час запиту (не менша за k). Більше — точніше й повільніше.</summary>
-    public int EfSearch { get; set; } = 64;
+    public int EfSearch { get; set; } = 100;
 }
