@@ -2,6 +2,7 @@ using LocalMind.App.Services;
 using LocalMind.App.ViewModels;
 using LocalMind.Core.Abstractions;
 using LocalMind.Core.Configuration;
+using LocalMind.Core.Diagnostics;
 using LocalMind.Core.Models;
 using LocalMind.Search.Configuration;
 using LocalMind.TestUtilities;
@@ -9,6 +10,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace LocalMind.App.Tests;
@@ -46,6 +48,24 @@ public sealed class AppHostTests : IDisposable
         await Assert.Single(viewModel.Results).OpenSourceCommand.ExecuteAsync(null);
 
         Assert.Equal(result.DocumentPath, Assert.Single(files.Paths));
+    }
+
+    [Fact]
+    public void Build_LogsAndCrashReports_GoToLogsNextToSettings()
+    {
+        using (var host = AppHost.CreateBuilder([], SettingsPath).Build())
+        {
+            var logs = Path.Combine(_folder, "logs");
+            Assert.Equal(logs, host.Services.GetRequiredService<CrashReportStore>().Directory);
+            var file = Assert.Single(host.Services.GetServices<ILoggerProvider>().OfType<FileLoggerProvider>());
+            Assert.Equal(logs, file.Directory);
+
+            host.Services.GetRequiredService<ILogger<AppHostTests>>()
+                .Log(LogLevel.Warning, default, "перевірка журналу", null, (text, _) => text);
+        }
+
+        var log = Assert.Single(Directory.GetFiles(Path.Combine(_folder, "logs"), "app-*.log"));
+        Assert.Contains("перевірка журналу", File.ReadAllText(log), StringComparison.Ordinal);
     }
 
     [Fact]
