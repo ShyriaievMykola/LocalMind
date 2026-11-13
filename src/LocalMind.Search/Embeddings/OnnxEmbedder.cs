@@ -82,6 +82,13 @@ public sealed class OnnxEmbedder : IEmbedder, IDisposable
 
         cancellationToken.ThrowIfCancellationRequested();
 
+        // Без файла моделі чи токенізатора — одразу ModelNotFoundException, до ініціалізації токенізатора й сесії.
+        // Порожній набір моделі не потребує.
+        if (texts.Count > 0)
+        {
+            EnsureAvailable();
+        }
+
         var prefix = purpose == EmbeddingPurpose.Query ? _options.QueryPrefix : _options.PassagePrefix;
         var encoded = texts.Select(text => _tokenizer.Encode(prefix + text, MaxTokens)).ToArray();
 
