@@ -84,6 +84,69 @@ jobs:
             tar -czf "${dir%/}.tar.gz" "${dir%/}"
           done
 
+      # Smoke: перевіряємо саме готові архіви, а не папки publish — розпаковуємо в чисту теку, як це зробить користувач.
+      # Моделі немає (не в архіві), тож eval лише в режимі keyword. Вікно App у CI не запускаємо.
+      - name: Smoke (unpack)
+        shell: bash
+        run: |
+          mkdir smoke
+          cd dist
+          for archive in LocalMind-*-${{ matrix.rid }}.*; do
+            case "$archive" in
+              *.zip) 7z x -y -o../smoke "$archive" > /dev/null ;;
+              *.tar.gz) tar -xzf "$archive" -C ../smoke ;;
+            esac
+          done
+          ls smoke
+
+      - name: Smoke (CLI)
+        shell: bash
+        run: |
+          cli="smoke/LocalMind-Cli-${{ matrix.rid }}"
+          bin="$cli/localmind"
+          if [[ "${{ runner.os }}" == "Windows" ]]; then bin="$bin.exe"; fi
+          test -f "$bin" || { echo "::error::Немає $bin в архіві CLI"; exit 1; }
+          test -f "$cli/appsettings.json" || { echo "::error::Немає appsettings.json в архіві CLI"; exit 1; }
+          test -f "$cli/scripts/download-models.sh" -a -f "$cli/scripts/download-models.ps1" \
+            || { echo "::error::Немає скриптів завантаження моделі в архіві CLI"; exit 1; }
+          "$bin" --help
+          "$bin" eval --help > /dev/null
+          # Моделі в архіві немає і в CI ми її не тягнемо (~470 МБ), тож eval на demo має впасти зрозумілою
+          # помилкою про модель з кодом 1. Це доводить, що CLI стартує, розбирає аргументи й читає датасет;
+          # метрики з моделлю — ручний пункт чекліста D-02 (docs/release.md). Запуск з порожньої теки:
+          # відносний ModelPath береться від поточної папки.
+          dataset="$PWD/eval/datasets/demo"
+          mkdir -p "$RUNNER_TEMP/smoke-run"
+          cd "$RUNNER_TEMP/smoke-run"
+          set +e
+          output="$("$OLDPWD/$bin" eval --dataset "$dataset" --mode keyword --output "$RUNNER_TEMP/smoke-eval" 2>&1)"
+          code=$?
+          set -e
+          echo "$output"
+          if [[ $code -ne 1 ]]; then
+            echo "::error::eval без моделі мав завершитися з кодом 1, а завершився з $code"
+            exit 1
+          fi
+          if ! grep -q "download-models" <<< "$output"; then
+            echo "::error::У повідомленні eval немає підказки про scripts/download-models"
+            exit 1
+          fi
+
+      # App: лише наявність і біт виконання — застосунок графічний, у CI вікно не відкриваємо.
+      - name: Smoke (App)
+        shell: bash
+        run: |
+          app="smoke/LocalMind-App-${{ matrix.rid }}"
+          bin="$app/LocalMind.App"
+          if [[ "${{ runner.os }}" == "Windows" ]]; then bin="$bin.exe"; fi
+          test -f "$bin" || { echo "::error::Немає $bin в архіві App"; exit 1; }
+          test -f "$app/appsettings.json" || { echo "::error::Немає appsettings.json в архіві App"; exit 1; }
+          if [[ "${{ runner.os }}" != "Windows" && ! -x "$bin" ]]; then
+            echo "::error::У $bin немає біта виконання (tar.gz мав його зберегти)"
+            exit 1
+          fi
+          ls -l "$bin"
+
       - uses: actions/upload-artifact@v7
         with:
           name: LocalMind-${{ matrix.rid }}
