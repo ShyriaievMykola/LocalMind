@@ -24,13 +24,14 @@ public sealed partial class SearchViewModel : ViewModelBase
     private readonly ILogger<SearchViewModel> _logger;
     private readonly ResultCardFactory _cards;
     private readonly ISearchHistory _history;
+    private readonly AppRestartState _restart;
     private CancellationTokenSource? _searchCancellation;
     private string? _noResultsQuery;
     private bool _suppressSuggestions;
     private bool _focusPending;
 
     public SearchViewModel(ISearchService search, CoreStatus status, IOptions<SearchOptions> options,
-        ILogger<SearchViewModel> logger, ResultCardFactory cards, ISearchHistory history)
+        ILogger<SearchViewModel> logger, ResultCardFactory cards, ISearchHistory history, AppRestartState restart)
     {
         ArgumentNullException.ThrowIfNull(search);
         ArgumentNullException.ThrowIfNull(status);
@@ -38,12 +39,14 @@ public sealed partial class SearchViewModel : ViewModelBase
         ArgumentNullException.ThrowIfNull(logger);
         ArgumentNullException.ThrowIfNull(cards);
         ArgumentNullException.ThrowIfNull(history);
+        ArgumentNullException.ThrowIfNull(restart);
 
         _search = search;
         _status = status;
         _logger = logger;
         _cards = cards;
         _history = history;
+        _restart = restart;
         // Після помилки ValidateOnStart хост уже повідомив CoreStatus.Failed.
         // Повторне читання невалідних Options не повинно завадити відкриттю вікна.
         var defaults = status.Stage == CoreStage.Failed ? new SearchOptions() : options.Value;
@@ -106,7 +109,14 @@ public sealed partial class SearchViewModel : ViewModelBase
     public bool HasNoResults => _noResultsQuery is not null && _noResultsQuery == QueryText;
 
     /// <summary>Скасовує пошук при закритті застосунку; Transient-VM не утримується DI як IDisposable.</summary>
-    public void Close() => _searchCancellation?.Cancel();
+    public void Close()
+    {
+        _searchCancellation?.Cancel();
+        foreach (var card in Results)
+        {
+            card.CloseContext();
+        }
+    }
 
     /// <summary>Ctrl+K / Ctrl+F: курсор у поле пошуку й останні запити під ним.</summary>
     public void RequestFocus()
@@ -153,7 +163,15 @@ public sealed partial class SearchViewModel : ViewModelBase
         UpdateSuggestions();
     }
 
-    partial void OnResultsChanged(IReadOnlyList<ResultCardViewModel> value) => SelectedResult = null;
+    partial void OnResultsChanged(IReadOnlyList<ResultCardViewModel> oldValue, IReadOnlyList<ResultCardViewModel> newValue)
+    {
+        foreach (var card in oldValue.Except(newValue))
+        {
+            card.CloseContext();
+        }
+
+        SelectedResult = null;
+    }
 
     [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task SearchAsync(CancellationToken cancellationToken)
@@ -186,6 +204,13 @@ public sealed partial class SearchViewModel : ViewModelBase
             if (!Enum.IsDefined(SelectedMode))
             {
                 ErrorMessage = "Оберіть режим пошуку.";
+                return;
+            }
+
+            if (_restart.IsRequired)
+            {
+                // Після відновлення з бекапу вектори в пам'яті від старої бази: результати вказували б на неіснуючі документи.
+                ErrorMessage = AppRestartState.Message;
                 return;
             }
 

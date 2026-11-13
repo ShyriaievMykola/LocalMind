@@ -61,7 +61,7 @@ public sealed class AdminAndAuditTests(LocalMindServerFactory factory) : IClassF
         using var app = AdminApp();
         var email = NewEmail();
         using var user = await SignedInClientAsync(app, email, Password);
-        using var upload = await user.PostAsync(new Uri("/api/v1/backups", UriKind.Relative), new ByteArrayContent(new byte[7]));
+        using var upload = await user.PostAsync(new Uri("/api/v1/backups", UriKind.Relative), new ByteArrayContent(new byte[64]));
         using var admin = await SignedInClientAsync(app, AdminEmail, AdminPassword);
 
         using var response = await admin.GetAsync(new Uri("/api/v1/admin/users?take=500", UriKind.Relative));
@@ -73,7 +73,7 @@ public sealed class AdminAndAuditTests(LocalMindServerFactory factory) : IClassF
         Assert.False(listed.IsAdmin);
         Assert.False(listed.IsBlocked);
         Assert.Equal(1, listed.BackupCount);
-        Assert.Equal(7, listed.BackupBytes);
+        Assert.Equal(64, listed.BackupBytes);
         Assert.True(Assert.Single(users, u => u.Email == AdminEmail).IsAdmin);
         Assert.DoesNotContain("passwordHash", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("securityStamp", body, StringComparison.OrdinalIgnoreCase);
@@ -214,7 +214,7 @@ public sealed class AdminAndAuditTests(LocalMindServerFactory factory) : IClassF
         var refreshed = await RefreshOkAsync(client, tokens.RefreshToken);
         using var reuse = await client.PostAsJsonAsync("/api/v1/auth/refresh", new RefreshRequest(tokens.RefreshToken));
         using var authorized = Authorized(app, refreshed.AccessToken);
-        using var upload = await authorized.PostAsync(new Uri("/api/v1/backups", UriKind.Relative), new ByteArrayContent([1, 2]));
+        using var upload = await authorized.PostAsync(new Uri("/api/v1/backups", UriKind.Relative), new ByteArrayContent(new byte[64]));
         var info = (await upload.Content.ReadFromJsonAsync<BackupInfo>())!;
         using var delete = await authorized.DeleteAsync(new Uri($"/api/v1/backups/{info.Id}", UriKind.Relative));
         var again = await LoginAsync(client, email, Password);

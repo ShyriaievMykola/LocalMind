@@ -528,6 +528,56 @@ public sealed class DocumentRepositoryTests : IAsyncLifetime, IDisposable
         });
     }
 
+    [Theory]
+    [InlineData(0, 0, 1)]
+    [InlineData(0, 1, 2)]
+    [InlineData(1, 3, 3)]
+    [InlineData(3, 9, 1)]
+    [InlineData(4, 9, 0)]
+    public async Task GetChunksByDocument_FiltersDocumentAndInclusiveRange_InOrdinalOrder(int from, int to, int count)
+    {
+        var document = TestData.Document("/notes/context.md");
+        var chunks = TestData.Chunks(document.Id, "перший", "другий", "третій", "останній");
+        // Порядок вставки відрізняється від порядку фрагментів документа.
+        await _repository.SaveAsync(document, [.. chunks.Reverse()], Vectors(4), Model);
+        var other = TestData.Document("/notes/other.md");
+        await _repository.SaveAsync(other, TestData.Chunks(other.Id, "чужий фрагмент"), Vectors(1), Model);
+
+        var actual = await _repository.GetChunksByDocumentAsync(document.Id, from, to);
+
+        Assert.Equal(count, actual.Count);
+        Assert.Equal(chunks.Where(c => c.Ordinal >= from && c.Ordinal <= to), actual);
+    }
+
+    [Fact]
+    public async Task GetChunksByDocument_MissingOrEmptyDocument_ReturnsEmpty()
+    {
+        var document = TestData.Document();
+        await _repository.SaveAsync(document, [], [], Model);
+
+        Assert.Empty(await _repository.GetChunksByDocumentAsync(document.Id, 0, 1));
+        Assert.Empty(await _repository.GetChunksByDocumentAsync(Guid.NewGuid(), 0, 1));
+    }
+
+    [Theory]
+    [InlineData(-1, 1)]
+    [InlineData(2, 1)]
+    public async Task GetChunksByDocument_InvalidRange_Throws(int from, int to)
+    {
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(
+            () => _repository.GetChunksByDocumentAsync(Guid.NewGuid(), from, to));
+    }
+
+    [Fact]
+    public async Task GetChunksByDocument_Cancelled_Throws()
+    {
+        using var cancellation = new CancellationTokenSource();
+        await cancellation.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => _repository.GetChunksByDocumentAsync(Guid.NewGuid(), 0, 1, cancellation.Token));
+    }
+
     private static List<ReadOnlyMemory<float>> Vectors(int count) =>
         [.. Enumerable.Range(0, count).Select(i => new ReadOnlyMemory<float>([i, 1f]))];
 

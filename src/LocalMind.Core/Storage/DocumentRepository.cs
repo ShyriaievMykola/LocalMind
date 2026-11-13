@@ -123,6 +123,21 @@ public sealed class DocumentRepository(IDbContextFactory<LocalMindDbContext> con
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<Chunk>> GetChunksByDocumentAsync(
+        Guid documentId, int fromOrdinal, int toOrdinal, CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(fromOrdinal);
+        ArgumentOutOfRangeException.ThrowIfLessThan(toOrdinal, fromOrdinal);
+
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+        var entities = await context.Chunks.AsNoTracking()
+            .Where(c => c.DocumentId == documentId && c.Ordinal >= fromOrdinal && c.Ordinal <= toOrdinal)
+            .OrderBy(c => c.Ordinal)
+            .ToListAsync(cancellationToken);
+        return [.. entities.Select(c => new Chunk(c.Id, c.DocumentId, c.Ordinal, c.Text, c.StartOffset))];
+    }
+
+    /// <inheritdoc />
     public async IAsyncEnumerable<ChunkVector> GetVectorsAsync(
         string modelName,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)

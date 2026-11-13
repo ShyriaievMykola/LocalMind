@@ -15,6 +15,8 @@ internal sealed class FakeIndexingService : IIndexingService
     public InMemoryDocumentRepository Repository { get; } = new();
 
     public FakeFolderPicker Picker { get; } = new();
+
+    public AppRestartState Restart { get; } = new();
     
     public FakeUiDispatcher Dispatcher { get; } = new();
 
@@ -34,6 +36,12 @@ internal sealed class FakeIndexingService : IIndexingService
 
     /// <summary>Якщо задано — <see cref="AddFolderAsync"/> завершується цим винятком.</summary>
     public Exception? AddFolderError { get; set; }
+
+    /// <summary>Якщо задано — <see cref="RemoveFolderAsync"/> завершується цим винятком.</summary>
+    public Exception? RemoveFolderError { get; set; }
+
+    /// <summary>Якщо задано — <see cref="RescanAsync"/> завершується цим винятком.</summary>
+    public Exception? RescanError { get; set; }
 
     public IndexingProgress Progress { get; private set; } = new(0, 0);
 
@@ -56,12 +64,22 @@ internal sealed class FakeIndexingService : IIndexingService
 
     public Task RemoveFolderAsync(string path, CancellationToken cancellationToken = default)
     {
+        if (RemoveFolderError is not null)
+        {
+            return Task.FromException(RemoveFolderError);
+        }
+
         RemovedFolders.Add(path);
         return Repository.RemoveSourceFolderAsync(path, cancellationToken);
     }
 
     public Task RescanAsync(CancellationToken cancellationToken = default)
     {
+        if (RescanError is not null)
+        {
+            return Task.FromException(RescanError);
+        }
+
         RescanCount++;
         return Task.CompletedTask;
     }
@@ -85,7 +103,7 @@ internal sealed class FakeIndexingService : IIndexingService
         }
 
         IDocumentParser[] parsers = [new PlainTextParser(), new MarkdownParser(), new PdfParser(), new DocxParser()];
-        return new LibraryViewModel(this, Repository, parsers, Picker, Dispatcher, status, NullLogger<LibraryViewModel>.Instance);
+        return new LibraryViewModel(this, Repository, parsers, Picker, Dispatcher, status, NullLogger<LibraryViewModel>.Instance, Restart);
     }
     
     public IndexingProgressViewModel CreateProgressViewModel() => new(this, Dispatcher);

@@ -15,6 +15,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     private readonly UnhandledErrorReporter _errors;
     private readonly SearchViewModel _search;
     private readonly LibraryViewModel _library;
+    private readonly AppRestartState _restart;
     private bool _disposed;
 
     public MainViewModel(
@@ -22,15 +23,21 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         UnhandledErrorReporter errors,
         SearchViewModel search,
         LibraryViewModel library,
+        AccountViewModel account,
+        BackupViewModel backup,
         SettingsViewModel settings,
-        IndexingProgressViewModel indexing)
+        IndexingProgressViewModel indexing,
+        AppRestartState restart)
     {
         ArgumentNullException.ThrowIfNull(status);
         ArgumentNullException.ThrowIfNull(errors);
         ArgumentNullException.ThrowIfNull(search);
         ArgumentNullException.ThrowIfNull(library);
+        ArgumentNullException.ThrowIfNull(account);
+        ArgumentNullException.ThrowIfNull(backup);
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(indexing);
+        ArgumentNullException.ThrowIfNull(restart);
 
         _search = search;
         _library = library;
@@ -39,6 +46,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         NavigationItems = Array.AsReadOnly<NavigationItem>([
             new("Пошук", search),
             new("Бібліотека", library),
+            new("Обліковий запис", account),
+            new("Бекап", backup),
             new("Налаштування", settings),
         ]);
         SelectedItem = NavigationItems[0];
@@ -47,6 +56,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         _status.Changed += OnStatusChanged;
         _errors = errors;
         _errors.Reported += OnErrorReported;
+        _restart = restart;
+        _restart.Changed += OnRestartChanged;
         UpdateStatus();
     }
 
@@ -73,6 +84,10 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
     public partial string? NoticeText { get; private set; }
 
     public bool HasNotice => NoticeText is not null;
+
+    /// <summary>Після відновлення з бекапу потрібен перезапуск; банер видно на будь-якій сторінці.</summary>
+    public bool IsRestartRequired => _restart.IsRequired;
+
 
     /// <summary>Повідомлення про необроблений виняток; лишається, поки користувач його не закриє.</summary>
     [ObservableProperty]
@@ -110,6 +125,7 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
         _disposed = true;
         _status.Changed -= OnStatusChanged;
         _errors.Reported -= OnErrorReported;
+        _restart.Changed -= OnRestartChanged;
         _search.Close();
         _library.Close();
         Indexing.Close();
@@ -122,6 +138,8 @@ public sealed partial class MainViewModel : ViewModelBase, IDisposable
             UpdateStatus();
         }
     });
+
+    private void OnRestartChanged(object? sender, EventArgs args) => OnPropertyChanged(nameof(IsRestartRequired));
 
     private void OnErrorReported(object? sender, EventArgs args)
     {

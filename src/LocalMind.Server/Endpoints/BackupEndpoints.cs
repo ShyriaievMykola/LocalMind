@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using LocalMind.Core.Backup.Crypto;
 using LocalMind.Core.Backup.Dtos;
 using LocalMind.Server.Audit;
 using LocalMind.Server.Data;
@@ -18,6 +19,9 @@ namespace LocalMind.Server.Endpoints;
 public static class BackupEndpoints
 {
     private const string OctetStream = "application/octet-stream";
+
+    /// <summary>Найменший можливий бекап: заголовок конверта плюс тег автентифікації (DR-014).</summary>
+    internal const int MinBackupBytes = EncryptedEnvelope.HeaderSize + EncryptedEnvelope.TagSize;
 
     public static RouteGroupBuilder MapBackupEndpoints(this RouteGroupBuilder api)
     {
@@ -77,6 +81,16 @@ public static class BackupEndpoints
         catch (Exception ex) when (ex is BlobTooLargeException or BadHttpRequestException { StatusCode: 413 })
         {
             return TooLarge(store);
+        }
+
+        // Менший за мінімальний конверт (заголовок + тег, шифротекст може бути порожнім) файл не відновити:
+        // відхиляємо його одразу, щоб він не займав слот квоти. Вміст сервер не перевіряє — він зашифрований.
+        if (size < MinBackupBytes)
+        {
+            store.Delete(id);
+            return TypedResults.Problem(
+                statusCode: StatusCodes.Status400BadRequest,
+                title: $"Файл не схожий на бекап LocalMind: менше {MinBackupBytes} байт.");
         }
 
         // Без Content-Length розмір відомий лише після запису. Паралельні завантаження можуть разом трохи

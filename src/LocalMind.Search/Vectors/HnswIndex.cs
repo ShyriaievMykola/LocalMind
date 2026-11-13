@@ -128,7 +128,13 @@ public sealed class HnswIndex : IVectorIndex, IDisposable
     }
 
     /// <inheritdoc />
-    public IReadOnlyList<ScoredChunk> Search(ReadOnlySpan<float> query, int k)
+    public IReadOnlyList<ScoredChunk> Search(ReadOnlySpan<float> query, int k) => Search(query, k, _efSearch);
+
+    /// <summary>
+    /// Пошук із власною шириною <paramref name="efSearch"/> (не менша за k): для тестів і вимірювань залежності recall від efSearch
+    /// на одному побудованому графі.
+    /// </summary>
+    internal IReadOnlyList<ScoredChunk> Search(ReadOnlySpan<float> query, int k, int efSearch)
     {
         EnsureDimensions(query.Length, nameof(query));
         EnsureFinite(query, nameof(query));
@@ -148,7 +154,7 @@ public sealed class HnswIndex : IVectorIndex, IDisposable
                 entry = GreedyClosest(query, entry, layer);
             }
 
-            var found = SearchLayer(query, [entry], Math.Max(_efSearch, k), 0);
+            var found = SearchLayer(query, [entry], Math.Max(efSearch, k), 0);
             var count = Math.Min(k, found.Count);
             var results = new ScoredChunk[count];
             for (var i = 0; i < count; i++)

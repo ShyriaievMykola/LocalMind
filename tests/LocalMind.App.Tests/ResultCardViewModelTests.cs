@@ -142,8 +142,38 @@ public sealed class ResultCardViewModelTests
         Assert.False(card.HasError);
     }
 
+    [Fact]
+    public async Task OpenSource_CancelledByUser_DoesNotShowError()
+    {
+        var card = Create(Result(Path.Combine(_folder, "note.md")), [_folder]);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _files.Handler = async (_, token) =>
+        {
+            started.SetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, token);
+        };
+        var open = card.OpenSourceCommand.ExecuteAsync(null);
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        card.OpenSourceCommand.Cancel();
+        await open.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Null(card.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task OpenSource_CancelledByServiceWithoutUserCancel_ShowsGenericError()
+    {
+        var card = Create(Result(Path.Combine(_folder, "note.md")), [_folder]);
+        _files.Handler = (_, _) => throw new OperationCanceledException();
+
+        await card.OpenSourceCommand.ExecuteAsync(null);
+
+        Assert.Equal("Не вдалося відкрити файл системною програмою.", card.ErrorMessage);
+    }
+
     private ResultCardViewModel Create(SearchResult result, IReadOnlyList<string> folders) =>
-        new(result, folders, _files, NullLogger<ResultCardViewModel>.Instance);
+        new(result, folders, _files, NullLogger<ResultCardViewModel>.Instance, new InMemoryDocumentRepository());
 
     private static SearchResult Result(string path) =>
         new(TestData.Chunk(Guid.NewGuid(), text: "початок чай та кава кінець"), path, 0.123456,

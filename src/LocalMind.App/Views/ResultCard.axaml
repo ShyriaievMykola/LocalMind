@@ -4,6 +4,12 @@
              xmlns:controls="using:LocalMind.App.Controls"
              x:Class="LocalMind.App.Views.ResultCard"
              x:DataType="vm:ResultCardViewModel">
+  <UserControl.Styles>
+    <Style Selector="Border.contextMatch">
+      <Setter Property="Background" Value="{DynamicResource Lm.Brush.HighlightBackground}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource Lm.Brush.Accent}" />
+    </Style>
+  </UserControl.Styles>
   <Border Classes="card" Margin="4,8">
     <StackPanel Spacing="8">
       <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
@@ -15,8 +21,41 @@
                  ToolTip.Tip="{Binding DocumentPath}" />
       <controls:HighlightedSnippet Snippet="{Binding Snippet}" TextWrapping="Wrap"
                                    MaxLines="8" TextTrimming="CharacterEllipsis" />
-      <Button Content="Відкрити джерело" Command="{Binding OpenSourceCommand}"
-              AutomationProperties.Name="{Binding FileName, StringFormat='Відкрити джерело: {0}'}" />
+      <WrapPanel>
+        <Button Content="{Binding ContextToggleText}" Command="{Binding ToggleContextCommand}" Margin="0,0,8,4"
+                AutomationProperties.Name="{Binding FileName, StringFormat='Контекст результату: {0}'}" />
+        <Button Content="Відкрити файл" Command="{Binding OpenSourceCommand}" Margin="0,0,0,4"
+                AutomationProperties.Name="{Binding FileName, StringFormat='Відкрити файл: {0}'}" />
+      </WrapPanel>
+      <Border IsVisible="{Binding IsContextExpanded}" BorderBrush="{DynamicResource Lm.Brush.Border}"
+              BorderThickness="0,1,0,0" Padding="0,8,0,0">
+        <StackPanel Spacing="8">
+          <TextBlock Text="Контекст документа" FontWeight="SemiBold" />
+          <TextBlock Text="Завантажую контекст…" IsVisible="{Binding IsContextLoading}"
+                     AutomationProperties.Name="Завантаження контексту" />
+          <TextBlock Classes="error" Text="{Binding ContextError}" IsVisible="{Binding HasContextError}"
+                     TextWrapping="Wrap" AutomationProperties.Name="Помилка завантаження контексту" />
+          <Button Content="Спробувати ще раз" Command="{Binding RetryContextCommand}"
+                  IsVisible="{Binding CanRetryContext}" />
+          <ScrollViewer MaxHeight="420" HorizontalScrollBarVisibility="Disabled"
+                        VerticalScrollBarVisibility="Auto">
+            <ItemsControl ItemsSource="{Binding ContextChunks}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:ResultContextChunk">
+                  <Border Classes.contextMatch="{Binding IsMatch}" Padding="8" Margin="0,0,0,8"
+                          BorderThickness="2,0,0,0">
+                    <StackPanel Spacing="4">
+                      <TextBlock Classes.highlight="{Binding IsMatch}" Text="{Binding Title}" FontWeight="SemiBold" />
+                      <controls:HighlightedSnippet Classes.highlight="{Binding IsMatch}" Snippet="{Binding Snippet}"
+                                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </StackPanel>
+      </Border>
       <TextBlock Classes="error" Text="{Binding ErrorMessage}" IsVisible="{Binding HasError}"
                  TextWrapping="Wrap" AutomationProperties.Name="Помилка відкриття файла" />
     </StackPanel>

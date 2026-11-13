@@ -494,6 +494,12 @@ eval/datasets/corpus/
 *.db-wal
 coverage/
 TestResults/
+CoverageReport/
+CoverageReport-ViewModels/
 
 # Бекапи користувачів, які зберігає локальний сервер
 src/LocalMind.Server/backups/
+
+# графіки з eval/plots
+eval/plots/.venv/
+eval/plots/out/

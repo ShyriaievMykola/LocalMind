@@ -1,6 +1,7 @@
 using LocalMind.App.Services;
 using LocalMind.Core.Errors;
 using LocalMind.Core.Models;
+using LocalMind.Search.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace LocalMind.App.Tests;
@@ -30,6 +31,33 @@ public sealed class SearchViewModelTests
         var viewModel = _search.CreateViewModel(defaultMode: SearchMode.Keyword);
 
         Assert.Equal(SearchMode.Keyword, viewModel.SelectedMode);
+    }
+
+    [Fact]
+    public void Constructor_AfterStartupFailure_IgnoresInvalidOptions()
+    {
+        var status = new CoreStatus(NullLogger<CoreStatus>.Instance);
+        status.SetFailed("Некоректні налаштування");
+
+        var viewModel = _search.CreateViewModel(status, defaultTopK: 0, defaultMode: SearchMode.Semantic);
+
+        var defaults = new SearchOptions();
+        Assert.Equal(defaults.DefaultTopK, viewModel.TopK);
+        Assert.Equal(defaults.DefaultMode, viewModel.SelectedMode);
+    }
+
+    [Fact]
+    public async Task Search_AfterRestoreFromBackup_AsksForRestartWithoutSearching()
+    {
+        var viewModel = _search.CreateViewModel();
+        viewModel.QueryText = "нотатка";
+        _search.Restart.Require();
+
+        await viewModel.SearchCommand.ExecuteAsync(null);
+
+        Assert.Equal(AppRestartState.Message, viewModel.ErrorMessage);
+        Assert.Empty(_search.Calls);
+        Assert.Empty(viewModel.Results);
     }
 
     [Theory]
