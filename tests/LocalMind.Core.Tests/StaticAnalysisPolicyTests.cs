@@ -92,25 +92,42 @@ public sealed partial class StaticAnalysisPolicyTests
         return false;
     }
 
-    private static IEnumerable<string> SourceFiles() =>
-        Directory.EnumerateFiles(Root, "*.cs", SearchOption.AllDirectories)
-            .Where(file => !IsGenerated(file));
+    private static readonly HashSet<string> SkippedDirectories = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".git", ".vs", ".idea", ".vscode", "bin", "obj", "node_modules", "Migrations",
+    };
+
+    private static IEnumerable<string> SourceFiles() => Walk(Root).Where(file => file.EndsWith(".cs", StringComparison.Ordinal));
 
     private static IEnumerable<string> ProjectFiles() =>
-        Directory.EnumerateFiles(Root, "*", SearchOption.AllDirectories)
-            .Where(file => file.EndsWith(".csproj", StringComparison.Ordinal)
-                || file.EndsWith(".props", StringComparison.Ordinal)
-                || file.EndsWith(".targets", StringComparison.Ordinal))
-            .Where(file => !IsGenerated(file));
+        Walk(Root).Where(file => file.EndsWith(".csproj", StringComparison.Ordinal)
+            || file.EndsWith(".props", StringComparison.Ordinal)
+            || file.EndsWith(".targets", StringComparison.Ordinal));
 
-    private static bool IsGenerated(string file)
+    /// <summary>
+    /// Обхід, що не заходить у службові й згенеровані каталоги (.git, .vs, bin, obj, node_modules, міграції EF)
+    /// та в сусідні worktree (wt-*), а не відфільтровує їх вже після повного перелічення.
+    /// </summary>
+    private static IEnumerable<string> Walk(string directory)
     {
-        var relative = Path.GetRelativePath(Root, file).Replace('\\', '/');
-        return relative.Contains("/obj/", StringComparison.Ordinal)
-            || relative.Contains("/bin/", StringComparison.Ordinal)
-            || relative.StartsWith("obj/", StringComparison.Ordinal)
-            || relative.Contains("/Migrations/", StringComparison.Ordinal)
-            || relative.Contains("/wt-", StringComparison.Ordinal);
+        foreach (var file in Directory.EnumerateFiles(directory))
+        {
+            yield return file;
+        }
+
+        foreach (var child in Directory.EnumerateDirectories(directory))
+        {
+            var name = Path.GetFileName(child);
+            if (SkippedDirectories.Contains(name) || name.StartsWith("wt-", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            foreach (var file in Walk(child))
+            {
+                yield return file;
+            }
+        }
     }
 
     private static string FindRoot()
