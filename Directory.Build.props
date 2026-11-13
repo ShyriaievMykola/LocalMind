@@ -8,6 +8,12 @@
 
     <!-- Статичний аналіз (критерій C4): вбудовані .NET-аналізатори + стиль коду з .editorconfig. -->
     <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <!-- Правила безпеки (CA2xxx/CA3xxx/CA5xxx) вмикаємо повністю, решта категорій — рівень recommended. Див. docs/static-analysis.md. -->
+    <AnalysisLevelSecurity>latest-all</AnalysisLevelSecurity>
+    <!-- Вразливі NuGet-пакети, прямі й транзитивні: у CI це помилка збірки (NU1901–NU1904). -->
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <NuGetAuditLevel>low</NuGetAuditLevel>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <!-- Потрібно, щоб IDE0005 (зайві using) перевірявся під час збірки; XML-коментарі не обов'язкові. -->
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
