@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="LocalMind.Search.Tests" />
+    <InternalsVisibleTo Include="LocalMind.Benchmarks" />
   </ItemGroup>
 
   <ItemGroup>
