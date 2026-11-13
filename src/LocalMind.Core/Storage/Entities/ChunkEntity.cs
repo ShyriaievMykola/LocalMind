@@ -27,6 +27,11 @@ public sealed class ChunkEntityConfiguration : IEntityTypeConfiguration<ChunkEnt
     /// <inheritdoc />
     public void Configure(EntityTypeBuilder<ChunkEntity> builder)
     {
+        builder.ToTable(table =>
+        {
+            table.HasCheckConstraint(StorageChecks.ChunkOrdinalName, StorageChecks.ChunkOrdinal);
+            table.HasCheckConstraint(StorageChecks.ChunkStartOffsetName, StorageChecks.ChunkStartOffset);
+        });
         builder.HasKey(c => c.Id);
         builder.HasIndex(c => new { c.DocumentId, c.Ordinal }).IsUnique();
         builder.HasOne(c => c.Document)
