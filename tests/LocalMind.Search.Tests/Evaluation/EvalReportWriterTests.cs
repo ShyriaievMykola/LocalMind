@@ -69,7 +69,7 @@ public class EvalReportWriterTests
         Assert.Contains("## m1, fixedSize, фрагмент 64 токенів, перекриття 0%", markdown, StringComparison.Ordinal);
         Assert.Contains("## m2, paragraph, фрагмент 256 токенів, перекриття 30%", markdown, StringComparison.Ordinal);
         Assert.Single(markdown.Split('\n'), line => line.StartsWith("| Прогін", StringComparison.Ordinal));
-        Assert.Contains("| second | keyword | all |", markdown, StringComparison.Ordinal);
+        Assert.Contains("| second | m2 | paragraph 256/30% | keyword | all |", markdown, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -92,8 +92,27 @@ public class EvalReportWriterTests
         Assert.Contains("Індексація: 1.5 с", markdown, StringComparison.Ordinal);
         Assert.Contains("Розмір бази: 2.00 МБ", markdown, StringComparison.Ordinal);
         Assert.Contains("Пікова пам'ять: 300 МБ", markdown, StringComparison.Ordinal);
-        Assert.Contains("| bm25 | keyword | all | 8 | 10 | 0.750 | 0.500 | 0.625 | 1.2 | 4.5 |", markdown, StringComparison.Ordinal);
-        Assert.Contains("| bm25 | keyword | crossLingual | 2 | 10 | 0.000 | 0.000 | 0.000 | 1.0 | 2.0 |", markdown, StringComparison.Ordinal);
+        Assert.Contains("| bm25 |  |  | keyword | all | 8 | 10 | 0.750 | 0.500 | 0.625 | 1.2 | 4.5 |", markdown, StringComparison.Ordinal);
+        Assert.Contains("| bm25 |  |  | keyword | crossLingual | 2 | 10 | 0.000 | 0.000 | 0.000 | 1.0 | 2.0 |", markdown, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Writers_WithRunOrder_PutRowsInConfigOrderNotGroupOrder()
+    {
+        // Група 1 містить прогони a і c, група 2 — b; у конфігу вони йдуть a, b, c.
+        var group1 = Report with { Rows = [Report.Rows[0] with { Run = "a" }, Report.Rows[0] with { Run = "c" }] };
+        var group2 = Report with { Rows = [Report.Rows[0] with { Run = "b" }, Report.Rows[1] with { Run = "b" }] };
+        string[] order = ["a", "b", "c"];
+
+        var csvRuns = EvalReportWriter.ToCsv([group1, group2], order)
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Skip(1).Select(line => line.Split(',')[1]).ToList();
+        var markdownRuns = EvalReportWriter.ToMarkdown([group1, group2], order)
+            .Split('\n').Where(line => line.StartsWith("| a ", StringComparison.Ordinal) || line.StartsWith("| b ", StringComparison.Ordinal) || line.StartsWith("| c ", StringComparison.Ordinal))
+            .Select(line => line[2]).ToList();
+
+        Assert.Equal(["a", "b", "b", "c"], csvRuns);
+        Assert.Equal(['a', 'b', 'b', 'c'], markdownRuns);
     }
 
     [Fact]

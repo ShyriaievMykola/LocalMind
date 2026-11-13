@@ -77,7 +77,7 @@ public sealed class EvalExperimentTests : IDisposable
 
         Assert.NotEmpty(runs);
         Assert.All(runs.Where(run => run.Model is not null), run => Assert.NotNull(catalog.Find(run.Model)));
-        Assert.True(EvalPlan.Build(runs).Count > 1, "Експеримент має містити кілька комбінацій нарізки чи моделі.");
+        Assert.True(EvalPlan.Build(runs, EvalPlanTests.AppConfiguration()).Count > 1, "Експеримент має містити кілька комбінацій нарізки чи моделі.");
     }
 
     [Theory]

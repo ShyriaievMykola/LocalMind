@@ -16,17 +16,18 @@ public static class EvalReportWriter
     /// </summary>
     public static string ToCsv(EvalReport report) => ToCsv([report]);
 
-    /// <summary>CSV для кількох корпусів (комбінацій нарізки й моделі): один заголовок, рядки всіх звітів поспіль.</summary>
-    public static string ToCsv(IReadOnlyList<EvalReport> reports)
+    /// <summary>CSV для кількох корпусів (комбінацій нарізки й моделі): один заголовок, рядки в порядку прогонів конфігу.</summary>
+    /// <param name="reports">Звіти по комбінаціях.</param>
+    /// <param name="runOrder">Назви прогонів у порядку конфігу; <see langword="null"/> — звіт за звітом.</param>
+    public static string ToCsv(IReadOnlyList<EvalReport> reports, IReadOnlyList<string>? runOrder = null)
     {
         ArgumentNullException.ThrowIfNull(reports);
 
         var builder = new StringBuilder();
         builder.AppendLine(
             "dataset,run,mode,type,queries,k,recall,mrr,ndcg,latency_p50_ms,latency_p95_ms,documents,chunks,index_seconds,db_bytes,peak_memory_bytes,model,chunking,chunk_size_tokens,overlap_percent");
-        foreach (var report in reports)
+        foreach (var (report, row) in OrderedRows(reports, runOrder))
         {
-            foreach (var row in report.Rows)
             {
                 builder.AppendLine(string.Join(',',
                     Escape(report.Dataset),
@@ -62,7 +63,9 @@ public static class EvalReportWriter
     /// Markdown для кількох корпусів: заміри кожної комбінації нарізки й моделі окремим пунктом, далі одна таблиця
     /// з усіма прогонами.
     /// </summary>
-    public static string ToMarkdown(IReadOnlyList<EvalReport> reports)
+    /// <param name="reports">Звіти по комбінаціях.</param>
+    /// <param name="runOrder">Назви прогонів у порядку конфігу; <see langword="null"/> — звіт за звітом.</param>
+    public static string ToMarkdown(IReadOnlyList<EvalReport> reports, IReadOnlyList<string>? runOrder = null)
     {
         ArgumentNullException.ThrowIfNull(reports);
         if (reports.Count == 0)
@@ -88,12 +91,14 @@ public static class EvalReportWriter
             builder.AppendLine();
         }
 
-        builder.AppendLine("| Прогін | Режим | Тип запитів | Запитів | k | Recall@k | MRR | nDCG@k | p50, мс | p95, мс |");
-        builder.AppendLine("|---|---|---|---:|---:|---:|---:|---:|---:|---:|");
-        foreach (var row in reports.SelectMany(report => report.Rows))
+        builder.AppendLine("| Прогін | Модель | Нарізка | Режим | Тип запитів | Запитів | k | Recall@k | MRR | nDCG@k | p50, мс | p95, мс |");
+        builder.AppendLine("|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|");
+        foreach (var (report, row) in OrderedRows(reports, runOrder))
         {
             builder.AppendLine(string.Join(" | ",
                 "| " + row.Run.Replace("|", "\\|", StringComparison.Ordinal),
+                report.Setup?.Model ?? string.Empty,
+                report.Setup is { } setup ? ChunkingLabel(setup) : string.Empty,
                 row.Mode.ToString().ToLowerInvariant(),
                 TypeName(row.Type),
                 Number(row.Queries),
@@ -107,6 +112,27 @@ public static class EvalReportWriter
 
         return builder.ToString();
     }
+
+    /// <summary>Рядки всіх звітів: у порядку прогонів конфігу (стабільно, режими й типи — як у звіті).</summary>
+    private static IEnumerable<(EvalReport Report, EvalRow Row)> OrderedRows(IReadOnlyList<EvalReport> reports, IReadOnlyList<string>? runOrder = null)
+    {
+        var rows = reports.SelectMany(report => report.Rows.Select(row => (Report: report, Row: row)));
+        if (runOrder is null)
+        {
+            return rows;
+        }
+
+        var position = new Dictionary<string, int>(StringComparer.Ordinal);
+        for (var index = 0; index < runOrder.Count; index++)
+        {
+            position.TryAdd(runOrder[index], index);
+        }
+
+        return rows.OrderBy(item => position.GetValueOrDefault(item.Row.Run, int.MaxValue));
+    }
+
+    private static string ChunkingLabel(EvalSetup setup) =>
+        $"{ChunkingName(setup.Strategy)} {setup.ChunkSizeTokens}/{setup.OverlapPercent}%";
 
     private static string Describe(EvalReport report) =>
         report.Setup is { } setup

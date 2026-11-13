@@ -65,27 +65,35 @@ internal static class EvalCommand
                 ? [new EvalRun("cli", [.. parseResult.GetRequiredValue(modes).Distinct()], parseResult.GetValue(k))]
                 : EvalExperiment.Load(configPath);
 
-            var catalog = configuration.GetSection(ModelCatalogOptions.SectionName).Get<ModelCatalogOptions>() ?? new ModelCatalogOptions();
-            CheckModelsInCatalog(runs, catalog);
+            // Усі групи перевіряються до старту: помилка в останній не має коштувати результатів перших.
+            var groups = EvalPlan.Build(runs, configuration);
+            CheckBeforeStart(groups);
+
+            var outputFolder = Path.GetFullPath(parseResult.GetRequiredValue(output));
+            var runOrder = runs.Select(run => run.Name).ToList();
+            var fileName = $"{Path.GetFileName(Path.TrimEndingDirectorySeparator(datasetPath))}-{DateTime.Now:yyyyMMdd-HHmmss}";
+
+            await WarmUpAsync(configuration, groups[0], cancellationToken);
 
             var reports = new List<EvalReport>();
-            foreach (var group in EvalPlan.Build(runs))
+            foreach (var group in groups)
             {
                 try
                 {
                     reports.Add(await RunInTemporaryLibraryAsync(configuration, data, group, cancellationToken));
                 }
-                catch (LocalMindException exception) when (group.Runs.Any(run => run.Model is not null))
+                catch (LocalMindException exception)
                 {
-                    var names = string.Join(", ", group.Runs.Select(run => run.Name));
-                    var models = string.Join(", ", group.Runs.Select(run => run.Model).Distinct(StringComparer.OrdinalIgnoreCase));
-                    throw new LocalMindException(
-                        $"Прогони {names} (модель {models}): {exception.Message}", exception);
+                    var saved = reports.Count > 0 ? " Результати попередніх комбінацій збережено." : string.Empty;
+                    throw new LocalMindException($"Прогони {group.RunNames}: {exception.Message}{saved}", exception);
                 }
+
+                // Після кожної групи: якщо наступна впаде, результати вже на диску.
+                Write(fileName, reports, runOrder, outputFolder);
             }
 
-            var (csv, markdown) = Write(reports[0].Dataset, reports, Path.GetFullPath(parseResult.GetRequiredValue(output)));
-            Console.WriteLine(EvalReportWriter.ToMarkdown(reports));
+            var (csv, markdown) = Write(fileName, reports, runOrder, outputFolder);
+            Console.WriteLine(EvalReportWriter.ToMarkdown(reports, runOrder));
             Console.WriteLine($"Збережено: {csv}");
             Console.WriteLine($"Збережено: {markdown}");
             return ExitCodes.Success;
@@ -94,16 +102,73 @@ internal static class EvalCommand
         return command;
     }
 
-    private static void CheckModelsInCatalog(IReadOnlyList<EvalRun> runs, ModelCatalogOptions catalog)
+    /// <summary>Каталог, ліміт моделі й файли моделі: усе, що можна знати до старту, перевіряється для всіх груп одразу.</summary>
+    private static void CheckBeforeStart(IReadOnlyList<EvalGroup> groups)
     {
-        foreach (var run in runs.Where(run => run.Model is not null))
+        var problems = new List<string>();
+        foreach (var group in groups)
         {
-            if (catalog.Find(run.Model) is null)
+            problems.AddRange(group.Problems);
+            if (group.RequiresModel)
             {
-                throw new LocalMindException(
-                    $"Прогін {run.Name}: моделі «{run.Model}» немає в каталозі. Доступні: " +
-                    $"{string.Join(", ", catalog.Models.Select(m => m.Name))}.");
+                foreach (var file in new[] { group.ModelPath, group.TokenizerPath }.Where(path => !File.Exists(path)))
+                {
+                    problems.Add(
+                        $"Прогони {group.RunNames}: файл моделі {group.Setup.Model} не знайдено: {file}. " +
+                        $"Запустіть scripts/download-models {group.Setup.Model}.");
+                }
             }
+        }
+
+        if (problems.Count > 0)
+        {
+            throw new LocalMindException(string.Join(Environment.NewLine, problems));
+        }
+    }
+
+    /// <summary>
+    /// Прогрів перед вимірюванням: JIT, SQLite і кеш файлової системи. Інакше перша комбінація «холодна» й
+    /// її час індексації не порівнянний з наступними. Індексується крихітний корпус у тимчасовій базі, результат відкидається.
+    /// </summary>
+    private static async Task WarmUpAsync(IConfiguration configuration, EvalGroup group, CancellationToken cancellationToken)
+    {
+        var temp = Directory.CreateTempSubdirectory("localmind-eval-warmup-").FullName;
+        try
+        {
+            var corpus = Directory.CreateDirectory(Path.Combine(temp, "corpus")).FullName;
+            await File.WriteAllTextAsync(
+                Path.Combine(corpus, "warmup.txt"),
+                "Прогрів перед вимірюванням: кілька речень про каву, чай і базу даних SQLite.\n\nWarm-up text about search.",
+                cancellationToken);
+
+            var isolated = new ConfigurationBuilder()
+                .AddConfiguration(configuration)
+                .AddInMemoryCollection(group.ConfigOverrides)
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    [$"{StorageOptions.SectionName}:{nameof(StorageOptions.DatabasePath)}"] = Path.Combine(temp, "warmup.db"),
+                })
+                .Build();
+
+            await using var services = CliServices.Build(isolated);
+            await CliStartup.PrepareAsync(services, cancellationToken);
+            await services.GetRequiredService<FolderIndexer>().IndexAsync(corpus, cancellationToken: cancellationToken);
+
+            var search = services.GetRequiredService<ISearchService>();
+            await search.SearchAsync(new SearchQuery("прогрів", SearchMode.Keyword, 5), cancellationToken);
+            if (group.RequiresModel)
+            {
+                await search.SearchAsync(new SearchQuery("прогрів", SearchMode.Hybrid, 5), cancellationToken);
+            }
+        }
+        catch (OptionsValidationException exception)
+        {
+            throw new LocalMindException($"Прогони {group.RunNames}: {exception.Message}", exception);
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            TryDelete(temp);
         }
     }
 
@@ -133,8 +198,8 @@ internal static class EvalCommand
             }
             catch (OptionsValidationException exception)
             {
-                var names = string.Join(", ", group.Runs.Select(run => run.Name));
-                throw new LocalMindException($"Прогони {names}: {exception.Message}", exception);
+                // Назви прогонів додає виклик зовні, один раз.
+                throw new LocalMindException(exception.Message, exception);
             }
 
             // Hybrid без моделі тихо деградує до keyword, а для експерименту це було б хибним результатом.
@@ -167,14 +232,17 @@ internal static class EvalCommand
         }
     }
 
-    private static (string Csv, string Markdown) Write(string dataset, IReadOnlyList<EvalReport> reports, string folder)
+    private static (string Csv, string Markdown) Write(
+        string name,
+        IReadOnlyList<EvalReport> reports,
+        IReadOnlyList<string> runOrder,
+        string folder)
     {
         Directory.CreateDirectory(folder);
-        var name = $"{dataset}-{DateTime.Now:yyyyMMdd-HHmmss}";
         var csv = Path.Combine(folder, name + ".csv");
         var markdown = Path.Combine(folder, name + ".md");
-        File.WriteAllText(csv, EvalReportWriter.ToCsv(reports));
-        File.WriteAllText(markdown, EvalReportWriter.ToMarkdown(reports));
+        File.WriteAllText(csv, EvalReportWriter.ToCsv(reports, runOrder));
+        File.WriteAllText(markdown, EvalReportWriter.ToMarkdown(reports, runOrder));
         return (csv, markdown);
     }
 
