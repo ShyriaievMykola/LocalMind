@@ -97,6 +97,7 @@ jobs:
               *.tar.gz) tar -xzf "$archive" -C ../smoke ;;
             esac
           done
+          cd ..
           ls smoke
 
       - name: Smoke (CLI)
