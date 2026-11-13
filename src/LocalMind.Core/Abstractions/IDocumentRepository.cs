@@ -57,7 +57,10 @@ public interface IDocumentRepository
     /// </summary>
     /// <param name="document">Документ.</param>
     /// <param name="chunks">Фрагменти документа; порожній список для документів без тексту або з помилкою.</param>
-    /// <param name="vectors">Вектори фрагментів у тому самому порядку, що й <paramref name="chunks"/>.</param>
+    /// <param name="vectors">
+    /// Вектори фрагментів у тому самому порядку, що й <paramref name="chunks"/>. Порожній список — фрагменти без векторів
+    /// (модель embeddings не завантажена): вони доступні keyword-пошуку.
+    /// </param>
     /// <param name="modelName">
     /// Модель, якою обчислено <paramref name="vectors"/> (<see cref="IEmbedder.ModelName"/>).
     /// Якщо такої моделі ще немає у сховищі, вона реєструється автоматично.

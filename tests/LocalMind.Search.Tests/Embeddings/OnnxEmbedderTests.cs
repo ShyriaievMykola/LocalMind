@@ -122,7 +122,7 @@ public class OnnxEmbedderTests
     {
         using var embedder = CreateEmbedderWithMissingFiles();
 
-        var exception = await Assert.ThrowsAsync<LocalMindException>(
+        var exception = await Assert.ThrowsAsync<ModelNotFoundException>(
             () => embedder.EmbedAsync(["текст"], EmbeddingPurpose.Query));
 
         Assert.Contains("download-models", exception.Message, StringComparison.Ordinal);

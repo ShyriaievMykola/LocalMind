@@ -195,7 +195,7 @@ public sealed class InMemoryDocumentRepository : IDocumentRepository
         ArgumentNullException.ThrowIfNull(vectors);
         ArgumentException.ThrowIfNullOrWhiteSpace(modelName);
 
-        if (vectors.Count != chunks.Count)
+        if (vectors.Count != 0 && vectors.Count != chunks.Count)
         {
             throw new ArgumentException(
                 $"Кількість векторів ({vectors.Count}) не збігається з кількістю фрагментів ({chunks.Count}).",
@@ -221,7 +221,7 @@ public sealed class InMemoryDocumentRepository : IDocumentRepository
 
             _documents[document.Id] = document;
             _chunksByDocument[document.Id] = [.. chunks];
-            for (var i = 0; i < chunks.Count; i++)
+            for (var i = 0; i < vectors.Count; i++)
             {
                 _vectors[(chunks[i].Id, modelName)] = vectors[i];
             }

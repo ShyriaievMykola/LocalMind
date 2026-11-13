@@ -52,6 +52,22 @@ public sealed class OnnxEmbedder : IEmbedder, IDisposable
     public int MaxTokens => _options.MaxTokens;
 
     /// <inheritdoc />
+    public void EnsureAvailable()
+    {
+        if (!File.Exists(_options.ModelPath))
+        {
+            throw new ModelNotFoundException(
+                $"Файл моделі не знайдено: {_options.ModelPath}. Запустіть scripts/download-models.");
+        }
+
+        if (!_tokenizer.IsAvailable)
+        {
+            throw new ModelNotFoundException(
+                $"Файл токенізатора не знайдено: {_options.TokenizerPath}. Запустіть scripts/download-models.");
+        }
+    }
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<ReadOnlyMemory<float>>> EmbedAsync(
         IReadOnlyList<string> texts,
         EmbeddingPurpose purpose,
@@ -150,7 +166,7 @@ public sealed class OnnxEmbedder : IEmbedder, IDisposable
     {
         if (!File.Exists(_options.ModelPath))
         {
-            throw new LocalMindException(
+            throw new ModelNotFoundException(
                 $"Файл моделі не знайдено: {_options.ModelPath}. Запустіть scripts/download-models.");
         }
 
