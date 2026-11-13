@@ -126,25 +126,39 @@ jobs:
             echo "::error::Версія CLI «$version», очікувалась $expected"
             exit 1
           fi
-          # Моделі в архіві немає і в CI ми її не тягнемо (~470 МБ), тож eval на demo має впасти зрозумілою
-          # помилкою про модель з кодом 1. Це доводить, що CLI стартує, розбирає аргументи й читає датасет.
-          # Крок розрахований саме на відсутність моделі: якщо колись додати кеш моделей, eval вдасться (код 0),
-          # і цей крок доведеться замінити перевіркою метрик. Повний прогін з моделлю — ручний пункт
-          # чекліста D-02 (docs/release.md). Запуск з порожньої теки: відносний ModelPath береться від поточної папки.
+          # Моделі в архіві немає і в CI ми її не тягнемо (~470 МБ). Keyword-режим працює без моделі (#174), тож eval на demo
+          # у ньому має вдатися: код 0, CSV і Markdown на місці, у CSV рядки keyword. Semantic без моделі має впасти зрозумілою
+          # помилкою з кодом 1 і підказкою про download-models. Повний прогін з моделлю — ручний пункт чекліста D-02
+          # (docs/release.md). Запуск з порожньої теки: відносний ModelPath береться від поточної папки.
           dataset="$PWD/eval/datasets/demo"
           mkdir -p "$RUNNER_TEMP/smoke-run"
           cd "$RUNNER_TEMP/smoke-run"
+          cli_bin="$OLDPWD/$bin"
+          results="$RUNNER_TEMP/smoke-eval"
+
+          "$cli_bin" eval --dataset "$dataset" --mode keyword --output "$results"
+          csv=("$results"/*.csv)
+          md=("$results"/*.md)
+          if [[ ! -s "${csv[0]}" || ! -s "${md[0]}" ]]; then
+            echo "::error::eval --mode keyword не створив CSV і Markdown у $results"
+            exit 1
+          fi
+          if ! grep -q ",keyword," "${csv[0]}"; then
+            echo "::error::У CSV немає рядків keyword"
+            exit 1
+          fi
+
           set +e
-          output="$("$OLDPWD/$bin" eval --dataset "$dataset" --mode keyword --output "$RUNNER_TEMP/smoke-eval" 2>&1)"
+          output="$("$cli_bin" eval --dataset "$dataset" --mode semantic --output "$RUNNER_TEMP/smoke-eval-semantic" 2>&1)"
           code=$?
           set -e
           echo "$output"
           if [[ $code -ne 1 ]]; then
-            echo "::error::eval без моделі мав завершитися з кодом 1, а завершився з $code"
+            echo "::error::eval --mode semantic без моделі мав завершитися з кодом 1, а завершився з $code"
             exit 1
           fi
           if ! grep -q "download-models" <<< "$output"; then
-            echo "::error::У повідомленні eval немає підказки про scripts/download-models"
+            echo "::error::У повідомленні eval --mode semantic немає підказки про scripts/download-models"
             exit 1
           fi
 

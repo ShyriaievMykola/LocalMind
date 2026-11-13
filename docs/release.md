@@ -20,14 +20,15 @@ apphost має бути підписаний, а це вміє лише macOS. P
 - [x] в архіві CLI є `localmind`, `appsettings.json`, `scripts/download-models.sh` (на Linux і macOS — з бітом виконання) і `.ps1`;
 - [x] `localmind --help` і `localmind eval --help` завершуються успішно, а `localmind --version` збігається з версією
   збірки (з тегу; у PR — `0.0.0-dev`, далі CLI дописує `+<коміт>`);
-- [x] `localmind eval --dataset eval/datasets/demo --mode keyword` без моделі завершується кодом 1 зі зрозумілою
-  помилкою про модель (у тексті є підказка `download-models`) — CLI стартує й читає датасет; крок розрахований на
-  відсутність моделі, з кешем моделей код стане 0 і його треба буде замінити;
+- [x] `localmind eval --dataset eval/datasets/demo --mode keyword` без моделі завершується кодом 0, створює CSV і Markdown
+  з рядками keyword (режим keyword моделі не потребує);
+- [x] `localmind eval --dataset eval/datasets/demo --mode semantic` без моделі завершується кодом 1 зі зрозумілою помилкою
+  про модель (у тексті є підказка `download-models`);
 - [x] в архіві App є `LocalMind.App` (`.exe` на Windows) і `appsettings.json`; на Linux і macOS у бінарника є біт
   виконання. Вікно застосунку в CI не запускається.
 
-Модель (~470 МБ) у CI не завантажується: навіть режим `keyword` індексує з ембедінгами, тож `eval` без моделі
-метрик не дає (варіант з ним — окрема задача).
+Модель (~470 МБ) у CI не завантажується, тож метрики semantic і hybrid автоматично не перевіряються: це ручний пункт
+нижче. Якщо колись у CI з'явиться кеш моделей, перевірку помилки semantic треба замінити перевіркою метрик.
 
 **Вручну** перед публікацією релізу (на машині з потрібною ОС, з архіву з GitHub Release):
 
