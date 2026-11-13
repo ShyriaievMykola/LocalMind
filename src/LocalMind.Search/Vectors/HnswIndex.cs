@@ -1,4 +1,4 @@
-using System.Buffers;
+using System.Runtime.InteropServices;
 using LocalMind.Core.Abstractions;
 using LocalMind.Core.Models;
 using LocalMind.Search.Configuration;
@@ -22,8 +22,17 @@ public sealed class HnswIndex : IVectorIndex, IDisposable
     private readonly double _levelMultiplier;
     private readonly Random _random;
 
+    [ThreadStatic]
+    private static SearchScratch? _scratch;
+
     private Guid[] _ids = new Guid[16];
-    private float[]?[] _vectors = new float[]?[16];
+    // Вектори лежать не окремими масивами, а великими шматками по ChunkSize вузлів поспіль: пошук по графу — це випадкові читання
+    // пам'яті, і так кожне з них робить на одне звернення до пам'яті менше (немає посилання на окремий масив). Шматки по
+    // кілька мегабайтів виділяються лише раз, тож росте індекс без копіювання великих масивів.
+    private const int ChunkShift = 10;
+    private const int ChunkSize = 1 << ChunkShift;
+    private const int ChunkMask = ChunkSize - 1;
+    private float[]?[] _chunks = new float[]?[4];
     private List<int>[]?[] _links = new List<int>[]?[16];
     private int _usedSlots;
     private int _entryPoint = -1;
@@ -181,9 +190,24 @@ public sealed class HnswIndex : IVectorIndex, IDisposable
 
     private int MaxLinks(int layer) => layer == 0 ? _m * 2 : _m;
 
-    private float Distance(ReadOnlySpan<float> left, int node) => 1f - VectorMath.DotProduct(left, _vectors[node]!);
+    private ReadOnlySpan<float> VectorOf(int node) =>
+        _chunks[node >> ChunkShift].AsSpan((node & ChunkMask) * Dimensions, Dimensions);
 
-    private float Distance(int left, int right) => 1f - VectorMath.DotProduct(_vectors[left]!, _vectors[right]!);
+    private float Distance(ReadOnlySpan<float> left, int node) => 1f - VectorMath.DotProduct(left, VectorOf(node));
+
+    private float Distance(int left, int right) => 1f - VectorMath.DotProduct(VectorOf(left), VectorOf(right));
+
+    private void StoreVector(int node, ReadOnlySpan<float> vector)
+    {
+        var chunk = node >> ChunkShift;
+        if (chunk >= _chunks.Length)
+        {
+            Array.Resize(ref _chunks, Math.Max(chunk + 1, _chunks.Length * 2));
+        }
+
+        var data = _chunks[chunk] ??= new float[ChunkSize * Dimensions];
+        vector.CopyTo(data.AsSpan((node & ChunkMask) * Dimensions, Dimensions));
+    }
 
     private void Insert(Guid chunkId, float[] vector)
     {
@@ -192,7 +216,7 @@ public sealed class HnswIndex : IVectorIndex, IDisposable
         var level = (int)(-Math.Log(1.0 - _random.NextDouble()) * _levelMultiplier);
 #pragma warning restore CA5394
         _ids[node] = chunkId;
-        _vectors[node] = vector;
+        StoreVector(node, vector);
         var links = new List<int>[level + 1];
         for (var layer = 0; layer <= level; layer++)
         {
@@ -283,7 +307,6 @@ public sealed class HnswIndex : IVectorIndex, IDisposable
         foreach (var node in removed)
         {
             _links[node] = null;
-            _vectors[node] = null;
             _freeSlots.Push(node);
         }
 
@@ -451,73 +474,101 @@ public sealed class HnswIndex : IVectorIndex, IDisposable
         return current;
     }
 
+    /// <summary>
+    /// Робочі структури пошуку в шарі. Живуть окремо для кожного потоку й повторно використовуються: пошуки йдуть паралельно
+    /// під замком читання, тож спільними вони бути не можуть, а виділяти їх на кожен виклик дорого (на побудові їх тисячі на вектор).
+    /// </summary>
+    private sealed class SearchScratch
+    {
+        /// <summary>Мітка відвіданості вузла: вузол відвіданий, якщо мітка дорівнює поточному <see cref="Stamp"/>; очищати масив не треба.</summary>
+        public int[] Visited = new int[16];
+
+        public int Stamp;
+
+        public readonly PriorityQueue<int, float> Candidates = new();
+
+        /// <summary>Пріоритет — мінус відстань: на вершині найгірший із знайдених, а відстань відновлюється з пріоритету.</summary>
+        public readonly PriorityQueue<int, float> Best = new();
+
+        public void Begin(int nodeCount)
+        {
+            if (Visited.Length < nodeCount)
+            {
+                Array.Resize(ref Visited, Math.Max(nodeCount, Visited.Length * 2));
+            }
+
+            if (++Stamp == int.MaxValue)
+            {
+                Array.Clear(Visited);
+                Stamp = 1;
+            }
+
+            Candidates.Clear();
+            Best.Clear();
+        }
+    }
+
     /// <summary>Пошук найближчих у шарі; результат відсортований за зростанням відстані.</summary>
     private List<(int Node, float Distance)> SearchLayer(ReadOnlySpan<float> query, List<int> entries, int ef, int layer)
     {
-        var visited = ArrayPool<bool>.Shared.Rent(_usedSlots);
-        Array.Clear(visited, 0, _usedSlots);
-        try
+        var scratch = _scratch ??= new SearchScratch();
+        scratch.Begin(_usedSlots);
+        var visited = scratch.Visited;
+        var stamp = scratch.Stamp;
+        var candidates = scratch.Candidates;
+        var best = scratch.Best;
+
+        foreach (var entry in entries)
         {
-            var candidates = new PriorityQueue<int, float>();
-            var best = new PriorityQueue<int, float>(); // пріоритет — мінус відстань: на вершині найгірший із знайдених
-            var distances = new Dictionary<int, float>();
-            foreach (var entry in entries)
+            var distance = Distance(query, entry);
+            visited[entry] = stamp;
+            candidates.Enqueue(entry, distance);
+            best.Enqueue(entry, -distance);
+            if (best.Count > ef)
             {
-                var distance = Distance(query, entry);
-                visited[entry] = true;
-                distances[entry] = distance;
-                candidates.Enqueue(entry, distance);
-                best.Enqueue(entry, -distance);
-                if (best.Count > ef)
-                {
-                    best.Dequeue();
-                }
+                best.Dequeue();
+            }
+        }
+
+        best.TryPeek(out _, out var worstNegated);
+        while (candidates.TryDequeue(out var current, out var currentDistance))
+        {
+            if (best.Count >= ef && currentDistance > -worstNegated)
+            {
+                break;
             }
 
-            while (candidates.TryDequeue(out var current, out var currentDistance))
+            foreach (var neighbor in CollectionsMarshal.AsSpan(_links[current]![layer]))
             {
-                best.TryPeek(out _, out var worstNegated);
-                if (best.Count >= ef && currentDistance > -worstNegated)
+                if (visited[neighbor] == stamp)
                 {
-                    break;
+                    continue;
                 }
 
-                foreach (var neighbor in _links[current]![layer])
+                visited[neighbor] = stamp;
+                var distance = Distance(query, neighbor);
+                if (best.Count < ef || distance < -worstNegated)
                 {
-                    if (visited[neighbor])
+                    candidates.Enqueue(neighbor, distance);
+                    best.Enqueue(neighbor, -distance);
+                    if (best.Count > ef)
                     {
-                        continue;
+                        best.Dequeue();
                     }
 
-                    visited[neighbor] = true;
-                    var distance = Distance(query, neighbor);
                     best.TryPeek(out _, out worstNegated);
-                    if (best.Count < ef || distance < -worstNegated)
-                    {
-                        distances[neighbor] = distance;
-                        candidates.Enqueue(neighbor, distance);
-                        best.Enqueue(neighbor, -distance);
-                        if (best.Count > ef)
-                        {
-                            best.Dequeue();
-                        }
-                    }
                 }
             }
-
-            var result = new List<(int Node, float Distance)>(best.Count);
-            while (best.TryDequeue(out var node, out _))
-            {
-                result.Add((node, distances[node]));
-            }
-
-            result.Reverse();
-            return result;
         }
-        finally
+
+        var result = new List<(int Node, float Distance)>(best.Count);
+        while (best.TryDequeue(out var node, out var negated))
         {
-            ArrayPool<bool>.Shared.Return(visited);
+            result.Add((node, -negated));
         }
+
+        result.Reverse();
+        return result;
     }
 
     private int AllocateSlot()
@@ -531,7 +582,6 @@ public sealed class HnswIndex : IVectorIndex, IDisposable
         {
             var size = _ids.Length * 2;
             Array.Resize(ref _ids, size);
-            Array.Resize(ref _vectors, size);
             Array.Resize(ref _links, size);
         }
 
