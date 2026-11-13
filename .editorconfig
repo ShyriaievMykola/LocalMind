@@ -46,6 +46,13 @@ dotnet_diagnostic.CA2007.severity = none
 [tests/**.cs]
 # Назви тестів з підкресленнями: Method_State_Expected
 dotnet_diagnostic.CA1707.severity = none
+# Тестові дані генеруються System.Random із фіксованим зерном: потрібна відтворюваність, а не криптостійкість
+# (у src це правило вмикнене повністю — рівень AnalysisLevelSecurity=latest-all у Directory.Build.props).
+dotnet_diagnostic.CA5394.severity = none
+
+[benchmarks/**.cs]
+# Випадкові вектори бенчмарків генеруються System.Random із фіксованим зерном: відтворюваність, а не криптостійкість.
+dotnet_diagnostic.CA5394.severity = none
 
 # Міграції EF Core згенеровано інструментом
 [**/Migrations/*.cs]

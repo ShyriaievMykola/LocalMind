@@ -16,6 +16,8 @@ internal sealed class FakeSearchService : ISearchService
 
     public FakeSearchHistory History { get; } = new();
 
+    public AppRestartState Restart { get; } = new();
+
     public FakeFileLauncher Files { get; } = new();
 
     public Func<SearchQuery, CancellationToken, Task<IReadOnlyList<SearchResult>>> Handler { get; set; } =
@@ -43,6 +45,6 @@ internal sealed class FakeSearchService : ISearchService
         return new SearchViewModel(this, status, Options.Create(new SearchOptions { DefaultTopK = defaultTopK, DefaultMode = defaultMode }),
             NullLogger<SearchViewModel>.Instance,
             new ResultCardFactory(repository ?? new InMemoryDocumentRepository(), Files, NullLogger<ResultCardViewModel>.Instance),
-            History);
+            History, Restart);
     }
 }

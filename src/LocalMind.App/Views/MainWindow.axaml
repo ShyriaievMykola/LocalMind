@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:LocalMind.App.ViewModels"
+        xmlns:services="using:LocalMind.App.Services"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="650"
@@ -28,6 +29,11 @@
                 Background="{DynamicResource Lm.Brush.BackgroundSecondary}"
                 BorderBrush="{DynamicResource Lm.Brush.Warning}" BorderThickness="0,0,0,2">
           <TextBlock Text="{Binding NoticeText}" TextWrapping="Wrap" AutomationProperties.Name="Стан ядра: проблема" />
+        </Border>
+        <Border IsVisible="{Binding IsRestartRequired}" Padding="16,8"
+                Background="{DynamicResource Lm.Brush.BackgroundSecondary}"
+                BorderBrush="{DynamicResource Lm.Brush.Warning}" BorderThickness="0,0,0,2">
+          <TextBlock Text="{x:Static services:AppRestartState.Message}" TextWrapping="Wrap" AutomationProperties.Name="Потрібен перезапуск" />
         </Border>
         <Border IsVisible="{Binding HasUnhandledError}" Padding="16,8"
                 Background="{DynamicResource Lm.Brush.BackgroundSecondary}"

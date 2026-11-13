@@ -27,6 +27,7 @@ public sealed partial class LibraryViewModel : ViewModelBase
     private readonly IFolderPicker _folderPicker;
     private readonly IUiDispatcher _dispatcher;
     private readonly CoreStatus _status;
+    private readonly AppRestartState _restart;
     private readonly ILogger<LibraryViewModel> _logger;
     private readonly EventHandler<IndexingProgress> _progressHandler;
     private readonly EventHandler _statusHandler;
@@ -40,7 +41,8 @@ public sealed partial class LibraryViewModel : ViewModelBase
         IFolderPicker folderPicker,
         IUiDispatcher dispatcher,
         CoreStatus status,
-        ILogger<LibraryViewModel> logger)
+        ILogger<LibraryViewModel> logger,
+        AppRestartState restart)
     {
         ArgumentNullException.ThrowIfNull(indexing);
         ArgumentNullException.ThrowIfNull(repository);
@@ -49,6 +51,7 @@ public sealed partial class LibraryViewModel : ViewModelBase
         ArgumentNullException.ThrowIfNull(dispatcher);
         ArgumentNullException.ThrowIfNull(status);
         ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(restart);
 
         _indexing = indexing;
         _repository = repository;
@@ -57,6 +60,7 @@ public sealed partial class LibraryViewModel : ViewModelBase
         _folderPicker = folderPicker;
         _dispatcher = dispatcher;
         _status = status;
+        _restart = restart;
         _logger = logger;
 
         _progressHandler = (_, _) => PostToUi(OnProgressChanged);
@@ -407,7 +411,7 @@ public sealed partial class LibraryViewModel : ViewModelBase
         await RefreshAsync();
     }
 
-    private string? GetCoreBlocker() => _status.Stage switch
+    private string? GetCoreBlocker() => _restart.IsRequired ? AppRestartState.Message : _status.Stage switch
     {
         CoreStage.Starting => "Ядро ще запускається. Спробуйте за мить.",
         CoreStage.Failed => _status.Error ?? "Помилка запуску ядра.",

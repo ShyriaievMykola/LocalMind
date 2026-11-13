@@ -6,6 +6,9 @@
     <Project Path="src/LocalMind.Search/LocalMind.Search.csproj" />
     <Project Path="src/LocalMind.Server/LocalMind.Server.csproj" />
   </Folder>
+  <Folder Name="/benchmarks/">
+    <Project Path="benchmarks/LocalMind.Benchmarks/LocalMind.Benchmarks.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/LocalMind.App.Tests/LocalMind.App.Tests.csproj" />
     <Project Path="tests/LocalMind.Core.Tests/LocalMind.Core.Tests.csproj" />

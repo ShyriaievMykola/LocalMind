@@ -46,6 +46,20 @@ public sealed class SearchViewModelTests
         Assert.Equal(defaults.DefaultMode, viewModel.SelectedMode);
     }
 
+    [Fact]
+    public async Task Search_AfterRestoreFromBackup_AsksForRestartWithoutSearching()
+    {
+        var viewModel = _search.CreateViewModel();
+        viewModel.QueryText = "нотатка";
+        _search.Restart.Require();
+
+        await viewModel.SearchCommand.ExecuteAsync(null);
+
+        Assert.Equal(AppRestartState.Message, viewModel.ErrorMessage);
+        Assert.Empty(_search.Calls);
+        Assert.Empty(viewModel.Results);
+    }
+
     [Theory]
     [InlineData(SearchMode.Semantic)]
     [InlineData(SearchMode.Keyword)]
