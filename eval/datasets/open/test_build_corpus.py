@@ -107,15 +107,24 @@ class HtmlTests(unittest.TestCase):
 
     def test_se_document(self) -> None:
         question = {"title": "How do I &lt;b&gt; this?", "body": "<p>" + "Question text. " * 20 + "</p>", "link": "https://x/q/1",
-                    "question_id": 1, "content_license": "CC BY-SA 3.0", "owner": {"display_name": "Ann"}}
-        answer = {"body": "<p>" + "Answer text. " * 20 + "</p>", "content_license": "CC BY-SA 4.0", "owner": {"display_name": "Bob"}}
+                    "question_id": 1, "creation_date": 1300000000, "content_license": "CC BY-SA 3.0", "owner": {"display_name": "Ann"}}
+        answer = {"body": "<p>" + "Answer text. " * 20 + "</p>", "creation_date": 1600000000, "content_license": "CC BY-SA 4.0", "owner": {"display_name": "Bob"}}
         doc = bc.build_se_doc(question, answer, "en", "it")
         assert doc is not None
-        self.assertEqual(doc.license, "CC BY-SA 3.0 / CC BY-SA 4.0")
+        self.assertEqual(doc.license, "CC BY-SA 4.0")  # дата пізнішого допису
         self.assertEqual(doc.authors, "Ann, Bob")
         self.assertIn("## Answer", doc.text)
         self.assertIsNone(bc.build_se_doc(question, None, "en", "it"))
         self.assertIsNone(bc.build_se_doc({**question, "body": "<p>short</p>"}, {**answer, "body": "<p>x</p>"}, "en", "it"))
+
+
+class SeLicenseTests(unittest.TestCase):
+    def test_version_by_date(self) -> None:
+        self.assertEqual(bc.se_license(1270000000), "CC BY-SA 2.5")  # 2010-03
+        self.assertEqual(bc.se_license(1300000000), "CC BY-SA 2.5")  # 2011-03, до зміни версії
+        self.assertEqual(bc.se_license(1320000000), "CC BY-SA 3.0")  # 2011-10
+        self.assertEqual(bc.se_license(1500000000), "CC BY-SA 3.0")  # 2017
+        self.assertEqual(bc.se_license(1600000000), "CC BY-SA 4.0")  # 2020
 
 
 class LanguageTests(unittest.TestCase):

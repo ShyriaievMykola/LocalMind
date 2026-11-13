@@ -80,7 +80,9 @@
 | Wikibooks Cookbook (en) | ≈330 рецептів, короткі документи | CC BY-SA 4.0 |
 | Вікіджерела (uk) | добірки віршів і оповідання українських авторів | суспільне надбання |
 | Project Gutenberg (en, de, fr, es, it, pl) | художня проза авторів, що померли до 1926 р., розрізана на розділи-документи | суспільне надбання (США) |
-| Stack Exchange (en, es; `ukrainian` — uk чи en за детектором) | питання з прийнятою відповіддю: stackoverflow, es.stackoverflow, superuser, serverfault, cooking, travel, law, money, fitness, chess, biology, physics, history, outdoors, gardening, photo, ukrainian, german | CC BY-SA 2.5 / 3.0 / 4.0 (у маніфесті — для кожного документа) |
+| Stack Exchange (en, es; `ukrainian` — uk чи en за детектором) | питання з прийнятою відповіддю: stackoverflow, es.stackoverflow, superuser, serverfault, cooking, travel, law, money, fitness, chess, biology, physics, history, outdoors, gardening, photo, ukrainian, german | CC BY-SA 2.5 / 3.0 / 4.0: одна версія на документ за датою пізнішого з двох дописів (питання й відповіді): до 2011-04 — 2.5, до 2018-05 — 3.0, далі 4.0 |
+
+Скрипт, тести й маніфест — під ліцензією репозиторію; самі тексти корпусу — під ліцензіями своїх джерел (таблиця вище).
 
 Тексти Вікіпедії, Wikivoyage, Wikibooks і Stack Exchange поширюються за **CC BY-SA** — при будь-якому повторному використанні
 потрібно зберегти атрибуцію й ту саму ліцензію. Автори вказані за `url` кожного документа (сторінка історії правок

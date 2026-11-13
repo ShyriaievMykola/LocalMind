@@ -420,7 +420,6 @@ def language_ok(text: str, expected: str) -> bool:
     if detected == "ru":
         return False
     if len(text) >= 600 and detected != expected:
-        # langdetect плутає споріднені мови на коротких або змішаних текстах: прощаємо лише en↔(es/fr/it/de/pl) у Q&A
         return False
     return True
 
@@ -995,6 +994,20 @@ def collect_stackexchange(http: Http, rng: random.Random, scale: float, log) -> 
     return docs
 
 
+def se_license(created: int) -> str:
+    """Ліцензія допису Stack Exchange за датою створення: до 2011-04 — CC BY-SA 2.5, до 2018-05 — 3.0, далі 4.0.
+
+    Поле content_license в API буває без версії або різним у питання й відповіді, а в документі їх двоє,
+    тому беремо дату пізнішого допису (одна версія на документ).
+    """
+    moment = datetime.datetime.fromtimestamp(created, datetime.timezone.utc)
+    if moment < datetime.datetime(2011, 4, 8, tzinfo=datetime.timezone.utc):
+        return "CC BY-SA 2.5"
+    if moment < datetime.datetime(2018, 5, 2, tzinfo=datetime.timezone.utc):
+        return "CC BY-SA 3.0"
+    return "CC BY-SA 4.0"
+
+
 def build_se_doc(question: dict, answer: dict | None, lang: str, topic: str, mixed: bool = False) -> Doc | None:
     if not answer:
         return None
@@ -1003,10 +1016,10 @@ def build_se_doc(question: dict, answer: dict | None, lang: str, topic: str, mix
     answer_text = html_to_text(answer["body"])
     if len(question_text) + len(answer_text) < 500:
         return None
-    licenses = sorted({question.get("content_license", "CC BY-SA"), answer.get("content_license", "CC BY-SA")})
+    license_ = se_license(max(question.get("creation_date", 0), answer.get("creation_date", 0)))
     authors = ", ".join(sorted({o.get("display_name", "") for o in (question.get("owner", {}), answer.get("owner", {})) if o.get("display_name")}))
     text = f"# {title}\n\n{question_text}\n\n## Answer\n\n{answer_text}"
-    return Doc("stackexchange", lang, topic, title, question["link"], " / ".join(licenses), text,
+    return Doc("stackexchange", lang, topic, title, question["link"], license_, text,
                group=f"se{question['question_id']}", authors=html_to_text(authors), mixed=mixed)
 
 
