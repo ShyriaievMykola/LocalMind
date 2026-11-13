@@ -24,13 +24,14 @@ public sealed partial class SearchViewModel : ViewModelBase
     private readonly ILogger<SearchViewModel> _logger;
     private readonly ResultCardFactory _cards;
     private readonly ISearchHistory _history;
+    private readonly AppRestartState _restart;
     private CancellationTokenSource? _searchCancellation;
     private string? _noResultsQuery;
     private bool _suppressSuggestions;
     private bool _focusPending;
 
     public SearchViewModel(ISearchService search, CoreStatus status, IOptions<SearchOptions> options,
-        ILogger<SearchViewModel> logger, ResultCardFactory cards, ISearchHistory history)
+        ILogger<SearchViewModel> logger, ResultCardFactory cards, ISearchHistory history, AppRestartState restart)
     {
         ArgumentNullException.ThrowIfNull(search);
         ArgumentNullException.ThrowIfNull(status);
@@ -38,12 +39,14 @@ public sealed partial class SearchViewModel : ViewModelBase
         ArgumentNullException.ThrowIfNull(logger);
         ArgumentNullException.ThrowIfNull(cards);
         ArgumentNullException.ThrowIfNull(history);
+        ArgumentNullException.ThrowIfNull(restart);
 
         _search = search;
         _status = status;
         _logger = logger;
         _cards = cards;
         _history = history;
+        _restart = restart;
         // Після помилки ValidateOnStart хост уже повідомив CoreStatus.Failed.
         // Повторне читання невалідних Options не повинно завадити відкриттю вікна.
         var defaults = status.Stage == CoreStage.Failed ? new SearchOptions() : options.Value;
@@ -201,6 +204,13 @@ public sealed partial class SearchViewModel : ViewModelBase
             if (!Enum.IsDefined(SelectedMode))
             {
                 ErrorMessage = "Оберіть режим пошуку.";
+                return;
+            }
+
+            if (_restart.IsRequired)
+            {
+                // Після відновлення з бекапу вектори в пам'яті від старої бази: результати вказували б на неіснуючі документи.
+                ErrorMessage = AppRestartState.Message;
                 return;
             }
 
