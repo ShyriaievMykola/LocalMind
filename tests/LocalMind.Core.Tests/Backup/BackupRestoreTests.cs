@@ -69,6 +69,41 @@ public sealed class BackupRestoreTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Restore_Success_CallsBeforeReplaceOnce()
+    {
+        var encrypted = await _backup.CreateEncryptedSnapshotAsync(Password, default);
+        var calls = 0;
+
+        await _restore.RestoreFromEnvelopeAsync(encrypted, Password, default, () => calls++);
+
+        Assert.Equal(1, calls);
+    }
+
+    [Fact]
+    public async Task Restore_WrongPassword_DoesNotCallBeforeReplace()
+    {
+        var encrypted = await _backup.CreateEncryptedSnapshotAsync(Password, default);
+        var calls = 0;
+
+        await Assert.ThrowsAsync<BackupDecryptionException>(
+            () => _restore.RestoreFromEnvelopeAsync(encrypted, "неправильний пароль", default, () => calls++));
+
+        Assert.Equal(0, calls);
+    }
+
+    [Fact]
+    public async Task Restore_EncryptedNonDatabase_DoesNotCallBeforeReplace()
+    {
+        var notADatabase = AesGcmCipher.Encrypt("це не SQLite, а просто текст достатньої довжини"u8, Password).ToBytes();
+        var calls = 0;
+
+        await Assert.ThrowsAsync<LocalMindException>(
+            () => _restore.RestoreFromEnvelopeAsync(notADatabase, Password, default, () => calls++));
+
+        Assert.Equal(0, calls);
+    }
+
+    [Fact]
     public async Task Restore_WrongPassword_KeepsCurrentDatabase()
     {
         var encrypted = await _backup.CreateEncryptedSnapshotAsync(Password, default);

@@ -49,6 +49,7 @@ public sealed class BruteForceIndex : IVectorIndex, IDisposable
     public void Add(Guid chunkId, ReadOnlyMemory<float> vector)
     {
         EnsureDimensions(vector.Length, nameof(vector));
+        EnsureFinite(vector.Span, nameof(vector));
         var copy = vector.ToArray();
 
         _lock.EnterWriteLock();
@@ -80,6 +81,7 @@ public sealed class BruteForceIndex : IVectorIndex, IDisposable
     public IReadOnlyList<ScoredChunk> Search(ReadOnlySpan<float> query, int k)
     {
         EnsureDimensions(query.Length, nameof(query));
+        EnsureFinite(query, nameof(query));
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(k);
 
         // Купа з k найкращих: на вершині найгірший із них, тож пошук займає O(n log k).
@@ -117,6 +119,17 @@ public sealed class BruteForceIndex : IVectorIndex, IDisposable
 
     /// <inheritdoc />
     public void Dispose() => _lock.Dispose();
+
+    private static void EnsureFinite(ReadOnlySpan<float> vector, string parameterName)
+    {
+        foreach (var value in vector)
+        {
+            if (!float.IsFinite(value))
+            {
+                throw new ArgumentException("Вектор містить NaN або нескінченність.", parameterName);
+            }
+        }
+    }
 
     private void EnsureDimensions(int length, string parameterName)
     {
