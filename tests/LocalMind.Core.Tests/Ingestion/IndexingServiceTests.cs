@@ -66,6 +66,28 @@ public sealed class IndexingServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task AddFolder_ModelMissing_IndexesWithoutVectorsAndNeverCallsEmbedOrWarnsPerFile()
+    {
+        for (var i = 0; i < 6; i++)
+        {
+            Write($"note{i}.txt", $"нотатка номер {i} про каву");
+        }
+
+        var embedder = new UnavailableEmbedder();
+        var logger = new CountingLogger<IndexingService>();
+        var service = CreateService(embedder: embedder, logger: logger);
+
+        await service.AddFolderAsync(_folder);
+        await WaitUntilAsync(() => service.Progress is { IsCompleted: true, Total: 6 });
+
+        Assert.All(await _repository.GetDocumentsAsync(), d => Assert.Equal(DocumentStatus.Indexed, d.Status));
+        Assert.Equal(0, embedder.EmbedCalls);
+        Assert.True(embedder.EnsureCalls >= 6);
+        Assert.Equal(0, _vectorIndex.Count);
+        Assert.Equal(1, logger.Warnings);
+    }
+
+    [Fact]
     public async Task Progress_IsReportedAndReachesHundredPercent()
     {
         Write("one.txt", "перша нотатка");
@@ -515,5 +537,55 @@ public sealed class IndexingServiceTests : IDisposable
             Exception? exception,
             Func<TState, Exception?, string> formatter) =>
             Entries.Enqueue((logLevel, formatter(state, exception)));
+    }
+
+    /// <summary>Embedder без файлів моделі: перевірка наявності кидає виняток, до обчислення векторів справа не доходить.</summary>
+    private sealed class UnavailableEmbedder : IEmbedder
+    {
+        public int EnsureCalls { get; private set; }
+
+        public int EmbedCalls { get; private set; }
+
+        public string ModelName => "unavailable";
+
+        public int Dimensions => 4;
+
+        public int MaxTokens => 512;
+
+        public void EnsureAvailable()
+        {
+            EnsureCalls++;
+            throw new Core.Errors.ModelNotFoundException("Файл моделі не знайдено.");
+        }
+
+        public Task<IReadOnlyList<ReadOnlyMemory<float>>> EmbedAsync(
+            IReadOnlyList<string> texts,
+            EmbeddingPurpose purpose,
+            CancellationToken cancellationToken = default)
+        {
+            EmbedCalls++;
+            throw new Core.Errors.ModelNotFoundException("Файл моделі не знайдено.");
+        }
+    }
+
+    /// <summary>Рахує попередження, щоб перевірити, що про відсутню модель повідомляється раз, а не на кожен файл.</summary>
+    private sealed class CountingLogger<T> : ILogger<T>
+    {
+        private int _warnings;
+
+        public int Warnings => Volatile.Read(ref _warnings);
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (logLevel == LogLevel.Warning)
+            {
+                Interlocked.Increment(ref _warnings);
+            }
+        }
     }
 }

@@ -33,6 +33,9 @@ public sealed class ModelTokenizer
         _tokenizer = new LoadOnce<SentencePieceTokenizer>(Load);
     }
 
+    /// <summary>Чи є файл токенізатора на диску. Без нього нарізка рахує токени приблизно (<see cref="HfTokenCounter"/>).</summary>
+    public bool IsAvailable => File.Exists(_options.TokenizerPath);
+
     /// <summary>Кількість токенів разом зі службовими; 0 для порожнього тексту.</summary>
     public int CountTokens(string text)
     {
@@ -71,7 +74,7 @@ public sealed class ModelTokenizer
     {
         if (!File.Exists(_options.TokenizerPath))
         {
-            throw new LocalMindException(
+            throw new ModelNotFoundException(
                 $"Файл токенізатора не знайдено: {_options.TokenizerPath}. Запустіть scripts/download-models.");
         }
 

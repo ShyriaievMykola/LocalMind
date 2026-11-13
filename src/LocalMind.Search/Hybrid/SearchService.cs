@@ -74,6 +74,8 @@ public sealed partial class SearchService(
 
     private async Task<IReadOnlyList<ScoredChunk>> SemanticAsync(string text, int k, CancellationToken cancellationToken)
     {
+        // Без моделі semantic дає зрозумілу помилку, а не порожній результат (вектори могли й не зберегтися).
+        embedder.EnsureAvailable();
         await LoadVectorsAsync(cancellationToken);
         if (index.Count == 0)
         {

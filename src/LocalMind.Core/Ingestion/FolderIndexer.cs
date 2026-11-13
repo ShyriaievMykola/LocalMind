@@ -52,11 +52,12 @@ public sealed partial class FolderIndexer(
             .ToDictionary(d => d.Path, FilePaths.Comparer);
 
         var result = new FolderIndexingResult();
+        var modelState = new ModelState();
         for (var i = 0; i < files.Count; i++)
         {
             progress?.Report(new IndexingProgress(i, files.Count, result.Failed, files[i]));
             known.TryGetValue(files[i], out var existing);
-            result = await IndexFileAsync(files[i], existing, result, cancellationToken);
+            result = await IndexFileAsync(files[i], existing, modelState, result, cancellationToken);
         }
 
         result = result with { Removed = await RemoveMissingFilesAsync(root, files, known.Values, cancellationToken) };
@@ -67,6 +68,7 @@ public sealed partial class FolderIndexer(
     private async Task<FolderIndexingResult> IndexFileAsync(
         string path,
         Document? existing,
+        ModelState modelState,
         FolderIndexingResult result,
         CancellationToken cancellationToken)
     {
@@ -132,10 +134,29 @@ public sealed partial class FolderIndexer(
             return result with { WithoutText = result.WithoutText + 1 };
         }
 
-        var vectors = await embedder.EmbedAsync([.. chunks.Select(c => c.Text)], EmbeddingPurpose.Passage, cancellationToken);
+        // Без моделі embeddings фрагменти зберігаються без векторів і доступні лише keyword-пошуку.
+        IReadOnlyList<ReadOnlyMemory<float>> vectors = [];
+        if (!modelState.Missing)
+        {
+            try
+            {
+                vectors = await embedder.EmbedAsync([.. chunks.Select(c => c.Text)], EmbeddingPurpose.Passage, cancellationToken);
+            }
+            catch (ModelNotFoundException exception)
+            {
+                modelState.Missing = true;
+                LogModelMissing(logger, exception.Message);
+            }
+        }
+
         var document = new Document(id, storedPath, hash, DocumentStatus.Indexed, DateTimeOffset.UtcNow);
         await repository.SaveAsync(document, chunks, vectors, embedder.ModelName, cancellationToken);
-        return result with { Indexed = result.Indexed + 1, Chunks = result.Chunks + chunks.Count };
+        return result with
+        {
+            Indexed = result.Indexed + 1,
+            Chunks = result.Chunks + chunks.Count,
+            WithoutVectors = result.WithoutVectors + (vectors.Count == 0 ? 1 : 0),
+        };
     }
 
     /// <summary>Прибирає зі сховища документи цієї папки, файлів яких уже немає.</summary>
@@ -163,6 +184,15 @@ public sealed partial class FolderIndexer(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Файл пропущено: {Path}. {Reason}")]
     private static partial void LogFileFailed(ILogger logger, string path, string reason);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Модель embeddings недоступна: файли індексуються без векторів, лише для keyword-пошуку. {Reason}")]
+    private static partial void LogModelMissing(ILogger logger, string reason);
+
+    /// <summary>Чи модель відсутня в цьому запуску: після першої невдачі її не пробуємо знову для кожного файла.</summary>
+    private sealed class ModelState
+    {
+        public bool Missing { get; set; }
+    }
 }
 
 /// <summary>Підсумок індексації папки.</summary>
@@ -172,10 +202,14 @@ public sealed partial class FolderIndexer(
 /// <param name="WithoutText">Скільки файлів порожні або без тексту (наприклад, скани).</param>
 /// <param name="Failed">Скільки файлів не вдалося обробити.</param>
 /// <param name="Removed">Скільки документів прибрано, бо їхніх файлів уже немає.</param>
+/// <param name="WithoutVectors">
+/// Скільки проіндексованих файлів збережено без векторів, бо модель embeddings не завантажено (лише keyword-пошук).
+/// </param>
 public sealed record FolderIndexingResult(
     int Indexed = 0,
     int Chunks = 0,
     int Unchanged = 0,
     int WithoutText = 0,
     int Failed = 0,
-    int Removed = 0);
+    int Removed = 0,
+    int WithoutVectors = 0);
