@@ -1210,6 +1210,83 @@ def summarize(entries: list[dict]) -> str:
     return "\n".join(lines)
 
 
+GROUPED_SOURCES = ("wikipedia", "wikivoyage")  # мовні версії однієї статті беруться тільки цілими групами
+
+
+def _allocate(strata: dict[tuple, list[dict]], quota: int) -> dict[tuple, int]:
+    """Пропорційний розподіл квоти за стратами (метод найбільших залишків), не більше, ніж є в страті."""
+    total = sum(len(v) for v in strata.values())
+    raw = {key: quota * len(items) / total for key, items in strata.items()}
+    taken = {key: min(int(value), len(strata[key])) for key, value in raw.items()}
+    for key in sorted(raw, key=lambda k: (-(raw[k] - int(raw[k])), k)):
+        if sum(taken.values()) >= quota:
+            break
+        if taken[key] < len(strata[key]):
+            taken[key] += 1
+    return taken
+
+
+def select_subset(entries: list[dict], size: int, seed: int) -> list[dict]:
+    """Стратифікована підвибірка приблизно з `size` документів, детермінована за `seed`.
+
+    * частка кожного джерела — як у повному корпусі;
+    * Вікіпедія й Wikivoyage — цілими групами (усі мовні версії статті), групи чергуються за темами, тож мови,
+      теми й cross-lingual збережені;
+    * решта джерел — пропорційно за (мова, тема).
+    """
+    rng = random.Random(seed)
+    by_source: dict[str, list[dict]] = {}
+    for entry in entries:
+        by_source.setdefault(entry["source"], []).append(entry)
+    chosen: list[dict] = []
+    for source in sorted(by_source):
+        items = sorted(by_source[source], key=lambda e: e["path"])
+        quota = round(size * len(items) / len(entries))
+        if quota <= 0:
+            continue
+        if source in GROUPED_SOURCES:
+            groups: dict[str, list[dict]] = {}
+            for item in items:
+                groups.setdefault(item["group"], []).append(item)
+            by_topic: dict[str, list[str]] = {}
+            for group in sorted(groups):
+                by_topic.setdefault(groups[group][0]["topic"], []).append(group)
+            for topic_groups in by_topic.values():
+                rng.shuffle(topic_groups)
+            taken = 0
+            while taken < quota and any(by_topic.values()):
+                for topic in sorted(by_topic):
+                    if by_topic[topic] and taken < quota:
+                        group = by_topic[topic].pop()
+                        chosen.extend(groups[group])
+                        taken += len(groups[group])
+        else:
+            strata: dict[tuple, list[dict]] = {}
+            for item in items:
+                strata.setdefault((item["lang"], item["topic"]), []).append(item)
+            for key, count in _allocate(strata, quota).items():
+                pool = list(strata[key])
+                rng.shuffle(pool)
+                chosen.extend(pool[:count])
+    return sorted(chosen, key=lambda e: e["path"])
+
+
+def build_subset(corpus: Path, manifest_path: Path, out: Path, size: int, seed: int) -> list[dict]:
+    """Копіює підвибірку в `out/corpus` і пише `out/manifest.jsonl` (підмножина повного маніфесту)."""
+    selected = select_subset(read_manifest(manifest_path), size, seed)
+    target = out / "corpus"
+    if target.is_dir():
+        shutil.rmtree(target)  # лише згенерована раніше підвибірка
+    for entry in selected:
+        destination = target / entry["path"]
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(corpus / entry["path"], destination)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "manifest.jsonl").write_text("".join(json.dumps(e, ensure_ascii=False) + "\n" for e in selected),
+                                        encoding="utf-8", newline="\n")
+    return selected
+
+
 def main(argv: list[str] | None = None) -> int:
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
@@ -1225,6 +1302,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--pause", type=float, default=0.5, help="пауза між запитами до не-вікімедійних API, с")
     parser.add_argument("--wiki-pause", type=float, default=WIKI_PAUSE, help="пауза між запитами до сайтів Вікімедії, с")
     parser.add_argument("--pdf-font", default=None, help="TTF з кирилицею для PDF (інакше шукається в системі)")
+    parser.add_argument("--subset", type=int, default=0, help="не збирати, а вибрати з готового корпусу підкорпус на N документів")
+    parser.add_argument("--subset-out", default=None, help="тека підкорпусу (corpus/ і manifest.jsonl всередині; за замовчуванням open-eval поряд з --out)")
     args = parser.parse_args(argv)
 
     sources = [s.strip() for s in args.sources.split(",") if s.strip()]
@@ -1234,6 +1313,10 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     out = Path(args.out)
     manifest = Path(args.manifest) if args.manifest else out.parent / "manifest.jsonl"
+    if args.subset:
+        target = Path(args.subset_out) if args.subset_out else out.parent.parent / "open-eval"
+        print(summarize(build_subset(out, manifest, target, args.subset, args.seed)))
+        return 0
     pdf_font = find_pdf_font(args.pdf_font)
     if pdf_font is None:
         print("Увага: шрифт для PDF не знайдено (--pdf-font), PDF-документи замінюються на DOCX.", file=sys.stderr)

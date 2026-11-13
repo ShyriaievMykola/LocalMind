@@ -322,5 +322,53 @@ class WriteTests(unittest.TestCase):
         self.assertIn("uk", text)
 
 
+class SubsetTests(unittest.TestCase):
+    @staticmethod
+    def _entries() -> list[dict]:
+        entries = []
+        for i in range(60):
+            for lang in ("en", "uk", "de"):
+                entries.append({"path": f"wikipedia/{lang}/a{i}-{lang}.md", "source": "wikipedia", "lang": lang,
+                                "topic": "art" if i % 2 else "law", "group": f"A{i}"})
+        for i in range(120):
+            entries.append({"path": f"stackexchange/en/q{i}.md", "source": "stackexchange", "lang": "en",
+                            "topic": "it" if i % 3 else "cooking", "group": f"se{i}"})
+        return entries
+
+    def test_deterministic_and_proportional(self) -> None:
+        entries = self._entries()
+        first = bc.select_subset(entries, 90, seed=42)
+        self.assertEqual(first, bc.select_subset(entries, 90, seed=42))
+        self.assertNotEqual(first, bc.select_subset(entries, 90, seed=43))
+        self.assertAlmostEqual(len(first), 90, delta=3)
+        share = sum(e["source"] == "wikipedia" for e in first) / len(first)
+        self.assertAlmostEqual(share, 180 / 300, delta=0.05)
+
+    def test_wikipedia_groups_are_whole(self) -> None:
+        chosen = bc.select_subset(self._entries(), 90, seed=1)
+        counts: dict[str, int] = {}
+        for entry in chosen:
+            if entry["source"] == "wikipedia":
+                counts[entry["group"]] = counts.get(entry["group"], 0) + 1
+        self.assertTrue(counts)
+        self.assertTrue(all(count == 3 for count in counts.values()))
+        self.assertEqual({e["topic"] for e in chosen if e["source"] == "wikipedia"}, {"art", "law"})
+
+    def test_build_subset_copies_files_and_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            entries = self._entries()
+            for entry in entries:
+                target = root / "corpus" / entry["path"]
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text("текст", encoding="utf-8")
+            manifest = root / "manifest.jsonl"
+            manifest.write_text("".join(json.dumps(e, ensure_ascii=False) + "\n" for e in entries), encoding="utf-8")
+            selected = bc.build_subset(root / "corpus", manifest, root / "sub", 60, seed=7)
+            self.assertEqual(bc.read_manifest(root / "sub" / "manifest.jsonl"), selected)
+            self.assertEqual({p.relative_to(root / "sub" / "corpus").as_posix() for p in (root / "sub" / "corpus").rglob("*") if p.is_file()},
+                             {e["path"] for e in selected})
+
+
 if __name__ == "__main__":
     unittest.main()
