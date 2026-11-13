@@ -110,12 +110,27 @@ jobs:
           test -f "$cli/appsettings.json" || { echo "::error::Немає appsettings.json в архіві CLI"; exit 1; }
           test -f "$cli/scripts/download-models.sh" -a -f "$cli/scripts/download-models.ps1" \
             || { echo "::error::Немає скриптів завантаження моделі в архіві CLI"; exit 1; }
+          # Біт виконання скрипта: tar.gz мав його зберегти (на Windows перевіряти нічого).
+          if [[ "${{ runner.os }}" != "Windows" && ! -x "$cli/scripts/download-models.sh" ]]; then
+            echo "::error::У scripts/download-models.sh немає біта виконання"
+            exit 1
+          fi
           "$bin" --help
           "$bin" eval --help > /dev/null
+          # Версія з тегу (v0.2.0 → 0.2.0), у PR і ручному запуску — 0.0.0-dev; до неї CLI дописує +<коміт>.
+          expected="0.0.0-dev"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then expected="${GITHUB_REF_NAME#v}"; fi
+          version="$("$bin" --version)"
+          echo "localmind --version: $version"
+          if [[ "$version" != "$expected" && "$version" != "$expected+"* ]]; then
+            echo "::error::Версія CLI «$version», очікувалась $expected"
+            exit 1
+          fi
           # Моделі в архіві немає і в CI ми її не тягнемо (~470 МБ), тож eval на demo має впасти зрозумілою
-          # помилкою про модель з кодом 1. Це доводить, що CLI стартує, розбирає аргументи й читає датасет;
-          # метрики з моделлю — ручний пункт чекліста D-02 (docs/release.md). Запуск з порожньої теки:
-          # відносний ModelPath береться від поточної папки.
+          # помилкою про модель з кодом 1. Це доводить, що CLI стартує, розбирає аргументи й читає датасет.
+          # Крок розрахований саме на відсутність моделі: якщо колись додати кеш моделей, eval вдасться (код 0),
+          # і цей крок доведеться замінити перевіркою метрик. Повний прогін з моделлю — ручний пункт
+          # чекліста D-02 (docs/release.md). Запуск з порожньої теки: відносний ModelPath береться від поточної папки.
           dataset="$PWD/eval/datasets/demo"
           mkdir -p "$RUNNER_TEMP/smoke-run"
           cd "$RUNNER_TEMP/smoke-run"

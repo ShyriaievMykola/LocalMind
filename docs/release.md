@@ -17,10 +17,12 @@ apphost має бути підписаний, а це вміє лише macOS. P
 **Автоматично** (`release.yml`, після Pack, на кожній з трьох ОС; запускається і в PR зі зміною workflow). Архіви
 розпаковуються в чисту теку, як це зробить користувач:
 
-- [x] в архіві CLI є `localmind`, `appsettings.json`, `scripts/download-models.sh` і `.ps1`;
-- [x] `localmind --help` і `localmind eval --help` завершуються успішно;
+- [x] в архіві CLI є `localmind`, `appsettings.json`, `scripts/download-models.sh` (на Linux і macOS — з бітом виконання) і `.ps1`;
+- [x] `localmind --help` і `localmind eval --help` завершуються успішно, а `localmind --version` збігається з версією
+  збірки (з тегу; у PR — `0.0.0-dev`, далі CLI дописує `+<коміт>`);
 - [x] `localmind eval --dataset eval/datasets/demo --mode keyword` без моделі завершується кодом 1 зі зрозумілою
-  помилкою («Файл токенізатора не знайдено… Запустіть scripts/download-models») — CLI стартує й читає датасет;
+  помилкою про модель (у тексті є підказка `download-models`) — CLI стартує й читає датасет; крок розрахований на
+  відсутність моделі, з кешем моделей код стане 0 і його треба буде замінити;
 - [x] в архіві App є `LocalMind.App` (`.exe` на Windows) і `appsettings.json`; на Linux і macOS у бінарника є біт
   виконання. Вікно застосунку в CI не запускається.
 
