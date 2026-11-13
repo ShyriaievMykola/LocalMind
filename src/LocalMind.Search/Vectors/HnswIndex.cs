@@ -188,7 +188,9 @@ public sealed class HnswIndex : IVectorIndex, IDisposable
     private void Insert(Guid chunkId, float[] vector)
     {
         var node = AllocateSlot();
+#pragma warning disable CA5394 // Випадковий рівень вузла в графі HNSW: потрібна відтворюваність за зерном, а не криптостійкість.
         var level = (int)(-Math.Log(1.0 - _random.NextDouble()) * _levelMultiplier);
+#pragma warning restore CA5394
         _ids[node] = chunkId;
         _vectors[node] = vector;
         var links = new List<int>[level + 1];
