@@ -200,7 +200,7 @@ public class OnnxEmbedderTests
         options.TokenizerPath = Path.Combine(folder.Path, "sentencepiece.bpe.model");
         var wrapped = Options.Create(options);
         using var embedder = new OnnxEmbedder(wrapped, new ModelTokenizer(wrapped));
-        await Assert.ThrowsAsync<LocalMindException>(() => embedder.EmbedAsync(["текст"], EmbeddingPurpose.Query));
+        await Assert.ThrowsAsync<ModelNotFoundException>(() => embedder.EmbedAsync(["текст"], EmbeddingPurpose.Query));
 
         File.Copy(source, options.TokenizerPath);
 

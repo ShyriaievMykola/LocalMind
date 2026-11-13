@@ -46,6 +46,32 @@ public sealed class ChangeDetectorTests : IDisposable
     }
 
     [Fact]
+    public async Task DetectAsync_SameContentButStoredVectorsAreOfAnotherModel_ReturnsModified()
+    {
+        var path = await WriteFileAsync("note.md", "текст");
+        await StoreWithVectorAsync(path, Sha256("текст"), Model);
+
+        var sameModel = await new ChangeDetector(_repository, new FakeEmbedder(modelName: Model)).DetectAsync(path);
+        var otherModel = await new ChangeDetector(_repository, new FakeEmbedder(modelName: "other-model")).DetectAsync(path);
+
+        Assert.Equal(FileChangeKind.Unchanged, sameModel.Kind);
+        Assert.Equal(FileChangeKind.Modified, otherModel.Kind);
+        Assert.True(otherModel.NeedsIndexing);
+    }
+
+    [Fact]
+    public async Task DetectAsync_DocumentWithoutTextDoesNotNeedVectorsOfAnyModel()
+    {
+        var path = await WriteFileAsync("empty.md", "текст");
+        var document = new Document(Guid.NewGuid(), path, Sha256("текст"), DocumentStatus.NoText, TestData.Now);
+        await _repository.SaveAsync(document, [], [], Model);
+
+        var change = await new ChangeDetector(_repository, new FakeEmbedder(modelName: "other-model")).DetectAsync(path);
+
+        Assert.Equal(FileChangeKind.Unchanged, change.Kind);
+    }
+
+    [Fact]
     public async Task DetectAsync_ContentChanged_ReturnsModified()
     {
         var path = await WriteFileAsync("note.md", "стара версія");
@@ -174,6 +200,14 @@ public sealed class ChangeDetectorTests : IDisposable
         var document = new Document(Guid.NewGuid(), path, hash, DocumentStatus.Indexed, TestData.Now);
         await _repository.SaveAsync(document, [], [], Model);
         return document;
+    }
+
+    private async Task StoreWithVectorAsync(string path, string hash, string model)
+    {
+        var document = new Document(Guid.NewGuid(), path, hash, DocumentStatus.Indexed, TestData.Now);
+        var chunk = new Chunk(Guid.NewGuid(), document.Id, 0, "текст", 0);
+        float[] vector = [1f, 0f];
+        await _repository.SaveAsync(document, [chunk], [vector], model);
     }
 
     private static string Sha256(string content) =>

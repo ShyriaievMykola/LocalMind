@@ -157,6 +157,32 @@ public sealed class DocumentRepository(IDbContextFactory<LocalMindDbContext> con
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlySet<Guid>> GetDocumentIdsWithVectorsAsync(
+        string modelName,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(modelName);
+
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+        var ids = await context.Embeddings.AsNoTracking()
+            .Where(e => e.Model!.Name == modelName)
+            .Select(e => e.Chunk!.DocumentId)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+        return ids.ToHashSet();
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> HasVectorsAsync(Guid documentId, string modelName, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(modelName);
+
+        await using var context = await contextFactory.CreateDbContextAsync(cancellationToken);
+        return await context.Embeddings.AsNoTracking()
+            .AnyAsync(e => e.Model!.Name == modelName && e.Chunk!.DocumentId == documentId, cancellationToken);
+    }
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<Guid>> SaveAsync(
         Document document,
         IReadOnlyList<Chunk> chunks,

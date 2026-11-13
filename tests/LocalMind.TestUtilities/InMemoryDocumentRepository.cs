@@ -183,6 +183,32 @@ public sealed class InMemoryDocumentRepository : IDocumentRepository
         }
     }
 
+    public Task<IReadOnlySet<Guid>> GetDocumentIdsWithVectorsAsync(string modelName, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(modelName);
+
+        lock (_lock)
+        {
+            var ids = _chunksByDocument
+                .Where(pair => pair.Value.Any(chunk => _vectors.ContainsKey((chunk.Id, modelName))))
+                .Select(pair => pair.Key)
+                .ToHashSet();
+            return Task.FromResult<IReadOnlySet<Guid>>(ids);
+        }
+    }
+
+    public Task<bool> HasVectorsAsync(Guid documentId, string modelName, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(modelName);
+
+        lock (_lock)
+        {
+            var has = _chunksByDocument.TryGetValue(documentId, out var chunks)
+                && chunks.Any(chunk => _vectors.ContainsKey((chunk.Id, modelName)));
+            return Task.FromResult(has);
+        }
+    }
+
     public Task<IReadOnlyList<Guid>> SaveAsync(
         Document document,
         IReadOnlyList<Chunk> chunks,

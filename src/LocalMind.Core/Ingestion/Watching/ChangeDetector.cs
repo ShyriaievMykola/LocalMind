@@ -1,13 +1,16 @@
 using System.Security.Cryptography;
 using LocalMind.Core.Abstractions;
+using LocalMind.Core.Errors;
+using LocalMind.Core.Models;
 
 namespace LocalMind.Core.Ingestion.Watching;
 
 /// <summary>
 /// Визначає, чи треба переіндексувати файл: рахує SHA-256 вмісту і порівнює з хешем,
-/// збереженим у сховищі. Незмінені файли не переіндексовуються (AC-09).
+/// збереженим у сховищі. Незмінені файли не переіндексовуються (AC-09). Проіндексований файл без векторів
+/// поточної моделі (модель змінили) вважається зміненим: інакше семантичний пошук його не бачив би.
 /// </summary>
-public sealed class ChangeDetector(IDocumentRepository repository)
+public sealed class ChangeDetector(IDocumentRepository repository, IEmbedder? embedder = null)
 {
     /// <summary>Розмір буфера читання: файл читається частинами, а не цілком у пам'ять.</summary>
     private const int BufferSize = 81_920;
@@ -41,9 +44,17 @@ public sealed class ChangeDetector(IDocumentRepository repository)
             return new FileChange(path, FileChangeKind.New, hash, StoredDocument: null);
         }
 
-        var kind = string.Equals(stored.ContentHash, hash, StringComparison.Ordinal)
-            ? FileChangeKind.Unchanged
-            : FileChangeKind.Modified;
+        var sameContent = string.Equals(stored.ContentHash, hash, StringComparison.Ordinal);
+        if (sameContent
+            && embedder is not null
+            && stored.Status == DocumentStatus.Indexed
+            && IsAvailable(embedder)
+            && !await repository.HasVectorsAsync(stored.Id, embedder.ModelName, cancellationToken))
+        {
+            sameContent = false;
+        }
+
+        var kind = sameContent ? FileChangeKind.Unchanged : FileChangeKind.Modified;
 
         return new FileChange(path, kind, hash, stored);
     }
@@ -84,6 +95,20 @@ public sealed class ChangeDetector(IDocumentRepository repository)
         catch (DirectoryNotFoundException)
         {
             return null;
+        }
+    }
+
+    /// <summary>Без файлів моделі документи індексуються без векторів, і це не привід переіндексовувати їх щоразу.</summary>
+    private static bool IsAvailable(IEmbedder embedder)
+    {
+        try
+        {
+            embedder.EnsureAvailable();
+            return true;
+        }
+        catch (ModelNotFoundException)
+        {
+            return false;
         }
     }
 }

@@ -126,6 +126,31 @@ public sealed class FolderIndexerTests : IDisposable
     }
 
     [Fact]
+    public async Task Index_AfterModelChange_ReindexesUnchangedFilesForTheNewModel()
+    {
+        Write("a.txt", "кава зранку");
+        Write("empty.txt", string.Empty);
+        await _indexer.IndexAsync(_folder);
+        var otherModel = new FakeEmbedder(modelName: "other-model");
+        var otherIndexer = new FolderIndexer(
+            new ParserRegistry([new PlainTextParser()]),
+            new FixedSizeChunker(Options.Create(new ChunkingOptions()), new FakeTokenCounter()),
+            otherModel,
+            _repository,
+            NullLogger<FolderIndexer>.Instance);
+
+        var afterChange = await otherIndexer.IndexAsync(_folder);
+        var again = await otherIndexer.IndexAsync(_folder);
+
+        Assert.Equal(1, afterChange.Indexed);
+        Assert.Equal(1, afterChange.WithoutText + afterChange.Unchanged);
+        Assert.Equal(0, again.Indexed);
+        Assert.Equal(2, again.Unchanged + again.WithoutText);
+        var document = await _repository.GetDocumentByPathAsync(PathOf("a.txt"));
+        Assert.True(await _repository.HasVectorsAsync(document!.Id, "other-model"));
+    }
+
+    [Fact]
     public async Task Index_ModelNotFound_StoresChunksWithoutVectorsAndTriesTheModelOnce()
     {
         Write("a.txt", "кава зранку");
@@ -147,6 +172,24 @@ public sealed class FolderIndexerTests : IDisposable
         Assert.Equal(2, _repository.AllChunks.Count);
         Assert.Equal(0, await CountVectorsAsync());
         Assert.All(await _repository.GetDocumentsAsync(), d => Assert.Equal(DocumentStatus.Indexed, d.Status));
+    }
+
+    [Fact]
+    public async Task Index_ModelStillMissing_KeywordOnlyFilesAreUnchangedOnTheNextRun()
+    {
+        Write("a.txt", "кава зранку");
+        var indexer = new FolderIndexer(
+            new ParserRegistry([new PlainTextParser()]),
+            new FixedSizeChunker(Options.Create(new ChunkingOptions()), new FakeTokenCounter()),
+            new MissingModelEmbedder(),
+            _repository,
+            NullLogger<FolderIndexer>.Instance);
+
+        await indexer.IndexAsync(_folder);
+        var second = await indexer.IndexAsync(_folder);
+
+        Assert.Equal(0, second.Indexed);
+        Assert.Equal(1, second.Unchanged);
     }
 
     [Fact]
@@ -378,6 +421,14 @@ public sealed class FolderIndexerTests : IDisposable
         public int Dimensions => 8;
 
         public int MaxTokens => 512;
+
+        public void EnsureAvailable()
+        {
+            if (failure is null)
+            {
+                throw new Core.Errors.ModelNotFoundException("Файл моделі не знайдено.");
+            }
+        }
 
         public Task<IReadOnlyList<ReadOnlyMemory<float>>> EmbedAsync(
             IReadOnlyList<string> texts,
