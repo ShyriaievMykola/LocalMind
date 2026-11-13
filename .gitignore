@@ -503,3 +503,8 @@ src/LocalMind.Server/backups/
 # графіки з eval/plots
 eval/plots/.venv/
 eval/plots/out/
+
+# R-01: відкритий корпус збирається локально (build_corpus.py), тексти в Git не кладемо
+eval/datasets/open/corpus/
+eval/datasets/open/.cache/
+eval/datasets/open/.venv/
