@@ -522,10 +522,7 @@ public sealed partial class IndexingService : IIndexingService, IDisposable
 
     private void RemoveVectors(IEnumerable<Guid> chunkIds)
     {
-        foreach (var chunkId in chunkIds)
-        {
-            _vectorIndex.Remove(chunkId);
-        }
+        _vectorIndex.RemoveRange(chunkIds);
     }
 
     private async Task ConsumeWatcherAsync(CancellationToken shutdown)

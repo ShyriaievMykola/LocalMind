@@ -1,0 +1,106 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:LocalMind.App.ViewModels"
+             x:Class="LocalMind.App.Views.BackupView"
+             x:DataType="vm:BackupViewModel">
+  <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Spacing="16" MaxWidth="640" HorizontalAlignment="Left">
+      <TextBlock Text="Бекап" FontSize="24" FontWeight="SemiBold" />
+
+      <!-- Сервер не налаштовано, немає входу або чекаємо перезапуску: решта сторінки прихована. -->
+      <Border Classes="card" IsVisible="{Binding AvailabilityText, Converter={x:Static ObjectConverters.IsNotNull}}">
+        <TextBlock Text="{Binding AvailabilityText}" TextWrapping="Wrap" AutomationProperties.Name="Стан бекапу" />
+      </Border>
+
+      <Border Classes="card" IsVisible="{Binding IsAvailable}">
+        <StackPanel Spacing="8">
+          <TextBlock Classes="heading" Text="Створити бекап" />
+          <TextBlock Text="Пароль шифрування" />
+          <TextBox Text="{Binding Password, Mode=TwoWay}" PasswordChar="●" AutomationProperties.Name="Пароль шифрування">
+            <TextBox.KeyBindings>
+              <KeyBinding Gesture="Enter" Command="{Binding CreateBackupCommand}" />
+            </TextBox.KeyBindings>
+          </TextBox>
+          <TextBlock Text="Повторіть пароль" />
+          <TextBox Text="{Binding PasswordRepeat, Mode=TwoWay}" PasswordChar="●" AutomationProperties.Name="Повтор пароля">
+            <TextBox.KeyBindings>
+              <KeyBinding Gesture="Enter" Command="{Binding CreateBackupCommand}" />
+            </TextBox.KeyBindings>
+          </TextBox>
+          <TextBlock Classes="error" Text="{x:Static vm:BackupViewModel.PasswordWarning}" TextWrapping="Wrap"
+                     AutomationProperties.Name="Попередження про пароль" />
+          <Button Classes="accent" Content="Створити бекап" Command="{Binding CreateBackupCommand}"
+                  IsEnabled="{Binding CanCreate}" HorizontalAlignment="Left" />
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card" IsVisible="{Binding IsAvailable}">
+        <StackPanel Spacing="8">
+          <TextBlock Classes="heading" Text="Бекапи на сервері" />
+          <TextBlock Classes="muted" IsVisible="{Binding !HasBackups}" TextWrapping="Wrap"
+                     Text="Бекапів ще немає." />
+          <ListBox ItemsSource="{Binding Backups}" SelectedItem="{Binding SelectedBackup, Mode=TwoWay}"
+                   IsVisible="{Binding HasBackups}" MaxHeight="220"
+                   Background="Transparent" BorderThickness="0"
+                   AutomationProperties.Name="Бекапи на сервері">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:BackupItem">
+                <StackPanel Orientation="Horizontal" Spacing="16">
+                  <TextBlock Text="{Binding CreatedText}" />
+                  <TextBlock Classes="muted" Text="{Binding SizeText}" />
+                </StackPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+          <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding HasBackups}">
+            <Button Content="Відновити…" Command="{Binding RequestRestoreCommand}" IsEnabled="{Binding CanManage}" />
+            <Button Content="Видалити…" Command="{Binding RequestDeleteCommand}" IsEnabled="{Binding CanManage}" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <!-- Підтвердження прямо на сторінці: в Avalonia немає вбудованого діалогу «Так / Ні». -->
+      <Border Classes="card" IsVisible="{Binding IsConfirmingRestore}">
+        <StackPanel Spacing="8">
+          <TextBlock TextWrapping="Wrap"
+                     Text="{Binding RestoreTarget.CreatedText, StringFormat='Відновити бекап від {0}? Поточну бібліотеку буде замінено даними з бекапу. Введіть пароль шифрування цього бекапу.'}" />
+          <TextBox Text="{Binding RestorePassword, Mode=TwoWay}" PasswordChar="●"
+                   AutomationProperties.Name="Пароль бекапу для відновлення">
+            <TextBox.KeyBindings>
+              <KeyBinding Gesture="Enter" Command="{Binding ConfirmRestoreCommand}" />
+            </TextBox.KeyBindings>
+          </TextBox>
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Classes="accent" Content="Відновити" Command="{Binding ConfirmRestoreCommand}"
+                    IsEnabled="{Binding !IsBusy}" />
+            <Button Content="Скасувати" Command="{Binding CancelRestoreCommand}" IsEnabled="{Binding !IsBusy}" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card" IsVisible="{Binding IsConfirmingDelete}">
+        <StackPanel Spacing="8">
+          <TextBlock TextWrapping="Wrap"
+                     Text="{Binding DeleteTarget.CreatedText, StringFormat='Видалити бекап від {0} із сервера? Це не можна скасувати.'}" />
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Content="Видалити" Command="{Binding ConfirmDeleteCommand}" IsEnabled="{Binding !IsBusy}" />
+            <Button Content="Скасувати" Command="{Binding CancelDeleteCommand}" IsEnabled="{Binding !IsBusy}" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <!-- Довга операція: стан і «Скасувати». Точного відсотка сервіси не дають, тому смужка невизначена. -->
+      <StackPanel Spacing="8" IsVisible="{Binding IsBusy}">
+        <TextBlock Text="{Binding BusyText}" TextWrapping="Wrap" AutomationProperties.Name="Стан операції" />
+        <ProgressBar IsIndeterminate="True" Foreground="{DynamicResource Lm.Brush.Accent}" />
+        <Button Content="Скасувати" Command="{Binding CancelOperationCommand}" HorizontalAlignment="Left"
+                AutomationProperties.Name="Скасувати операцію" />
+      </StackPanel>
+
+      <TextBlock Classes="error" Text="{Binding ErrorMessage}" TextWrapping="Wrap"
+                 IsVisible="{Binding HasError}" AutomationProperties.Name="Помилка бекапу" />
+      <TextBlock Text="{Binding InfoMessage}" TextWrapping="Wrap"
+                 Foreground="{DynamicResource Lm.Brush.Success}" IsVisible="{Binding HasInfo}" />
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

@@ -59,6 +59,23 @@ public sealed class LibraryViewModelTests
     }
 
     [Fact]
+    public async Task Actions_AfterRestoreFromBackup_AskForRestartWithoutTouchingIndexing()
+    {
+        _indexing.Picker.Result = Folder;
+        var viewModel = _indexing.CreateViewModel();
+        _indexing.Restart.Require();
+
+        await viewModel.AddFolderCommand.ExecuteAsync(null);
+        var addError = viewModel.ErrorMessage;
+        await viewModel.RescanCommand.ExecuteAsync(null);
+
+        Assert.Equal(AppRestartState.Message, addError);
+        Assert.Equal(AppRestartState.Message, viewModel.ErrorMessage);
+        Assert.Empty(_indexing.AddedFolders);
+        Assert.Equal(0, _indexing.RescanCount);
+    }
+
+    [Fact]
     public async Task Refresh_DoesNotHideErrorOfUserAction()
     {
         _indexing.Picker.Result = Folder;
