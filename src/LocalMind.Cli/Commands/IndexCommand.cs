@@ -33,6 +33,13 @@ internal static class IndexCommand
             Console.WriteLine(
                 $"Проіндексовано: {result.Indexed} (фрагментів: {result.Chunks}), без змін: {result.Unchanged}, " +
                 $"без тексту: {result.WithoutText}, помилок: {result.Failed}, прибрано: {result.Removed}");
+            if (result.WithoutVectors > 0)
+            {
+                Console.WriteLine(
+                    $"Модель embeddings не завантажено: файлів без векторів — {result.WithoutVectors}; " +
+                    "працює лише keyword-пошук. Запустіть scripts/download-models і повторіть індексацію.");
+            }
+
             return result.Failed > 0 ? ExitCodes.Error : ExitCodes.Success;
         });
 

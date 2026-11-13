@@ -11,8 +11,9 @@
 
 ![Якість проти затримки](example/quality_vs_latency.png)
 
-> **Графік E4 (R-06) ще не готовий.** E4 порівнює brute-force і HNSW на 1k / 10k / 100k фрагментів; його дані дасть
-> BenchmarkDotNet з #158, а не CSV `localmind eval`. Графік «recall vs latency» для E4 з'явиться після #158.
+> **Графік E4 (R-06)** будує окремий скрипт `plot_e4.py`: він читає CSV BenchmarkDotNet з `benchmarks/LocalMind.Benchmarks`
+> і CSV recall (`-- --recall`), а не CSV `localmind eval`. Опис, результати й висновки — у
+> [docs/research/e4-hnsw.md](../../docs/research/e4-hnsw.md), приклад вхідних даних — у `example/e4/`.
 > `recall_vs_latency` вище показує інше: Recall@k для різних глибин `k` на одному датасеті.
 
 ## Запуск

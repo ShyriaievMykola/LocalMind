@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using LocalMind.Core.Abstractions;
+using LocalMind.Core.Errors;
 using LocalMind.Core.Models;
 
 namespace LocalMind.Core.Ingestion.Watching;
@@ -47,6 +48,7 @@ public sealed class ChangeDetector(IDocumentRepository repository, IEmbedder? em
         if (sameContent
             && embedder is not null
             && stored.Status == DocumentStatus.Indexed
+            && IsAvailable(embedder)
             && !await repository.HasVectorsAsync(stored.Id, embedder.ModelName, cancellationToken))
         {
             sameContent = false;
@@ -93,6 +95,20 @@ public sealed class ChangeDetector(IDocumentRepository repository, IEmbedder? em
         catch (DirectoryNotFoundException)
         {
             return null;
+        }
+    }
+
+    /// <summary>Без файлів моделі документи індексуються без векторів, і це не привід переіндексовувати їх щоразу.</summary>
+    private static bool IsAvailable(IEmbedder embedder)
+    {
+        try
+        {
+            embedder.EnsureAvailable();
+            return true;
+        }
+        catch (ModelNotFoundException)
+        {
+            return false;
         }
     }
 }

@@ -151,6 +151,64 @@ public sealed class FolderIndexerTests : IDisposable
     }
 
     [Fact]
+    public async Task Index_ModelNotFound_StoresChunksWithoutVectorsAndTriesTheModelOnce()
+    {
+        Write("a.txt", "кава зранку");
+        Write("b.txt", "чай увечері");
+        var missingModel = new MissingModelEmbedder();
+        var indexer = new FolderIndexer(
+            new ParserRegistry([new PlainTextParser()]),
+            new FixedSizeChunker(Options.Create(new ChunkingOptions()), new FakeTokenCounter()),
+            missingModel,
+            _repository,
+            NullLogger<FolderIndexer>.Instance);
+
+        var result = await indexer.IndexAsync(_folder);
+
+        Assert.Equal(2, result.Indexed);
+        Assert.Equal(2, result.WithoutVectors);
+        Assert.Equal(0, result.Failed);
+        Assert.Equal(1, missingModel.Calls);
+        Assert.Equal(2, _repository.AllChunks.Count);
+        Assert.Equal(0, await CountVectorsAsync());
+        Assert.All(await _repository.GetDocumentsAsync(), d => Assert.Equal(DocumentStatus.Indexed, d.Status));
+    }
+
+    [Fact]
+    public async Task Index_ModelStillMissing_KeywordOnlyFilesAreUnchangedOnTheNextRun()
+    {
+        Write("a.txt", "кава зранку");
+        var indexer = new FolderIndexer(
+            new ParserRegistry([new PlainTextParser()]),
+            new FixedSizeChunker(Options.Create(new ChunkingOptions()), new FakeTokenCounter()),
+            new MissingModelEmbedder(),
+            _repository,
+            NullLogger<FolderIndexer>.Instance);
+
+        await indexer.IndexAsync(_folder);
+        var second = await indexer.IndexAsync(_folder);
+
+        Assert.Equal(0, second.Indexed);
+        Assert.Equal(1, second.Unchanged);
+    }
+
+    [Fact]
+    public async Task Index_ModelBroken_StillFailsInsteadOfSilentlyDegrading()
+    {
+        Write("a.txt", "кава зранку");
+        var indexer = new FolderIndexer(
+            new ParserRegistry([new PlainTextParser()]),
+            new FixedSizeChunker(Options.Create(new ChunkingOptions()), new FakeTokenCounter()),
+            new MissingModelEmbedder(new Core.Errors.LocalMindException("Файл моделі пошкоджений.")),
+            _repository,
+            NullLogger<FolderIndexer>.Instance);
+
+        var exception = await Assert.ThrowsAsync<Core.Errors.LocalMindException>(() => indexer.IndexAsync(_folder));
+
+        Assert.Contains("пошкоджений", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Index_TextWithPdfExtension_IsMarkedAsErrorBySignature()
     {
         Write("fake.pdf", "Це звичайний текст у файлі з розширенням .pdf.");
@@ -351,5 +409,34 @@ public sealed class FolderIndexerTests : IDisposable
     private sealed class SynchronousProgress(Action<IndexingProgress> report) : IProgress<IndexingProgress>
     {
         public void Report(IndexingProgress value) => report(value);
+    }
+
+    /// <summary>Embedder без файлів моделі (або зі зламаною моделлю, якщо передати інший виняток).</summary>
+    private sealed class MissingModelEmbedder(Exception? failure = null) : IEmbedder
+    {
+        public int Calls { get; private set; }
+
+        public string ModelName => "missing-model";
+
+        public int Dimensions => 8;
+
+        public int MaxTokens => 512;
+
+        public void EnsureAvailable()
+        {
+            if (failure is null)
+            {
+                throw new Core.Errors.ModelNotFoundException("Файл моделі не знайдено.");
+            }
+        }
+
+        public Task<IReadOnlyList<ReadOnlyMemory<float>>> EmbedAsync(
+            IReadOnlyList<string> texts,
+            EmbeddingPurpose purpose,
+            CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            throw failure ?? new Core.Errors.ModelNotFoundException("Файл моделі не знайдено.");
+        }
     }
 }

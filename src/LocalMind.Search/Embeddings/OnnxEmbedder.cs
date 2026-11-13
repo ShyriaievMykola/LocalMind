@@ -52,6 +52,22 @@ public sealed class OnnxEmbedder : IEmbedder, IDisposable
     public int MaxTokens => _options.MaxTokens;
 
     /// <inheritdoc />
+    public void EnsureAvailable()
+    {
+        if (!File.Exists(_options.ModelPath))
+        {
+            throw new ModelNotFoundException(
+                $"Файл моделі не знайдено: {_options.ModelPath}. Запустіть scripts/download-models.");
+        }
+
+        if (!_tokenizer.IsAvailable)
+        {
+            throw new ModelNotFoundException(
+                $"Файл токенізатора не знайдено: {_options.TokenizerPath}. Запустіть scripts/download-models.");
+        }
+    }
+
+    /// <inheritdoc />
     public async Task<IReadOnlyList<ReadOnlyMemory<float>>> EmbedAsync(
         IReadOnlyList<string> texts,
         EmbeddingPurpose purpose,
@@ -65,6 +81,13 @@ public sealed class OnnxEmbedder : IEmbedder, IDisposable
         }
 
         cancellationToken.ThrowIfCancellationRequested();
+
+        // Без файла моделі чи токенізатора — одразу ModelNotFoundException, до ініціалізації токенізатора й сесії.
+        // Порожній набір моделі не потребує.
+        if (texts.Count > 0)
+        {
+            EnsureAvailable();
+        }
 
         var prefix = purpose == EmbeddingPurpose.Query ? _options.QueryPrefix : _options.PassagePrefix;
         var encoded = texts.Select(text => _tokenizer.Encode(prefix + text, MaxTokens)).ToArray();
@@ -150,7 +173,7 @@ public sealed class OnnxEmbedder : IEmbedder, IDisposable
     {
         if (!File.Exists(_options.ModelPath))
         {
-            throw new LocalMindException(
+            throw new ModelNotFoundException(
                 $"Файл моделі не знайдено: {_options.ModelPath}. Запустіть scripts/download-models.");
         }
 

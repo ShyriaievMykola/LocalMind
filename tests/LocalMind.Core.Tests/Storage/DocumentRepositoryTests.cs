@@ -38,6 +38,18 @@ public sealed class DocumentRepositoryTests : IAsyncLifetime, IDisposable
     }
 
     [Fact]
+    public async Task Save_WithoutVectors_StoresChunksForKeywordSearchOnly()
+    {
+        var document = TestData.Document("/notes/keyword-only.md");
+        var chunks = TestData.Chunks(document.Id, "перший", "другий");
+
+        await _repository.SaveAsync(document, chunks, [], Model);
+
+        Assert.Equal(2, (await _repository.GetChunksAsync([.. chunks.Select(c => c.Id)])).Count);
+        Assert.Empty(await _repository.GetVectorsAsync(Model).ToListAsync());
+    }
+
+    [Fact]
     public async Task Save_ThenRead_ReturnsSameData()
     {
         var document = TestData.Document("/notes/a.md");
@@ -158,7 +170,7 @@ public sealed class DocumentRepositoryTests : IAsyncLifetime, IDisposable
         var document = TestData.Document();
         var chunks = TestData.Chunks(document.Id, "текст");
 
-        await Assert.ThrowsAsync<ArgumentException>(() => _repository.SaveAsync(document, chunks, [], Model));
+        await Assert.ThrowsAsync<ArgumentException>(() => _repository.SaveAsync(document, chunks, Vectors(2), Model));
     }
 
     [Fact]
