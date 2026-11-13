@@ -83,6 +83,12 @@ class WikitextTests(unittest.TestCase):
         self.assertIn("текст", result)
 
 
+class ParallelTests(unittest.TestCase):
+    def test_parallel_conversion_matches_serial(self) -> None:
+        samples = [WikitextTests.SAMPLE, "== A ==\ntext [[link]]", ""]
+        self.assertEqual(bc._convert_wikitext(samples), [bc.wikitext_to_text(s) if s else "" for s in samples])
+
+
 class HtmlTests(unittest.TestCase):
     def test_html_to_text(self) -> None:
         html = ("<p>Use <code>git log</code> to see history.</p><ul><li>one</li><li>two</li></ul>"
@@ -128,7 +134,8 @@ class LanguageTests(unittest.TestCase):
 
     def test_rejects_russian_only_letters_but_not_one_off(self) -> None:
         self.assertFalse(bc.language_ok("Київ ыыыы ээээ " * 20 + UK_TEXT, "uk"))
-        self.assertTrue(bc.language_ok(UK_TEXT + " ы", "uk"))  # одна літера на сотні — випадковість, а не російська
+        self.assertTrue(bc.language_ok(UK_TEXT + " ы", "uk"))  # одна-дві літери — випадковість, а не російська
+        self.assertFalse(bc.language_ok(UK_TEXT + " ы э ё", "uk"))  # три й більше — цитата чи ім'я російською
 
     def test_short_text_not_detected(self) -> None:
         self.assertIsNone(bc.detect_language("коротко"))
@@ -263,6 +270,39 @@ class WriteTests(unittest.TestCase):
         self.assertIsNone(bc.write_document(self.root, self._doc("Заглушка", "дуже коротко"), None))
         self.assertIsNone(bc.write_document(self.root, self._doc("Німецька", DE_TEXT), None))
         self.assertFalse(list(self.root.rglob("*.*")))
+
+    def test_mixed_language_document_gets_detected_language(self) -> None:
+        for text, expected in ((UK_TEXT, "uk"), (EN_TEXT, "en")):
+            doc = self._doc(f"Мішаний {expected}", text, lang="en")
+            doc.mixed = True
+            entry = bc.write_document(self.root, doc, None)
+            assert entry is not None
+            self.assertEqual(entry["lang"], expected)
+            self.assertIn(f"/{expected}/", entry["path"])
+        doc = self._doc("Німецький", DE_TEXT, lang="en")
+        doc.mixed = True
+        self.assertIsNone(bc.write_document(self.root, doc, None))
+
+    def test_same_title_different_text_gets_different_files(self) -> None:
+        first = bc.write_document(self.root, self._doc("CHAPTER I.", UK_TEXT), None)
+        second = bc.write_document(self.root, self._doc("CHAPTER I.", UK_TEXT + " Ще одне речення про Київ."), None)
+        assert first is not None and second is not None
+        self.assertNotEqual(first["path"], second["path"])
+
+    def test_prune_missing_drops_vanished_and_changed_files(self) -> None:
+        entries = [bc.write_document(self.root, self._doc(f"Док {i}"), None) for i in range(3)]
+        assert all(entries)
+        (self.root / entries[0]["path"]).unlink()
+        (self.root / entries[1]["path"]).write_text("змінено", encoding="utf-8")
+        kept = bc.prune_missing(self.root, entries, lambda message: None)
+        self.assertEqual(kept, [entries[2]])
+        self.assertFalse((self.root / entries[1]["path"]).exists())
+
+    def test_group_poems(self) -> None:
+        poems = [(f"Вірш {i}", "рядок вірша " * 100) for i in range(10)]  # по ~1200 символів
+        groups = bc._group_poems(poems, size=3000)
+        self.assertEqual(sum(len(g) for g in groups), 10)
+        self.assertEqual([len(g) for g in groups], [3, 3, 3, 1])
 
     def test_manifest_merge_replaces_only_its_source(self) -> None:
         path = self.root / "manifest.jsonl"

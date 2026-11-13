@@ -12,6 +12,8 @@ ru.*, а кожен документ перевіряється детектор
 * каталог і тексти gutenberg.org.
 
 Запити йдуть послідовно з паузою, відповіді кешуються в `--cache`, тож повторний запуск майже не торкається мережі.
+Вікімедія без контакту в User-Agent пускає лише ≈10 запитів на хвилину на всі свої сайти разом, тому повне збирання
+вікі-частини триває близько години (пауза `--wiki-pause`); Gutenberg і Stack Exchange мають окремі ліміти.
 Завантажене лише читається як текст і пишеться у файли — нічого не виконується.
 
 Результат: `<out>/<джерело>/<мова>/<файл>` і `manifest.jsonl` (на теку вище): шлях, мова, джерело, URL, ліцензія, тема,
@@ -227,6 +229,9 @@ SE_SITES = [
     ("german", "en", "languages", 60),
 ]
 
+# Сайти, де англійські питання рясніють українськими прикладами: мова документа визначається детектором (uk або en).
+SE_MIXED_SITES = {"ukrainian"}
+
 # Project Gutenberg: книг на мову (випадкова вибірка з каталогу, художня проза авторів, що померли до 1926 року).
 GUTENBERG_BOOKS = {"en": 16, "de": 6, "fr": 6, "es": 5, "it": 5, "pl": 3}
 GUTENBERG_MAX_DEATH_YEAR = 1925
@@ -234,7 +239,7 @@ GUTENBERG_CHAPTERS_PER_BOOK = 40
 GUTENBERG_CATALOG = "https://www.gutenberg.org/cache/epub/feeds/pg_catalog.csv"
 
 WIKISOURCE_PREFIXES = ("Поезія ", "Казки ", "Оповідання ", "Проза ")
-WIKISOURCE_MAX_PAGES = 280
+WIKISOURCE_MAX_PAGES = 600
 
 
 @dataclass
@@ -250,6 +255,7 @@ class Doc:
     text: str  # markdown: `# Заголовок`, потім текст
     group: str = ""  # ключ «та сама тема різними мовами»: англійська назва статті
     authors: str = ""
+    mixed: bool = False  # текст про мову й мовою (ukrainian.stackexchange): lang = uk чи en за детектором
 
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -399,12 +405,14 @@ def detect_language(text: str) -> str | None:
 def language_ok(text: str, expected: str) -> bool:
     """Відсікає російську і документи, мова яких не збігається з очікуваною.
 
-    1. літери ы э ъ ё є в українських і англійських текстах лише у слідових кількостях (≤ 0,5 % кирилиці);
+    1. літер ы э ъ ё (їх немає в українській) — менше трьох і не більше 0,5 % кирилиці: цитата чи ім'я російською
+       у статті теж відсікається, корпус має бути без російського тексту;
     2. детектор не показує ru ні на якому тексті;
     3. для довгих текстів мова збігається з очікуваною.
     """
     cyrillic = len(_CYRILLIC.findall(text))
-    if cyrillic and len(_RUSSIAN_ONLY_LETTERS.findall(text)) / cyrillic > 0.005:
+    russian_letters = len(_RUSSIAN_ONLY_LETTERS.findall(text))
+    if russian_letters >= 3 or (cyrillic and russian_letters / cyrillic > 0.005):
         return False
     detected = detect_language(text)
     if detected is None:
@@ -499,6 +507,26 @@ def wikitext_to_text(wikitext: str) -> str:
     text = re.sub(r"__[A-Z]+__", "", text)  # магічні слова (__NOTOC__)
     text = re.sub(r"^[|!].*$", "", text, flags=re.MULTILINE)  # залишки клітинок і підписів таблиць
     return drop_stop_sections(normalize_text(text))
+
+
+_pool = None
+
+
+def _convert_wikitext(contents: list[str]) -> list[str]:
+    """wikitext_to_text для пачки сторінок: розбір великих статей повільний, тому паралельно в кількох процесах."""
+    global _pool
+    if len(contents) < 2:
+        return [wikitext_to_text(content) if content else "" for content in contents]
+    if _pool is None:
+        import concurrent.futures
+        import os
+
+        _pool = concurrent.futures.ProcessPoolExecutor(max_workers=min(8, os.cpu_count() or 2))
+    return list(_pool.map(_convert_one, contents))
+
+
+def _convert_one(content: str) -> str:
+    return wikitext_to_text(content) if content else ""
 
 
 def drop_stop_sections(text: str) -> str:
@@ -643,17 +671,13 @@ class MediaWiki:
             else:
                 data = self.query(prop="revisions", rvprop="content", rvslots="main", titles="|".join(batch), redirects=1)
             mapping = self.resolve(data, batch)
-            by_title = {}
-            for page in data["query"]["pages"]:
-                if page.get("missing"):
-                    continue
-                if intro_only:
-                    text = page.get("extract") or ""
-                else:
-                    revisions = page.get("revisions") or []
-                    text = wikitext_to_text(revisions[0]["slots"]["main"]["content"]) if revisions else ""
-                if text:
-                    by_title[page["title"]] = text
+            pages = [page for page in data["query"]["pages"] if not page.get("missing")]
+            if intro_only:
+                converted = [page.get("extract") or "" for page in pages]
+            else:
+                contents = [(page.get("revisions") or [{}])[0].get("slots", {}).get("main", {}).get("content", "") for page in pages]
+                converted = _convert_wikitext(contents)
+            by_title = {page["title"]: text for page, text in zip(pages, converted, strict=True) if text}
             for requested, final in mapping.items():
                 if final in by_title:
                     result[requested] = (final, by_title[final])
@@ -875,6 +899,24 @@ def collect_gutenberg(http: Http, rng: random.Random, scale: float, log) -> list
     return docs
 
 
+def _group_poems(pieces: list[tuple[str, str]], size: int = 6000) -> list[list[tuple[str, str]]]:
+    """Вірші одного автора — добірками приблизно по `size` символів (окремий вірш надто короткий для документа)."""
+    groups: list[list[tuple[str, str]]] = []
+    current: list[tuple[str, str]] = []
+    length = 0
+    for piece in pieces:
+        current.append(piece)
+        length += len(piece[1])
+        if length >= size:
+            groups.append(current)
+            current, length = [], 0
+    if current and (not groups or length >= MIN_CHARS):
+        groups.append(current)
+    elif current:
+        groups[-1].extend(current)
+    return groups
+
+
 def collect_wikisource(http: Http, rng: random.Random, scale: float, log) -> list[Doc]:
     """Українські вірші, казки й проза з uk.wikisource.org; вірші одного автора — однією добіркою (окремі надто короткі)."""
     wiki = MediaWiki(http, "uk.wikisource.org")
@@ -899,9 +941,11 @@ def collect_wikisource(http: Http, rng: random.Random, scale: float, log) -> lis
         if not pieces:
             continue
         if name.startswith("Поезія "):
-            body = "\n\n".join(f"## {title}\n\n{text}" for title, text in pieces)
-            docs.append(Doc("wikisource", "uk", "literature", name, page_url("uk.wikisource.org", f"Категорія:{name}"),
-                            LICENSE_PD, f"# {name}\n\n" + truncate_text(body, MAX_CHARS["txt"])))
+            for number, group in enumerate(_group_poems(pieces), start=1):
+                title = f"{name} — добірка {number}"
+                body = "\n\n".join(f"## {poem}\n\n{text}" for poem, text in group)
+                docs.append(Doc("wikisource", "uk", "literature", title, page_url("uk.wikisource.org", f"Категорія:{name}"),
+                                LICENSE_PD, f"# {title}\n\n{body}"))
         else:
             for title, text in pieces:
                 if len(text) >= 600:
@@ -943,7 +987,7 @@ def collect_stackexchange(http: Http, rng: random.Random, scale: float, log) -> 
         for question in questions:
             if taken >= want:
                 break
-            doc = build_se_doc(question, answers.get(question["accepted_answer_id"]), lang, topic)
+            doc = build_se_doc(question, answers.get(question["accepted_answer_id"]), lang, topic, site in SE_MIXED_SITES)
             if doc:
                 docs.append(doc)
                 taken += 1
@@ -951,7 +995,7 @@ def collect_stackexchange(http: Http, rng: random.Random, scale: float, log) -> 
     return docs
 
 
-def build_se_doc(question: dict, answer: dict | None, lang: str, topic: str) -> Doc | None:
+def build_se_doc(question: dict, answer: dict | None, lang: str, topic: str, mixed: bool = False) -> Doc | None:
     if not answer:
         return None
     title = html_to_text(question["title"]).replace("\n", " ")
@@ -963,7 +1007,7 @@ def build_se_doc(question: dict, answer: dict | None, lang: str, topic: str) -> 
     authors = ", ".join(sorted({o.get("display_name", "") for o in (question.get("owner", {}), answer.get("owner", {})) if o.get("display_name")}))
     text = f"# {title}\n\n{question_text}\n\n## Answer\n\n{answer_text}"
     return Doc("stackexchange", lang, topic, title, question["link"], " / ".join(licenses), text,
-               group=f"se{question['question_id']}", authors=html_to_text(authors))
+               group=f"se{question['question_id']}", authors=html_to_text(authors), mixed=mixed)
 
 
 COLLECTORS = {
@@ -1015,6 +1059,20 @@ def write_docx(path: Path, markdown: str) -> None:
     document.core_properties.author = "LocalMind corpus"
     document.core_properties.last_modified_by = "LocalMind corpus"
     document.save(str(path))
+    _freeze_zip_dates(path)
+
+
+def _freeze_zip_dates(path: Path) -> None:
+    """DOCX — це zip з поточними датами записів; фіксуємо їх, щоб файл не залежав від часу збирання."""
+    import zipfile
+
+    with zipfile.ZipFile(path) as source:
+        items = [(info.filename, source.read(info.filename)) for info in source.infolist()]
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as target:
+        for name, data in items:
+            info = zipfile.ZipInfo(name, (2000, 1, 1, 0, 0, 0))
+            info.compress_type = zipfile.ZIP_DEFLATED
+            target.writestr(info, data)
 
 
 def write_pdf(path: Path, markdown: str, font: Path) -> None:
@@ -1048,11 +1106,15 @@ def write_document(root: Path, doc: Doc, pdf_font: Path | None) -> dict | None:
     text = normalize_text(doc.text)
     text = truncate_text(text, MAX_CHARS[fmt])
     body = text.split("\n", 2)[-1] if text.startswith("# ") else text
-    if len(body) < MIN_CHARS or not language_ok(text, doc.lang):
+    lang = doc.lang
+    if doc.mixed and detect_language(text) in ("uk", "en"):
+        lang = str(detect_language(text))
+    if len(body) < MIN_CHARS or not language_ok(text, lang):
         return None
-    folder = root / doc.source / doc.lang
+    folder = root / doc.source / lang
     folder.mkdir(parents=True, exist_ok=True)
-    name = f"{slugify(doc.title)}-{hashlib.sha1(key.encode('utf-8')).hexdigest()[:6]}.{fmt}"
+    # у назву йде хеш і тексту: у книгах повторюються заголовки розділів («CHAPTER I.») з однаковим url
+    name = f"{slugify(doc.title)}-{hashlib.sha1((key + chr(10) + text).encode('utf-8')).hexdigest()[:6]}.{fmt}"
     path = folder / name
     if fmt == "docx":
         write_docx(path, text)
@@ -1061,9 +1123,15 @@ def write_document(root: Path, doc: Doc, pdf_font: Path | None) -> dict | None:
         write_pdf(path, text, pdf_font)
     else:
         path.write_text((plain_text(text) if fmt == "txt" else text) + "\n", encoding="utf-8", newline="\n")
-    data = path.read_bytes()
+    try:
+        data = path.read_bytes()
+    except OSError:
+        # антивірус Windows блокує й вилучає файли з подібним до експлойтів кодом (Q&A про безпеку): такі документи
+        # у корпус не беремо, щоб він не лякав антивіруси на машинах користувачів
+        path.unlink(missing_ok=True)
+        return None
     return {
-        "path": path.relative_to(root).as_posix(), "lang": doc.lang, "source": doc.source, "url": doc.url,
+        "path": path.relative_to(root).as_posix(), "lang": lang, "source": doc.source, "url": doc.url,
         "license": doc.license, "topic": doc.topic, "sha256": hashlib.sha256(data).hexdigest(), "title": doc.title,
         "group": doc.group, "format": fmt, "chars": len(text), "bytes": len(data), "authors": doc.authors,
         "retrieved": datetime.date.today().isoformat(),
@@ -1084,6 +1152,23 @@ def merge_manifest(path: Path, source: str, entries: list[dict]) -> list[dict]:
     return merged
 
 
+def prune_missing(root: Path, entries: list[dict], log) -> list[dict]:
+    """Лишає записи, чий файл на місці й збігається за sha256 (антивірус міг прибрати файл після запису)."""
+    kept = []
+    for entry in entries:
+        path = root / entry["path"]
+        try:
+            ok = hashlib.sha256(path.read_bytes()).hexdigest() == entry["sha256"]
+        except OSError:
+            ok = False
+        if ok:
+            kept.append(entry)
+        else:
+            path.unlink(missing_ok=True)
+            log(f"прибрано з маніфесту (файл зник або змінився): {entry['path']}")
+    return kept
+
+
 def build(out: Path, manifest_path: Path, cache: Path, sources: list[str], scale: float, seed: int, pause: float,
           wiki_pause: float, pdf_font: Path | None, log) -> list[dict]:
     http = Http(cache, pause, wiki_pause)
@@ -1095,11 +1180,16 @@ def build(out: Path, manifest_path: Path, cache: Path, sources: list[str], scale
         if (out / source).is_dir():
             shutil.rmtree(out / source)  # лише згенеровані нами теки відомих джерел; після збирання, щоб збій не лишав порожнечу
         entries = []
+        seen: set[str] = set()
         for doc in docs:
+            digest = hashlib.sha1(normalize_text(doc.text).encode("utf-8")).hexdigest()
+            if digest in seen:  # однакові тексти (різні назви-перенаправлення на одну статтю)
+                continue
+            seen.add(digest)
             entry = write_document(out, doc, pdf_font)
             if entry:
                 entries.append(entry)
-        merge_manifest(manifest_path, source, entries)
+        merge_manifest(manifest_path, source, prune_missing(out, entries, log))
         log(f"== {source}: записано {len(entries)}, відкинуто {len(docs) - len(entries)} (мова/розмір), "
             f"{time.monotonic() - started:.0f} с, запитів {http.requests}")
     return read_manifest(manifest_path)
