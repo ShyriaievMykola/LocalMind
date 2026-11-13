@@ -122,10 +122,37 @@ public class OnnxEmbedderTests
     {
         using var embedder = CreateEmbedderWithMissingFiles();
 
-        var exception = await Assert.ThrowsAsync<LocalMindException>(
+        var exception = await Assert.ThrowsAsync<ModelNotFoundException>(
             () => embedder.EmbedAsync(["текст"], EmbeddingPurpose.Query));
 
         Assert.Contains("download-models", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task EmbedAsync_ModelPresentButTokenizerMissing_FailsFastWithoutInitializingAnything()
+    {
+        using var folder = new TempFolder();
+        var modelPath = System.IO.Path.Combine(folder.Path, "model.onnx");
+        await File.WriteAllBytesAsync(modelPath, [1, 2, 3]);
+        var options = Options.Create(new EmbeddingModelOptions
+        {
+            ModelName = "no-tokenizer",
+            ModelPath = modelPath,
+            TokenizerPath = System.IO.Path.Combine(folder.Path, "немає.model"),
+            Dimensions = 4,
+        });
+        var sessionCreated = false;
+        using var embedder = new OnnxEmbedder(options, new ModelTokenizer(options), _ =>
+        {
+            sessionCreated = true;
+            throw new InvalidOperationException("Сесія не має створюватися.");
+        });
+
+        var exception = await Assert.ThrowsAsync<ModelNotFoundException>(
+            () => embedder.EmbedAsync(["текст"], EmbeddingPurpose.Query));
+
+        Assert.Contains("токенізатора", exception.Message, StringComparison.Ordinal);
+        Assert.False(sessionCreated);
     }
 
     [Fact]
@@ -173,7 +200,7 @@ public class OnnxEmbedderTests
         options.TokenizerPath = Path.Combine(folder.Path, "sentencepiece.bpe.model");
         var wrapped = Options.Create(options);
         using var embedder = new OnnxEmbedder(wrapped, new ModelTokenizer(wrapped));
-        await Assert.ThrowsAsync<LocalMindException>(() => embedder.EmbedAsync(["текст"], EmbeddingPurpose.Query));
+        await Assert.ThrowsAsync<ModelNotFoundException>(() => embedder.EmbedAsync(["текст"], EmbeddingPurpose.Query));
 
         File.Copy(source, options.TokenizerPath);
 
