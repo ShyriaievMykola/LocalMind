@@ -80,6 +80,8 @@ STEM-проєкт з дисциплін «Мультиплатформне пр�
 База `localmind.db` лежить у теці даних користувача: `%LOCALAPPDATA%\LocalMind` на Windows,
 `~/.local/share/LocalMind` на Linux, `~/Library/Application Support/LocalMind` на macOS.
 Застосунок шукає модель поруч із собою (`models/`) або в цій теці.
+Журнал попереджень і помилок (`app-<дата>.log`, `cli-<дата>.log`) і звіти про аварії (`crash-<час>.txt`) лежать у
+підтеці `logs/`; вони нікуди не відправляються, і їх можна додати до issue.
 
 ---
 
