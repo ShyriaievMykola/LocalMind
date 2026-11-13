@@ -246,7 +246,7 @@ LocalMind/
 
 | Учасник | GitHub | Зона відповідальності |
 |---|---|---|
-| Микола Ширяєв | [@ShyriaievMykola](https://github.com/ShyriaievMykola) | ядро, пошук, сервер і безпека, реліз, дослідження |
-| Павло | [@OnlySven](https://github.com/OnlySven) | десктопний застосунок |
-| Ігор Свириденко | [@Igorettto](https://github.com/Igorettto) | десктопний застосунок |
-| Назар | [@Nazar2903](https://github.com/Nazar2903) | десктопний застосунок |
+| Микола Ширяєв | [@ShyriaievMykola](https://github.com/ShyriaievMykola) | ядро (C, ST), пошук (SE), CLI, сервер і безпека (B, SV, SEC), реліз, дослідження |
+| Павло Святий | [@OnlySven](https://github.com/OnlySven) | парсери TXT, Markdown, PDF; навігація, пошук, картка результату й контекст у застосунку |
+| Ігор Свириденко | [@Igorettto](https://github.com/Igorettto) | парсер DOCX, реєстр парсерів, нарізка; теми, обробка помилок, тести ViewModel, обліковий запис і бекап у застосунку |
+| Назар Міщенко | [@Nazar2903](https://github.com/Nazar2903) | виявлення змін, спостерігач папок, фонова індексація; бібліотека, прогрес, налаштування, drag & drop, гарячі клавіші |
