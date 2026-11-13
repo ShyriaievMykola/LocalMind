@@ -233,7 +233,6 @@ LocalMind/
 - [Приймальні кейси](docs/acceptance-cases.md)
 - [Релізи](docs/release.md)
 - [Результати досліджень](docs/research)
-- [Декларація використання ШІ-інструментів](META-USAGE.md)
 
 ## Як ми працюємо
 
