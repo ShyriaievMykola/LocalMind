@@ -85,7 +85,7 @@ Cli ──┘
 | `IChunker` | Текст → фрагменти | `FixedSizeChunker`, `ParagraphChunker` |
 | `ITokenCounter` | Підрахунок токенів для нарізки | `HfTokenCounter` (токенізатор моделі) |
 | `IEmbedder` | Тексти → вектори | `OnnxEmbedder` |
-| `IVectorIndex` | Пошук найближчих векторів | `BruteForceIndex`, `HnswIndex` |
+| `IVectorIndex` | Пошук найближчих векторів | `BruteForceIndex`, `HnswIndex` (вибір: `LocalMind:Search:VectorIndex:Kind`, DR-023) |
 | `IKeywordIndex` | Повнотекстовий пошук BM25 | `Fts5KeywordIndex` |
 | `IDocumentRepository` | Збереження документів і фрагментів | `DocumentRepository` |
 | `IIndexingService` | Фонова індексація | `IndexingService` |
