@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
-using System.Reflection;
 using LocalMind.Core.Abstractions;
+using LocalMind.Core.Models;
 using LocalMind.Search.Configuration;
 using LocalMind.Search.Vectors;
 
@@ -23,12 +23,6 @@ internal static class RecallReport
     private static readonly int[] Sizes = [1_000, 10_000, 100_000];
     private static readonly string[] DataKinds = ["uniform", "clustered"];
     private static readonly int[] EfSearchValues = [10, 20, 50, 100, 200, 400];
-
-    // efSearch задається в конструкторі й далі не змінюється; для кривої «recall проти затримки» граф будуємо один раз
-    // і міняємо лише ширину пошуку, як це робить параметр у запиті. Граф при цьому той самий, тож порівняння чесне.
-    private static readonly FieldInfo EfSearchField = typeof(HnswIndex)
-        .GetField("_efSearch", BindingFlags.Instance | BindingFlags.NonPublic)
-        ?? throw new InvalidOperationException("У HnswIndex немає поля _efSearch: оновіть RecallReport.");
 
     public static int Run(string outputPath)
     {
@@ -71,12 +65,11 @@ internal static class RecallReport
             .Select(query => exact.Search(query, K).Select(r => r.ChunkId).ToHashSet())
             .ToArray();
 
-        lines.Add(Row(data, size, "BruteForce", 0, 1.0, MedianLatencyMs(exact, queries)));
+        lines.Add(Row(data, size, "BruteForce", 0, 1.0, MedianLatencyMs(query => exact.Search(query, K), queries)));
         foreach (var ef in EfSearchValues)
         {
-            EfSearchField.SetValue(hnsw, ef);
-            var recall = MeanRecall(hnsw, queries, truth);
-            var latency = MedianLatencyMs(hnsw, queries);
+            var recall = MeanRecall(hnsw, queries, truth, ef);
+            var latency = MedianLatencyMs(query => hnsw.Search(query, K, ef), queries);
             lines.Add(Row(data, size, "Hnsw", ef, recall, latency));
             Console.WriteLine($"[{label}] efSearch={ef}: recall@{K} = {recall:0.000}, {latency * 1000:0.0} мкс/запит");
         }
@@ -90,23 +83,23 @@ internal static class RecallReport
         }
     }
 
-    private static double MeanRecall(HnswIndex index, float[][] queries, HashSet<Guid>[] truth)
+    private static double MeanRecall(HnswIndex index, float[][] queries, HashSet<Guid>[] truth, int efSearch)
     {
         var total = 0d;
         for (var i = 0; i < queries.Length; i++)
         {
-            total += index.Search(queries[i], K).Count(r => truth[i].Contains(r.ChunkId)) / (double)K;
+            total += index.Search(queries[i], K, efSearch).Count(r => truth[i].Contains(r.ChunkId)) / (double)K;
         }
 
         return total / queries.Length;
     }
 
     /// <summary>Медіана за кількома проходами по всіх запитах (перший прохід — розігрів), мілісекунди на запит.</summary>
-    private static double MedianLatencyMs(IVectorIndex index, float[][] queries)
+    private static double MedianLatencyMs(Func<float[], IReadOnlyList<ScoredChunk>> search, float[][] queries)
     {
         foreach (var query in queries)
         {
-            index.Search(query, K);
+            search(query);
         }
 
         var samples = new double[Passes];
@@ -115,7 +108,7 @@ internal static class RecallReport
             var start = Stopwatch.GetTimestamp();
             foreach (var query in queries)
             {
-                index.Search(query, K);
+                search(query);
             }
 
             samples[pass] = Stopwatch.GetElapsedTime(start).TotalMilliseconds / queries.Length;
