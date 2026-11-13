@@ -69,9 +69,12 @@ public static class ServiceCollectionExtensions
     /// попередньої моделі не вказує на файл не тієї моделі.
     /// Модель, якої немає в каталозі, — власна модель користувача — лишається як налаштовано.
     /// </summary>
-    private static void ApplyCatalog(EmbeddingModelOptions options, IOptions<ModelCatalogOptions> catalog)
+    private static void ApplyCatalog(EmbeddingModelOptions options, IOptions<ModelCatalogOptions> catalog) =>
+        ApplyCatalog(options, catalog.Value);
+
+    /// <summary>Те саме для вже прочитаного каталогу (його використовує і eval для ефективних налаштувань).</summary>
+    internal static void ApplyCatalog(EmbeddingModelOptions options, ModelCatalogOptions models)
     {
-        var models = catalog.Value;
         var model = models.Find(options.ModelName);
         if (model is null)
         {

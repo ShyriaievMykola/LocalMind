@@ -1,18 +1,22 @@
 using System.CommandLine;
 using LocalMind.Core.Abstractions;
 using LocalMind.Core.Configuration;
+using LocalMind.Core.Errors;
 using LocalMind.Core.Ingestion;
 using LocalMind.Core.Models;
+using LocalMind.Search.Configuration;
 using LocalMind.Search.Evaluation;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace LocalMind.Cli.Commands;
 
 /// <summary>
 /// Команда <c>eval --dataset &lt;тека&gt;</c>: індексує корпус датасету в тимчасову базу, проганяє запити
 /// й записує CSV та Markdown з метриками й замірами в <c>eval/results/</c>. Бібліотека користувача не чіпається.
+/// Прогони з різною нарізкою чи моделлю (<c>--config</c>, E2 і E3) індексують корпус окремо, кожен у своїй тимчасовій базі.
 /// </summary>
 internal static class EvalCommand
 {
@@ -36,7 +40,7 @@ internal static class EvalCommand
         };
         var experiment = new Option<string?>("--config")
         {
-            Description = "JSON з кількома прогонами (name, modes, k); замінює --mode і --k",
+            Description = "JSON з кількома прогонами (name, modes, k, chunking, model); замінює --mode і --k",
         };
         var output = new Option<string>("--output")
         {
@@ -61,10 +65,35 @@ internal static class EvalCommand
                 ? [new EvalRun("cli", [.. parseResult.GetRequiredValue(modes).Distinct()], parseResult.GetValue(k))]
                 : EvalExperiment.Load(configPath);
 
-            var report = await RunInTemporaryLibraryAsync(configuration, data, runs, cancellationToken);
+            // Усі групи перевіряються до старту: помилка в останній не має коштувати результатів перших.
+            var groups = EvalPlan.Build(runs, configuration);
+            CheckBeforeStart(groups);
 
-            var (csv, markdown) = Write(report, Path.GetFullPath(parseResult.GetRequiredValue(output)));
-            Console.WriteLine(EvalReportWriter.ToMarkdown(report));
+            var outputFolder = Path.GetFullPath(parseResult.GetRequiredValue(output));
+            var runOrder = runs.Select(run => run.Name).ToList();
+            var fileName = $"{Path.GetFileName(Path.TrimEndingDirectorySeparator(datasetPath))}-{DateTime.Now:yyyyMMdd-HHmmss}";
+
+            await WarmUpAsync(configuration, groups[0], cancellationToken);
+
+            var reports = new List<EvalReport>();
+            foreach (var group in groups)
+            {
+                try
+                {
+                    reports.Add(await RunInTemporaryLibraryAsync(configuration, data, group, cancellationToken));
+                }
+                catch (LocalMindException exception)
+                {
+                    var saved = reports.Count > 0 ? " Результати попередніх комбінацій збережено." : string.Empty;
+                    throw new LocalMindException($"Прогони {group.RunNames}: {exception.Message}{saved}", exception);
+                }
+
+                // Після кожної групи: якщо наступна впаде, результати вже на диску.
+                Write(fileName, reports, runOrder, outputFolder);
+            }
+
+            var (csv, markdown) = Write(fileName, reports, runOrder, outputFolder);
+            Console.WriteLine(EvalReportWriter.ToMarkdown(reports, runOrder));
             Console.WriteLine($"Збережено: {csv}");
             Console.WriteLine($"Збережено: {markdown}");
             return ExitCodes.Success;
@@ -73,41 +102,68 @@ internal static class EvalCommand
         return command;
     }
 
-    private static async Task<EvalReport> RunInTemporaryLibraryAsync(
-        IConfiguration configuration,
-        EvalDataset dataset,
-        IReadOnlyList<EvalRun> runs,
-        CancellationToken cancellationToken)
+    /// <summary>Каталог, ліміт моделі й файли моделі: усе, що можна знати до старту, перевіряється для всіх груп одразу.</summary>
+    private static void CheckBeforeStart(IReadOnlyList<EvalGroup> groups)
     {
-        var temp = Directory.CreateTempSubdirectory("localmind-eval-").FullName;
-        var databasePath = Path.Combine(temp, "eval.db");
+        var problems = new List<string>();
+        foreach (var group in groups)
+        {
+            problems.AddRange(group.Problems);
+            if (group.RequiresModel)
+            {
+                foreach (var file in new[] { group.ModelPath, group.TokenizerPath }.Where(path => !File.Exists(path)))
+                {
+                    problems.Add(
+                        $"Прогони {group.RunNames}: файл моделі {group.Setup.Model} не знайдено: {file}. " +
+                        $"Запустіть scripts/download-models {group.Setup.Model}.");
+                }
+            }
+        }
+
+        if (problems.Count > 0)
+        {
+            throw new LocalMindException(string.Join(Environment.NewLine, problems));
+        }
+    }
+
+    /// <summary>
+    /// Прогрів перед вимірюванням: JIT, SQLite і кеш файлової системи. Інакше перша комбінація «холодна» й
+    /// її час індексації не порівнянний з наступними. Індексується крихітний корпус у тимчасовій базі, результат відкидається.
+    /// </summary>
+    private static async Task WarmUpAsync(IConfiguration configuration, EvalGroup group, CancellationToken cancellationToken)
+    {
+        var temp = Directory.CreateTempSubdirectory("localmind-eval-warmup-").FullName;
         try
         {
+            var corpus = Directory.CreateDirectory(Path.Combine(temp, "corpus")).FullName;
+            await File.WriteAllTextAsync(
+                Path.Combine(corpus, "warmup.txt"),
+                "Прогрів перед вимірюванням: кілька речень про каву, чай і базу даних SQLite.\n\nWarm-up text about search.",
+                cancellationToken);
+
             var isolated = new ConfigurationBuilder()
                 .AddConfiguration(configuration)
+                .AddInMemoryCollection(group.ConfigOverrides)
                 .AddInMemoryCollection(new Dictionary<string, string?>
                 {
-                    [$"{StorageOptions.SectionName}:{nameof(StorageOptions.DatabasePath)}"] = databasePath,
+                    [$"{StorageOptions.SectionName}:{nameof(StorageOptions.DatabasePath)}"] = Path.Combine(temp, "warmup.db"),
                 })
                 .Build();
 
             await using var services = CliServices.Build(isolated);
             await CliStartup.PrepareAsync(services, cancellationToken);
+            await services.GetRequiredService<FolderIndexer>().IndexAsync(corpus, cancellationToken: cancellationToken);
 
-            // Hybrid без моделі тихо деградує до keyword, а для експерименту це було б хибним результатом.
-            if (runs.Any(run => run.Modes.Any(mode => mode != SearchMode.Keyword)))
+            var search = services.GetRequiredService<ISearchService>();
+            await search.SearchAsync(new SearchQuery("прогрів", SearchMode.Keyword, 5), cancellationToken);
+            if (group.RequiresModel)
             {
-                await services.GetRequiredService<IEmbedder>()
-                    .EmbedAsync(["перевірка моделі"], EmbeddingPurpose.Query, cancellationToken);
+                await search.SearchAsync(new SearchQuery("прогрів", SearchMode.Hybrid, 5), cancellationToken);
             }
-
-            return await EvalRunner.RunAsync(
-                dataset,
-                services.GetRequiredService<FolderIndexer>(),
-                services.GetRequiredService<ISearchService>(),
-                runs,
-                databasePath,
-                cancellationToken);
+        }
+        catch (OptionsValidationException exception)
+        {
+            throw new LocalMindException($"Прогони {group.RunNames}: {exception.Message}", exception);
         }
         finally
         {
@@ -116,14 +172,77 @@ internal static class EvalCommand
         }
     }
 
-    private static (string Csv, string Markdown) Write(EvalReport report, string folder)
+    private static async Task<EvalReport> RunInTemporaryLibraryAsync(
+        IConfiguration configuration,
+        EvalDataset dataset,
+        EvalGroup group,
+        CancellationToken cancellationToken)
+    {
+        var temp = Directory.CreateTempSubdirectory("localmind-eval-").FullName;
+        var databasePath = Path.Combine(temp, "eval.db");
+        try
+        {
+            var isolated = new ConfigurationBuilder()
+                .AddConfiguration(configuration)
+                .AddInMemoryCollection(group.ConfigOverrides)
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    [$"{StorageOptions.SectionName}:{nameof(StorageOptions.DatabasePath)}"] = databasePath,
+                })
+                .Build();
+
+            await using var services = CliServices.Build(isolated);
+            try
+            {
+                await CliStartup.PrepareAsync(services, cancellationToken);
+            }
+            catch (OptionsValidationException exception)
+            {
+                // Назви прогонів додає виклик зовні, один раз.
+                throw new LocalMindException(exception.Message, exception);
+            }
+
+            // Hybrid без моделі тихо деградує до keyword, а для експерименту це було б хибним результатом.
+            if (group.Runs.Any(run => run.Modes.Any(mode => mode != SearchMode.Keyword)))
+            {
+                await services.GetRequiredService<IEmbedder>()
+                    .EmbedAsync(["перевірка моделі"], EmbeddingPurpose.Query, cancellationToken);
+            }
+
+            var report = await EvalRunner.RunAsync(
+                dataset,
+                services.GetRequiredService<FolderIndexer>(),
+                services.GetRequiredService<ISearchService>(),
+                group.Runs,
+                databasePath,
+                cancellationToken);
+
+            var chunking = services.GetRequiredService<IOptions<ChunkingOptions>>().Value;
+            var setup = new EvalSetup(
+                services.GetRequiredService<IOptions<EmbeddingModelOptions>>().Value.ModelName,
+                chunking.Strategy,
+                chunking.ChunkSizeTokens,
+                chunking.OverlapPercent);
+            return report with { Setup = setup };
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            TryDelete(temp);
+        }
+    }
+
+    private static (string Csv, string Markdown) Write(
+        string name,
+        IReadOnlyList<EvalReport> reports,
+        IReadOnlyList<string> runOrder,
+        string folder)
     {
         Directory.CreateDirectory(folder);
-        var name = $"{report.Dataset}-{DateTime.Now:yyyyMMdd-HHmmss}";
         var csv = Path.Combine(folder, name + ".csv");
         var markdown = Path.Combine(folder, name + ".md");
-        File.WriteAllText(csv, EvalReportWriter.ToCsv(report));
-        File.WriteAllText(markdown, EvalReportWriter.ToMarkdown(report));
+        File.WriteAllText(csv, EvalReportWriter.ToCsv(reports, runOrder));
+        File.WriteAllText(markdown, EvalReportWriter.ToMarkdown(reports, runOrder));
         return (csv, markdown);
     }
 
