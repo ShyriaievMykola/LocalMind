@@ -1,6 +1,7 @@
 using System.Threading.Channels;
 using LocalMind.Core.Abstractions;
 using LocalMind.Core.Configuration;
+using LocalMind.Core.Errors;
 using LocalMind.Core.Ingestion.Parsers;
 using LocalMind.Core.Ingestion.Watching;
 using LocalMind.Core.Models;
@@ -37,6 +38,7 @@ public sealed partial class IndexingService : IIndexingService, IDisposable
     private readonly ParserRegistry _parsers;
     private readonly IChunker _chunker;
     private readonly IEmbedder _embedder;
+    private int _modelMissingLogged;
     private readonly IDocumentRepository _repository;
     private readonly IVectorIndex _vectorIndex;
     private readonly ChangeDetector _changeDetector;
@@ -443,7 +445,26 @@ public sealed partial class IndexingService : IIndexingService, IDisposable
         }
 
         // Батчі всередині embedder-а: він сам ділить набір на частини розміру з налаштувань моделі.
-        var vectors = await _embedder.EmbedAsync([.. chunks.Select(c => c.Text)], EmbeddingPurpose.Passage, cancellationToken);
+        IReadOnlyList<ReadOnlyMemory<float>> vectors;
+        try
+        {
+            // Перевірка файлів без винятків у черзі: поки моделі немає, нічого не кидається й не логується на кожен файл.
+            _embedder.EnsureAvailable();
+            vectors = await _embedder.EmbedAsync([.. chunks.Select(c => c.Text)], EmbeddingPurpose.Passage, cancellationToken);
+            Volatile.Write(ref _modelMissingLogged, 0);
+        }
+        catch (ModelNotFoundException exception)
+        {
+            // Без моделі файл індексується для keyword-пошуку, а не позначається помилкою.
+            // Попередження — раз, поки модель недоступна, а не на кожен файл черги.
+            if (Interlocked.Exchange(ref _modelMissingLogged, 1) == 0)
+            {
+                LogModelMissing(_logger, exception.Message);
+            }
+
+            vectors = [];
+        }
+
         var document = new Document(id, path, hash, DocumentStatus.Indexed, DateTimeOffset.UtcNow);
         await SaveAsync(document, chunks, vectors, cancellationToken);
     }
@@ -493,7 +514,7 @@ public sealed partial class IndexingService : IIndexingService, IDisposable
         var replaced = await _repository.SaveAsync(document, chunks, vectors, _embedder.ModelName, cancellationToken);
 
         RemoveVectors(replaced);
-        for (var i = 0; i < chunks.Count; i++)
+        for (var i = 0; i < vectors.Count; i++)
         {
             _vectorIndex.Add(chunks[i].Id, vectors[i]);
         }
@@ -571,6 +592,9 @@ public sealed partial class IndexingService : IIndexingService, IDisposable
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Не вдалося зберегти статус помилки для {Path}")]
     private static partial void LogErrorNotSaved(ILogger logger, string path, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Модель embeddings недоступна: файли індексуються без векторів, лише для keyword-пошуку. {Reason}")]
+    private static partial void LogModelMissing(ILogger logger, string reason);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Обробник ProgressChanged завершився з помилкою")]
     private static partial void LogProgressHandlerFailed(ILogger logger, Exception exception);

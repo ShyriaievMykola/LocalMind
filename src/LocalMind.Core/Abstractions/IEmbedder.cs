@@ -20,6 +20,15 @@ public interface IEmbedder
     /// </summary>
     int MaxTokens { get; }
 
+    /// <summary>
+    /// Перевіряє, що файли моделі є на диску, не завантажуючи її: семантичному пошуку це дозволяє чесно повідомити про
+    /// відсутню модель, навіть якщо вектори ще не збережені. За замовчуванням — нічого не перевіряє.
+    /// </summary>
+    /// <exception cref="Errors.ModelNotFoundException">Файлів моделі немає.</exception>
+    void EnsureAvailable()
+    {
+    }
+
     /// <summary>Обчислює embeddings для набору текстів.</summary>
     /// <param name="texts">
     /// Тексти будь-якої кількості. Реалізація сама ділить їх на внутрішні батчі розміру,

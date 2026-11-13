@@ -169,7 +169,7 @@ public sealed class DocumentRepository(IDbContextFactory<LocalMindDbContext> con
         ArgumentNullException.ThrowIfNull(vectors);
         ArgumentException.ThrowIfNullOrWhiteSpace(modelName);
 
-        if (vectors.Count != chunks.Count)
+        if (vectors.Count != 0 && vectors.Count != chunks.Count)
         {
             throw new ArgumentException(
                 $"Кількість векторів ({vectors.Count}) не збігається з кількістю фрагментів ({chunks.Count}).",
@@ -208,7 +208,8 @@ public sealed class DocumentRepository(IDbContextFactory<LocalMindDbContext> con
 
         if (chunks.Count > 0)
         {
-            var model = await GetOrAddModelAsync(context, modelName, cancellationToken);
+            // Без векторів (модель не завантажена) фрагменти доступні лише keyword-пошуку.
+            var model = vectors.Count > 0 ? await GetOrAddModelAsync(context, modelName, cancellationToken) : null;
             for (var i = 0; i < chunks.Count; i++)
             {
                 entity.Chunks.Add(new ChunkEntity
@@ -217,7 +218,9 @@ public sealed class DocumentRepository(IDbContextFactory<LocalMindDbContext> con
                     Ordinal = chunks[i].Ordinal,
                     Text = chunks[i].Text,
                     StartOffset = chunks[i].StartOffset,
-                    Embeddings = [new EmbeddingEntity { ModelId = model.Id, Vector = ToBytes(vectors[i]) }],
+                    Embeddings = model is null
+                        ? []
+                        : [new EmbeddingEntity { ModelId = model.Id, Vector = ToBytes(vectors[i]) }],
                 });
             }
         }
