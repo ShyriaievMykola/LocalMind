@@ -46,20 +46,36 @@ jobs:
       - name: Test
         run: >-
           dotnet test LocalMind.slnx --no-build --configuration Release
+          --settings coverage.runsettings
           --collect:"XPlat Code Coverage" --results-directory TestResults
 
-      # Сирий звіт містить увесь App (Views/XAML дають 0 %), тому покриття ViewModels (A-08) рахуємо окремо.
-      - name: Coverage summary (ViewModels)
+      # Звіт покриття (D-05): HTML-артефакт і підсумок у job summary. Зовнішніх сервісів немає.
+      # ReportGenerator підключено як локальний інструмент (dotnet-tools.json), версія зафіксована.
+      - name: Coverage report
         if: matrix.os == 'ubuntu-latest'
+        shell: bash
         run: |
-          dotnet tool install --global dotnet-reportgenerator-globaltool
-          "$HOME/.dotnet/tools/reportgenerator" \
-            "-reports:TestResults/**/coverage.cobertura.xml" \
-            "-targetdir:CoverageReport" \
-            "-classfilters:+LocalMind.App.ViewModels*" \
-            "-reporttypes:MarkdownSummaryGithub;TextSummary"
+          dotnet tool restore
+          dotnet reportgenerator "-reports:TestResults/**/coverage.cobertura.xml" -targetdir:CoverageReport \
+            "-reporttypes:Html;MarkdownSummaryGithub;TextSummary" "-title:LocalMind coverage"
+
+          # Окремі зрізи: підсумок по шарах у таблиці зверху.
+          line_coverage() { grep -m1 'Line coverage' "$1" | grep -oE '[0-9]+(\.[0-9]+)?%' | head -1; }
           {
-            echo "## Покриття ViewModels"
+            echo "## Покриття тестами"
+            echo
+            echo "| Шар | Покриття рядків |"
+            echo "|:---|---:|"
+            echo "| **Усе разом** | **$(line_coverage CoverageReport/Summary.txt)** |"
+            for layer in "App (ViewModels):LocalMind.App.ViewModels.*" "App (Services):LocalMind.App.Services.*" \
+              "Core:LocalMind.Core.*" "Search:LocalMind.Search.*" "Server:LocalMind.Server.*"; do
+              name="${layer%%:*}"; filter="${layer#*:}"; dir="CoverageReport/layers/${name//[^A-Za-z]/_}"
+              dotnet reportgenerator "-reports:TestResults/**/coverage.cobertura.xml" "-targetdir:$dir" \
+                "-classfilters:+$filter" "-reporttypes:TextSummary" > /dev/null
+              echo "| $name | $(line_coverage "$dir/Summary.txt") |"
+            done
+            echo
+            echo "Повний HTML-звіт — в артефакті **coverage-report**. XAML, точку входу, design-time фабрики й міграції EF Core виключено (coverage.runsettings)."
             echo
             cat CoverageReport/SummaryGithub.md
           } >> "$GITHUB_STEP_SUMMARY"
@@ -72,13 +88,49 @@ jobs:
           path: TestResults/**/coverage.cobertura.xml
           if-no-files-found: ignore
 
+      - name: Upload coverage report
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-report
+          path: CoverageReport
+          if-no-files-found: ignore
+
+      # Сирий звіт містить увесь App (Views/XAML дають 0 %), тому покриття ViewModels (A-08) рахуємо окремо.
+      # Окрема тека, щоб не затирати основний звіт вище; інструмент уже відновлено через dotnet tool restore.
+      - name: Coverage summary (ViewModels)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          dotnet reportgenerator \
+            "-reports:TestResults/**/coverage.cobertura.xml" \
+            "-targetdir:CoverageReport-ViewModels" \
+            "-classfilters:+LocalMind.App.ViewModels*" \
+            "-reporttypes:MarkdownSummaryGithub;TextSummary"
+          {
+            echo "## Покриття ViewModels"
+            echo
+            cat CoverageReport-ViewModels/SummaryGithub.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload ViewModels coverage report
         if: matrix.os == 'ubuntu-latest'
         uses: actions/upload-artifact@v7
         with:
           name: coverage-viewmodels
-          path: CoverageReport
+          path: CoverageReport-ViewModels
           if-no-files-found: ignore
+
+      # Критерій D-05: загальне покриття ≥ 80 %. Стоїть після завантаження артефактів, щоб звіт був навіть при падінні.
+      - name: Coverage threshold
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        env:
+          MIN_LINE_COVERAGE: 80
+        run: |
+          actual=$(grep -m1 'Line coverage' CoverageReport/Summary.txt | grep -oE '[0-9]+(\.[0-9]+)?' | head -1)
+          echo "Покриття рядків: ${actual}% (мінімум ${MIN_LINE_COVERAGE}%)"
+          awk -v a="$actual" -v m="$MIN_LINE_COVERAGE" 'BEGIN { exit !(a + 0 >= m + 0) }' \
+            || { echo "::error::Покриття рядків ${actual}% нижче ${MIN_LINE_COVERAGE}%"; exit 1; }
 
   # Одна перевірка на Ubuntu, а не на всі 3 ОС: залежності в усіх однакові.
   vulnerable-packages:

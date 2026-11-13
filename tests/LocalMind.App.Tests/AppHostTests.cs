@@ -104,10 +104,12 @@ public sealed class AppHostTests : IDisposable
         var search = new FakeSearchService().CreateViewModel();
         var library = new FakeIndexingService().CreateViewModel();
         var account = new FakeAccountClient().CreateViewModel();
+        var backup = new FakeBackupOperations().CreateViewModel();
         var settings = new FakeUserSettingsService().CreateViewModel();
         builder.Services.AddSingleton(search);
         builder.Services.AddSingleton(library);
         builder.Services.AddSingleton(account);
+        builder.Services.AddSingleton(backup);
         builder.Services.AddSingleton(settings);
         using var host = builder.Build();
 
@@ -118,6 +120,7 @@ public sealed class AppHostTests : IDisposable
             item => Assert.Same(search, item.Page),
             item => Assert.Same(library, item.Page),
             item => Assert.Same(account, item.Page),
+            item => Assert.Same(backup, item.Page),
             item => Assert.Same(settings, item.Page));
     }
 
@@ -131,6 +134,17 @@ public sealed class AppHostTests : IDisposable
         Assert.False(account.IsConfigured);
         Assert.False(account.IsSignedIn);
         Assert.Contains("не налаштовано", account.ServerStatusText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Build_WithoutServerUrl_BackupPageIsUnavailable()
+    {
+        using var host = AppHost.CreateBuilder([], SettingsPath).Build();
+
+        var backup = host.Services.GetRequiredService<BackupViewModel>();
+
+        Assert.False(backup.IsAvailable);
+        Assert.Contains("не налаштовано", backup.AvailabilityText, StringComparison.Ordinal);
     }
 
     [Fact]

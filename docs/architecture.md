@@ -85,7 +85,7 @@ Cli ──┘
 | `IChunker` | Текст → фрагменти | `FixedSizeChunker`, `ParagraphChunker` |
 | `ITokenCounter` | Підрахунок токенів для нарізки | `HfTokenCounter` (токенізатор моделі) |
 | `IEmbedder` | Тексти → вектори | `OnnxEmbedder` |
-| `IVectorIndex` | Пошук найближчих векторів | `BruteForceIndex`, `HnswIndex` |
+| `IVectorIndex` | Пошук найближчих векторів | `BruteForceIndex`, `HnswIndex` (вибір: `LocalMind:Search:VectorIndex:Kind`, DR-023) |
 | `IKeywordIndex` | Повнотекстовий пошук BM25 | `Fts5KeywordIndex` |
 | `IDocumentRepository` | Збереження документів і фрагментів | `DocumentRepository` |
 | `IIndexingService` | Фонова індексація | `IndexingService` |
@@ -145,7 +145,7 @@ Cli ──┘
 
 **Як додати сторінку**
 
-Головне вікно має бокове меню «Пошук / Бібліотека / Обліковий запис / Налаштування» і рядок стану ядра внизу.
+Головне вікно має бокове меню «Пошук / Бібліотека / Обліковий запис / Бекап / Налаштування» і рядок стану ядра внизу.
 `MainViewModel.NavigationItems` містить пункти меню (`NavigationItem`: назва і VM сторінки),
 `SelectedItem` задає активний пункт, а `CurrentPage` — вміст `ContentControl`, який відображає `ViewLocator`.
 Початкова сторінка — пошук. VM трьох сторінок отримуються через конструктор `MainViewModel` і зберігаються

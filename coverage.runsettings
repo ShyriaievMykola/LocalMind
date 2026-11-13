@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Налаштування збору покриття (coverlet.collector); підключається параметром settings у dotnet test. -->
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat Code Coverage">
+        <Configuration>
+          <Format>cobertura</Format>
+
+          <!-- Згенерований код (регулярні вирази, логування, MVVM Toolkit, XAML) у звіт не потрапляє. -->
+          <ExcludeByAttribute>GeneratedCodeAttribute,CompilerGeneratedAttribute,ExcludeFromCodeCoverageAttribute</ExcludeByAttribute>
+
+          <!--
+            Без юніт-тестів лишаємо тільки те, що неможливо перевірити без вікна чи без запуску процесу:
+            XAML (Views, скомпільовані ресурси Avalonia), точка входу, design-time фабрики EF Core і міграції EF Core (згенеровані).
+            Уся логіка ViewModels, сервісів і ядра рахується.
+          -->
+          <Exclude>[LocalMind.App]CompiledAvaloniaXaml.*,[*]*.Migrations.*,[LocalMind.App]LocalMind.App.Views.*,[LocalMind.App]LocalMind.App.App,[LocalMind.App]LocalMind.App.Program,[*]*DesignTimeFactory</Exclude>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>
