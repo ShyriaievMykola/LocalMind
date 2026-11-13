@@ -18,18 +18,27 @@ namespace LocalMind.Core.Backup;
 public sealed class RestoreService(IDbContextFactory<LocalMindDbContext> contexts, BackupApiClient api)
 {
     /// <summary>Завантажує бекап і замінює ним поточну базу.</summary>
+    /// <param name="backupId">Ідентифікатор бекапу на сервері.</param>
+    /// <param name="password">Пароль шифрування бекапу.</param>
+    /// <param name="beforeReplace">
+    /// Викликається, коли бекап уже завантажено, розшифровано й перевірено, і лише перед самою заміною файла бази:
+    /// тут хост зупиняє індексацію. Не викликається, якщо пароль неправильний чи бекап пошкоджено.
+    /// </param>
+    /// <param name="cancellationToken">Скасування операції.</param>
     /// <exception cref="BackupDecryptionException">Неправильний пароль або бекап пошкоджено.</exception>
     /// <exception cref="BackupApiException">Бекапу немає або сервер недоступний.</exception>
-    public async Task RestoreAsync(Guid backupId, string password, CancellationToken cancellationToken = default)
+    public async Task RestoreAsync(
+        Guid backupId, string password, Action? beforeReplace = null, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(password);
 
         var encrypted = await api.DownloadBackupAsync(backupId, cancellationToken).ConfigureAwait(false);
-        await RestoreFromEnvelopeAsync(encrypted, password, cancellationToken).ConfigureAwait(false);
+        await RestoreFromEnvelopeAsync(encrypted, password, cancellationToken, beforeReplace).ConfigureAwait(false);
     }
 
     /// <summary>Розшифровує конверт і атомарно підміняє ним файл бази.</summary>
-    internal async Task RestoreFromEnvelopeAsync(byte[] encrypted, string password, CancellationToken cancellationToken)
+    internal async Task RestoreFromEnvelopeAsync(
+        byte[] encrypted, string password, CancellationToken cancellationToken, Action? beforeReplace = null)
     {
         var plaintext = await Task.Run(() => AesGcmCipher.Decrypt(EncryptedEnvelope.Parse(encrypted), password), cancellationToken)
             .ConfigureAwait(false);
@@ -56,6 +65,8 @@ public sealed class RestoreService(IDbContextFactory<LocalMindDbContext> context
             }
 
             await VerifyDatabaseAsync(tempPath, cancellationToken).ConfigureAwait(false);
+
+            beforeReplace?.Invoke();
 
             // Пул тримає файл бази відкритим — без цього заміна на Windows не вдасться.
             SqliteConnection.ClearAllPools();

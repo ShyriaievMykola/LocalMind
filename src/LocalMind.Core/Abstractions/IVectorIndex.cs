@@ -22,6 +22,27 @@ public interface IVectorIndex
     /// <returns><see langword="true"/>, якщо фрагмент був в індексі.</returns>
     bool Remove(Guid chunkId);
 
+    /// <summary>
+    /// Видаляє кілька векторів. Реалізації можуть робити це дешевше, ніж серію <see cref="Remove"/>
+    /// (HNSW — одним проходом по графі); за замовчуванням — просто серія.
+    /// </summary>
+    /// <returns>Скільки векторів було в індексі й видалено.</returns>
+    int RemoveRange(IEnumerable<Guid> chunkIds)
+    {
+        ArgumentNullException.ThrowIfNull(chunkIds);
+
+        var removed = 0;
+        foreach (var chunkId in chunkIds)
+        {
+            if (Remove(chunkId))
+            {
+                removed++;
+            }
+        }
+
+        return removed;
+    }
+
     /// <summary>Шукає фрагменти, найближчі до вектора запиту.</summary>
     /// <param name="query">L2-нормалізований вектор запиту.</param>
     /// <param name="k">Скільки результатів повернути, більше нуля.</param>
