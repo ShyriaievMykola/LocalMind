@@ -1,0 +1,11 @@
+{
+  "runs": [
+    { "name": "e3-fixed-64", "chunking": { "strategy": "fixedSize", "chunkSizeTokens": 64, "overlapPercent": 15 }, "modes": ["semantic", "hybrid"] },
+    { "name": "e3-fixed-128", "chunking": { "strategy": "fixedSize", "chunkSizeTokens": 128, "overlapPercent": 15 }, "modes": ["semantic", "hybrid"] },
+    { "name": "e3-fixed-256", "chunking": { "strategy": "fixedSize", "chunkSizeTokens": 256, "overlapPercent": 15 }, "modes": ["semantic", "hybrid"] },
+    { "name": "e3-fixed-512", "chunking": { "strategy": "fixedSize", "chunkSizeTokens": 512, "overlapPercent": 15 }, "modes": ["semantic", "hybrid"] },
+    { "name": "e3-fixed-256-overlap0", "chunking": { "strategy": "fixedSize", "chunkSizeTokens": 256, "overlapPercent": 0 }, "modes": ["semantic", "hybrid"] },
+    { "name": "e3-fixed-256-overlap30", "chunking": { "strategy": "fixedSize", "chunkSizeTokens": 256, "overlapPercent": 30 }, "modes": ["semantic", "hybrid"] },
+    { "name": "e3-paragraph-256", "chunking": { "strategy": "paragraph", "chunkSizeTokens": 256 }, "modes": ["semantic", "hybrid"] }
+  ]
+}

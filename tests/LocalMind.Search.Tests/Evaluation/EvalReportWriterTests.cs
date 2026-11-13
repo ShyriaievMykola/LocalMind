@@ -1,4 +1,5 @@
 using System.Globalization;
+using LocalMind.Core.Configuration;
 using LocalMind.Core.Models;
 using LocalMind.Search.Evaluation;
 
@@ -26,10 +27,49 @@ public class EvalReportWriterTests
 
         Assert.Equal(3, lines.Length);
         Assert.Equal(
-            "dataset,run,mode,type,queries,k,recall,mrr,ndcg,latency_p50_ms,latency_p95_ms,documents,chunks,index_seconds,db_bytes,peak_memory_bytes",
+            "dataset,run,mode,type,queries,k,recall,mrr,ndcg,latency_p50_ms,latency_p95_ms,documents,chunks,index_seconds,db_bytes,peak_memory_bytes,model,chunking,chunk_size_tokens,overlap_percent",
             lines[0]);
-        Assert.Equal("demo,bm25,keyword,all,8,10,0.7500,0.5000,0.6250,1.23,4.50,6,12,1.50,2097152,314572800", lines[1]);
-        Assert.Equal("demo,bm25,keyword,crossLingual,2,10,0.0000,0.0000,0.0000,1.00,2.00,6,12,1.50,2097152,314572800", lines[2]);
+        Assert.Equal("demo,bm25,keyword,all,8,10,0.7500,0.5000,0.6250,1.23,4.50,6,12,1.50,2097152,314572800,,,,", lines[1]);
+        Assert.Equal("demo,bm25,keyword,crossLingual,2,10,0.0000,0.0000,0.0000,1.00,2.00,6,12,1.50,2097152,314572800,,,,", lines[2]);
+    }
+
+    [Fact]
+    public void ToCsv_WithSetup_AddsModelAndChunkingColumns()
+    {
+        var report = Report with { Setup = new EvalSetup("multilingual-e5-base", ChunkingStrategy.Paragraph, 128, 15) };
+
+        var row = EvalReportWriter.ToCsv(report).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)[1];
+
+        Assert.EndsWith(",2097152,314572800,multilingual-e5-base,paragraph,128,15", row, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ToCsv_SeveralReports_HaveOneHeaderAndOwnMeasurementsPerReport()
+    {
+        var first = Report with { Setup = new EvalSetup("m1", ChunkingStrategy.FixedSize, 64, 0), Chunks = 30 };
+        var second = Report with { Setup = new EvalSetup("m2", ChunkingStrategy.FixedSize, 256, 30), Chunks = 8, Rows = [Report.Rows[0] with { Run = "second" }] };
+
+        var lines = EvalReportWriter.ToCsv([first, second]).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        Assert.Equal(4, lines.Length);
+        Assert.Single(lines, line => line.StartsWith("dataset,", StringComparison.Ordinal));
+        Assert.Contains(",6,30,1.50,2097152,314572800,m1,fixedSize,64,0", lines[1], StringComparison.Ordinal);
+        Assert.StartsWith("demo,second,", lines[3], StringComparison.Ordinal);
+        Assert.EndsWith(",6,8,1.50,2097152,314572800,m2,fixedSize,256,30", lines[3], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ToMarkdown_SeveralReports_DescribeEachSetupAndHaveOneTable()
+    {
+        var first = Report with { Setup = new EvalSetup("m1", ChunkingStrategy.FixedSize, 64, 0) };
+        var second = Report with { Setup = new EvalSetup("m2", ChunkingStrategy.Paragraph, 256, 30), Rows = [Report.Rows[0] with { Run = "second" }] };
+
+        var markdown = EvalReportWriter.ToMarkdown([first, second]);
+
+        Assert.Contains("## m1, fixedSize, фрагмент 64 токенів, перекриття 0%", markdown, StringComparison.Ordinal);
+        Assert.Contains("## m2, paragraph, фрагмент 256 токенів, перекриття 30%", markdown, StringComparison.Ordinal);
+        Assert.Single(markdown.Split('\n'), line => line.StartsWith("| Прогін", StringComparison.Ordinal));
+        Assert.Contains("| second | keyword | all |", markdown, StringComparison.Ordinal);
     }
 
     [Fact]

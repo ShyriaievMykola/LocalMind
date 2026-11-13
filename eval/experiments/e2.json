@@ -1,0 +1,8 @@
+{
+  "runs": [
+    { "name": "e2-e5-small", "model": "multilingual-e5-small", "chunking": { "chunkSizeTokens": 120 }, "modes": ["keyword", "semantic", "hybrid"] },
+    { "name": "e2-e5-base", "model": "multilingual-e5-base", "chunking": { "chunkSizeTokens": 120 }, "modes": ["semantic", "hybrid"] },
+    { "name": "e2-minilm", "model": "paraphrase-multilingual-MiniLM-L12-v2", "chunking": { "chunkSizeTokens": 120 }, "modes": ["semantic", "hybrid"] },
+    { "name": "e2-mpnet", "model": "paraphrase-multilingual-mpnet-base-v2", "chunking": { "chunkSizeTokens": 120 }, "modes": ["semantic", "hybrid"] }
+  ]
+}
