@@ -46,6 +46,69 @@ internal static class RecallReport
         return 0;
     }
 
+    /// <summary>
+    /// Те саме на справжніх векторах: <paramref name="vectorsPath"/> — сирі float32 (little-endian, 384 на вектор) з бази
+    /// індексації. 100 випадкових векторів стають запитами й з індексу виключаються; розміри 1k, 10k і весь залишок.
+    /// </summary>
+    public static int RunReal(string vectorsPath, string outputPath)
+    {
+        var bytes = File.ReadAllBytes(vectorsPath);
+        var stride = RandomData.Dimensions * sizeof(float);
+        var total = bytes.Length / stride;
+        var all = new float[total][];
+        for (var i = 0; i < total; i++)
+        {
+            all[i] = new float[RandomData.Dimensions];
+            Buffer.BlockCopy(bytes, i * stride, all[i], 0, stride);
+        }
+
+        Console.WriteLine($"Прочитано {total} векторів");
+        var order = Enumerable.Range(0, total).ToArray();
+        new Random(7).Shuffle(order);
+        var queries = order.Take(QueryCount).Select(i => all[i]).ToArray();
+        var pool = order.Skip(QueryCount).ToArray();
+
+        var lines = new List<string> { "data;size;index;ef_search;recall_at_10;latency_ms_per_query;build_seconds" };
+        foreach (var size in new[] { 1_000, 10_000, pool.Length })
+        {
+            var vectors = pool.Take(size).Select(i => all[i]).ToArray();
+            MeasureVectors("real", vectors, queries, lines);
+        }
+
+        var folder = Path.GetDirectoryName(Path.GetFullPath(outputPath));
+        if (folder is not null)
+        {
+            Directory.CreateDirectory(folder);
+        }
+
+        File.WriteAllLines(outputPath, lines);
+        Console.WriteLine($"Збережено: {Path.GetFullPath(outputPath)}");
+        return 0;
+    }
+
+    private static void MeasureVectors(string data, float[][] vectors, float[][] queries, List<string> lines)
+    {
+        var size = vectors.Length;
+        var label = $"{data}/{size}";
+        var exact = new BruteForceIndex(RandomData.Dimensions);
+        using var hnsw = new HnswIndex(RandomData.Dimensions, new VectorIndexOptions());
+        Fill(exact, vectors);
+        var clock = Stopwatch.StartNew();
+        Fill(hnsw, vectors);
+        var build = clock.Elapsed.TotalSeconds;
+        Console.WriteLine($"[{label}] HNSW побудовано за {build:0.0} с");
+
+        var truth = queries.Select(query => exact.Search(query, K).Select(r => r.ChunkId).ToHashSet()).ToArray();
+        lines.Add(Row(data, size, "BruteForce", 0, 1.0, MedianLatencyMs(query => exact.Search(query, K), queries)) + ";0");
+        foreach (var ef in EfSearchValues)
+        {
+            var recall = MeanRecall(hnsw, queries, truth, ef);
+            var latency = MedianLatencyMs(query => hnsw.Search(query, K, ef), queries);
+            lines.Add(Row(data, size, "Hnsw", ef, recall, latency) + string.Create(CultureInfo.InvariantCulture, $";{build:0.00}"));
+            Console.WriteLine($"[{label}] efSearch={ef}: recall@{K} = {recall:0.000}, {latency * 1000:0.0} мкс/запит");
+        }
+    }
+
     private static void Measure(string data, int size, List<string> lines)
     {
         var label = $"{data}/{size}";
