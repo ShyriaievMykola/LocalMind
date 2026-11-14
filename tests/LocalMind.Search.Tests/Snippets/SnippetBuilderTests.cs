@@ -102,6 +102,10 @@ public class SnippetBuilderTests
     [InlineData("кава", "кав")]
     [InlineData("нотатки", "нотат")]
     [InlineData("api", "api")]
+    [InlineData("борщ", "борщ")]
+    [InlineData("лист", "лист")]
+    [InlineData("мова", "мов")]
+    [InlineData("море", "мор")]
     [InlineData("docker", "dock")]
     public void Stem_KeepsWordRoot(string word, string expected)
     {

@@ -61,8 +61,9 @@ public static class SearchTerms
     }
 
     /// <summary>
-    /// Спільний початок, за яким шукаємо форми слова: до 3 літер — слово повністю, 4–5 — без останньої літери,
-    /// довше — без двох останніх, але не коротше за 4: «кава» → «кав», «нотатки» → «нотат».
+    /// Спільний початок, за яким шукаємо форми слова: до 3 літер — слово повністю; 4–5 — без останньої літери, але лише
+    /// якщо це голосна (закінчення відмінка: «кава» → «кав», «каву», «кави»); слово на приголосну лишається цілим, інакше
+    /// «борщ» дав би «бор» і знаходив би «борозна»; довше — без двох останніх, але не коротше за 4: «нотатки» → «нотат».
     /// </summary>
     public static string Stem(string word)
     {
@@ -71,10 +72,13 @@ public static class SearchTerms
         return word.Length switch
         {
             <= 3 => word,
-            <= 5 => word[..^1],
+            <= 5 => IsVowelOrSign(word[^1]) ? word[..^1] : word,
             _ => word[..Math.Max(4, word.Length - 2)],
         };
     }
+
+    /// <summary>Голосна (українська, російська, латиниця) або м'який знак: така остання літера — найімовірніше закінчення.</summary>
+    private static bool IsVowelOrSign(char letter) => "аеєиіїоуюяыэёьaeiouy".Contains(char.ToLowerInvariant(letter), StringComparison.Ordinal);
 
     /// <summary>Літера, цифра або апостроф між літерами («м'ята», «п’ять»).</summary>
     private static bool IsWordChar(string text, int index)
