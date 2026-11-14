@@ -138,6 +138,25 @@ class TableAndPlotTests(unittest.TestCase):
         ])
         self.assertEqual(code, 0)
 
+    def test_main_with_real_vectors_writes_separate_chart(self) -> None:
+        real = (
+            "data;size;index;ef_search;recall_at_10;latency_ms_per_query;build_seconds\n"
+            "real;1000;BruteForce;0;1.0000;0.15000;0\n"
+            "real;1000;Hnsw;100;0.9900;0.20000;0.80\n"
+            "real;96000;BruteForce;0;1.0000;15.00000;0\n"
+            "real;96000;Hnsw;10;0.4000;0.20000;300.00\n"
+            "real;96000;Hnsw;100;0.9000;0.90000;300.00\n"
+        )
+        (self.path / "real.csv").write_text(real, encoding="utf-8")
+        out = self.path / "out"
+        code = plot_e4.main([
+            "--bdn", str(self.path / "bdn.csv"), "--recall", str(self.path / "recall.csv"),
+            "--real", str(self.path / "real.csv"), "--out", str(out),
+        ])
+        self.assertEqual(code, 0)
+        self.assertGreater((out / "e4_real_recall_vs_latency.png").stat().st_size, 0)
+        self.assertIn("| real | 96 000 | Hnsw (efSearch 100) | 0.900", (out / "e4_table.md").read_text(encoding="utf-8"))
+
     def test_main_unknown_input_returns_1(self) -> None:
         code = plot_e4.main([
             "--bdn", str(self.path / "none.csv"), "--recall", str(self.path / "recall.csv"), "--out", str(self.path / "out"),

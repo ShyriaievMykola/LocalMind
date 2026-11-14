@@ -32,10 +32,11 @@ from matplotlib.ticker import NullFormatter  # noqa: E402
 BDN_REQUIRED = ("Size", "Kind", "Mean")
 RECALL_REQUIRED = ("data", "size", "index", "ef_search", "recall_at_10", "latency_ms_per_query")
 
-DATA_ORDER = ("uniform", "clustered")
+DATA_ORDER = ("uniform", "clustered", "real")
 DATA_TITLES = {
     "uniform": "Рівномірні випадкові вектори (як у BenchmarkDotNet)",
     "clustered": "Кластеризовані вектори (теми + шум)",
+    "real": "Справжні вектори e5-small (відкритий корпус)",
 }
 
 BRUTE = "BruteForce"
@@ -146,7 +147,7 @@ def build_table(bdn: list[BdnPoint], recall: list[RecallPoint]) -> list[str]:
     return lines
 
 
-def plot_recall_vs_latency(bdn: list[BdnPoint], recall: list[RecallPoint], out: Path) -> list[Path]:
+def plot_recall_vs_latency(bdn: list[BdnPoint], recall: list[RecallPoint], out: Path, name: str = "e4_recall_vs_latency") -> list[Path]:
     """Сітка: рядок — набір даних, стовпчик — кількість векторів; вісь X — затримка (логарифмічна), Y — recall@10."""
     datasets = [d for d in DATA_ORDER if any(p.data == d for p in recall)]
     sizes = sorted({p.size for p in recall})
@@ -179,7 +180,8 @@ def plot_recall_vs_latency(bdn: list[BdnPoint], recall: list[RecallPoint], out: 
             axis.set_xscale("log")
             axis.xaxis.set_minor_formatter(NullFormatter())  # підписи малих поділок на log-осі налізають одне на одного
             axis.set_title(f"{size:,} векторів".replace(",", " "), fontsize=10)
-            axis.set_ylim(-0.03, 1.05)
+            low = min(point.recall for point in recall)
+            axis.set_ylim((max(0.0, low - 0.04), 1.01) if low > 0.85 else (-0.03, 1.05))  # узкий діапазон, якщо recall скрізь високий
             axis.grid(alpha=0.3, which="both")
             if row == len(datasets) - 1:
                 axis.set_xlabel("Затримка запиту top-10, мс (log)")
@@ -195,7 +197,7 @@ def plot_recall_vs_latency(bdn: list[BdnPoint], recall: list[RecallPoint], out: 
     figure.tight_layout(rect=(0, 0.06, 1, 1))
     paths = []
     for extension in ("png", "svg"):
-        target = out / f"e4_recall_vs_latency.{extension}"
+        target = out / f"{name}.{extension}"
         figure.savefig(target, dpi=160, bbox_inches="tight")
         paths.append(target)
     plt.close(figure)
@@ -210,6 +212,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Графік E4: recall проти затримки, BruteForce проти HNSW.")
     parser.add_argument("--bdn", required=True, help="звіт BenchmarkDotNet *SearchBenchmarks-report.csv")
     parser.add_argument("--recall", required=True, help="e4-recall.csv з `dotnet run ... -- --recall`")
+    parser.add_argument("--real", default=None, help="e4-real.csv (`-- --real`): справжні вектори; окремий графік e4_real_recall_vs_latency")
     parser.add_argument("--out", default="eval/plots/out", help="тека для PNG, SVG і таблиці (за замовчуванням eval/plots/out)")
     args = parser.parse_args(argv)
 
@@ -220,6 +223,10 @@ def main(argv: list[str] | None = None) -> int:
         out = Path(args.out)
         out.mkdir(parents=True, exist_ok=True)
         written = plot_recall_vs_latency(bdn, recall, out)
+        if args.real:
+            real = read_recall(Path(args.real))
+            written += plot_recall_vs_latency([], real, out, name="e4_real_recall_vs_latency")
+            recall = recall + real
     except CsvFormatError as error:
         print(f"Помилка: {error}", file=sys.stderr)
         return 1
