@@ -1,0 +1,13 @@
+dataset,run,mode,type,queries,k,recall,mrr,ndcg,latency_p50_ms,latency_p95_ms,documents,chunks,index_seconds,db_bytes,peak_memory_bytes,model,chunking,chunk_size_tokens,overlap_percent
+open-eval,cli,keyword,all,90,10,0.5197,0.7190,0.5030,19.18,67.17,902,12782,1292.68,59341416,1566892032,multilingual-e5-small,fixedSize,256,15
+open-eval,cli,keyword,exact,30,10,0.9056,1.0000,0.9310,13.91,66.67,902,12782,1292.68,59341416,1566892032,multilingual-e5-small,fixedSize,256,15
+open-eval,cli,keyword,paraphrase,30,10,0.3167,0.1571,0.1579,20.37,73.03,902,12782,1292.68,59341416,1566892032,multilingual-e5-small,fixedSize,256,15
+open-eval,cli,keyword,crossLingual,30,10,0.3368,1.0000,0.4200,24.78,67.17,902,12782,1292.68,59341416,1566892032,multilingual-e5-small,fixedSize,256,15
+open-eval,cli,semantic,all,90,10,0.7043,0.7561,0.6343,25.32,53.48,902,12782,1292.68,59341416,1566892032,multilingual-e5-small,fixedSize,256,15
+open-eval,cli,semantic,exact,30,10,0.8833,0.9093,0.8537,24.52,73.06,902,12782,1292.68,59341416,1566892032,multilingual-e5-small,fixedSize,256,15
+open-eval,cli,semantic,paraphrase,30,10,0.5583,0.3590,0.3686,23.13,53.48,902,12782,1292.68,59341416,1566892032,multilingual-e5-small,fixedSize,256,15
+open-eval,cli,semantic,crossLingual,30,10,0.6711,1.0000,0.6805,30.91,45.62,902,12782,1292.68,59341416,1566892032,multilingual-e5-small,fixedSize,256,15
+open-eval,cli,hybrid,all,90,10,0.6663,0.7573,0.6011,36.55,107.70,902,12782,1292.68,59341416,1566892032,multilingual-e5-small,fixedSize,256,15
+open-eval,cli,hybrid,exact,30,10,0.9333,1.0000,0.9487,32.33,94.80,902,12782,1292.68,59341416,1566892032,multilingual-e5-small,fixedSize,256,15
+open-eval,cli,hybrid,paraphrase,30,10,0.5167,0.2887,0.2967,39.99,114.41,902,12782,1292.68,59341416,1566892032,multilingual-e5-small,fixedSize,256,15
+open-eval,cli,hybrid,crossLingual,30,10,0.5490,0.9833,0.5579,45.50,107.46,902,12782,1292.68,59341416,1566892032,multilingual-e5-small,fixedSize,256,15
