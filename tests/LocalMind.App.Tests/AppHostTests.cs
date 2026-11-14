@@ -215,10 +215,61 @@ public sealed class AppHostTests : IDisposable
         Assert.NotNull(status.Error);
     }
 
+    [Fact]
+    public async Task Stop_StopsIndexingBeforeServicesAreDisposed()
+    {
+        var indexing = new DisposableIndexing();
+        var builder = AppHost.CreateBuilder([], SettingsPath);
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            [$"{StorageOptions.SectionName}:{nameof(StorageOptions.DatabasePath)}"] = Path.Combine(_folder, "app.db"),
+        });
+        builder.Services.AddSingleton<IIndexingService>(indexing);
+        using var host = builder.Build();
+
+        await host.StartAsync();
+        await host.Services.GetRequiredService<CoreStatus>().Completion.WaitAsync(StartupTimeout);
+        await host.StopAsync();
+
+        // Хост ще не звільнений, а індексація вже зупинена: файл у роботі не звернеться до звільненої бази.
+        Assert.True(indexing.IsDisposed);
+    }
+
     public void Dispose()
     {
         SqliteConnection.ClearAllPools();
         Directory.Delete(_folder, recursive: true);
+    }
+
+    /// <summary>Індексація, що запам'ятовує <see cref="IDisposable.Dispose"/>, як справжній IndexingService.</summary>
+    private sealed class DisposableIndexing : IIndexingService, IDisposable
+    {
+        private readonly FakeIndexingService _inner = new();
+
+        public bool IsDisposed { get; private set; }
+
+        public IndexingProgress Progress => _inner.Progress;
+
+        public event EventHandler<IndexingProgress>? ProgressChanged
+        {
+            add => _inner.ProgressChanged += value;
+            remove => _inner.ProgressChanged -= value;
+        }
+
+        public Task<IReadOnlyList<string>> GetFoldersAsync(CancellationToken cancellationToken = default) =>
+            _inner.GetFoldersAsync(cancellationToken);
+
+        public Task AddFolderAsync(string path, CancellationToken cancellationToken = default) =>
+            _inner.AddFolderAsync(path, cancellationToken);
+
+        public Task RemoveFolderAsync(string path, CancellationToken cancellationToken = default) =>
+            _inner.RemoveFolderAsync(path, cancellationToken);
+
+        public Task RescanAsync(CancellationToken cancellationToken = default) => _inner.RescanAsync(cancellationToken);
+
+        public void CancelPending() => _inner.CancelPending();
+
+        public void Dispose() => IsDisposed = true;
     }
 
     private IHost BuildHost(string databasePath)
