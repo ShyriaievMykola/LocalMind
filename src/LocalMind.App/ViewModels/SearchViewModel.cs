@@ -179,7 +179,10 @@ public sealed partial class SearchViewModel : ViewModelBase
         var previous = _searchCancellation;
         using var request = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _searchCancellation = request;
-        previous?.Cancel();
+        if (previous is not null)
+        {
+            await previous.CancelAsync();
+        }
 
         IsSearching = false;
         ErrorMessage = null;
@@ -332,7 +335,7 @@ public sealed partial class SearchViewModel : ViewModelBase
     {
         try
         {
-            await _history.ClearAsync();
+            await _history.ClearAsync(CancellationToken.None);
         }
         catch (Exception exception)
         {
@@ -383,7 +386,7 @@ public sealed partial class SearchViewModel : ViewModelBase
     {
         try
         {
-            await _history.AddAsync(query);
+            await _history.AddAsync(query, CancellationToken.None);
         }
         catch (Exception exception)
         {

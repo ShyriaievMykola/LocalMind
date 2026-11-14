@@ -116,7 +116,11 @@ public sealed partial class ResultCardViewModel : ViewModelBase
         using var request = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var previous = _contextCancellation;
         _contextCancellation = request;
-        previous?.Cancel();
+        if (previous is not null)
+        {
+            await previous.CancelAsync();
+        }
+
         ContextError = null;
         ContextChunks = [];
         IsContextLoading = true;

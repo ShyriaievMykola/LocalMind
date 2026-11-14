@@ -123,7 +123,7 @@ public sealed class PdfParser : IDocumentParser
                 throw TooLarge();
             }
 
-            destination.Write(buffer, 0, read);
+            await destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
         }
     }
 

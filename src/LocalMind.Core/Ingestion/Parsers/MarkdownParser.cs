@@ -87,7 +87,7 @@ public sealed class MarkdownParser : IDocumentParser
 
             case HtmlBlock htmlBlock:
                 var rawHtml = htmlBlock.Lines.ToString();
-                var strippedHtml = Regex.Replace(rawHtml, "<.*?>", string.Empty);
+                var strippedHtml = Regex.Replace(rawHtml, "<[^>]*>", string.Empty, RegexOptions.None, TimeSpan.FromSeconds(1));
                 if (!string.IsNullOrWhiteSpace(strippedHtml))
                 {
                     EnsureNewLine(builder);

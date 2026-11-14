@@ -282,7 +282,7 @@ def wiki_headings_to_markdown(text: str) -> str:
         level = len(match.group(1))
         return "#" * min(level, 6) + " " + match.group(2).strip()
 
-    return re.sub(r"^(={2,6})\s*(.+?)\s*\1\s*$", replace, text, flags=re.MULTILINE)
+    return re.sub(r"^(={2,6})(.+)\1[ \t]*$", replace, text, flags=re.MULTILINE)
 
 
 def truncate_text(text: str, limit: int) -> str:
@@ -372,7 +372,7 @@ def html_to_text(html: str) -> str:
     parser.feed(html)
     parser.close()
     text = "".join(parser.parts)
-    text = re.sub(r"[ ]+\n", "\n", text)
+    text = "\n".join(line.rstrip(" ") for line in text.split("\n"))
     text = re.sub(r"\n[ ]+", "\n", text) if "```" not in text else text
     return normalize_text(text)
 

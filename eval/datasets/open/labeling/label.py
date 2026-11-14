@@ -322,7 +322,7 @@ def command_index(args: argparse.Namespace) -> int:
     return process.returncode
 
 
-RESULT_LINE = re.compile(r"^\s*(\d+)\.\s+\[(-?[\d.]+)\]\s+(.+?)\s*$")
+RESULT_LINE = re.compile(r"^\s*(\d+)\.\s+\[(-?[\d.]+)\]\s+(\S.*)$")
 
 
 def parse_search_output(output: str, corpus_root: Path) -> list[dict]:
@@ -334,7 +334,7 @@ def parse_search_output(output: str, corpus_root: Path) -> list[dict]:
         match = RESULT_LINE.match(line)
         if not match:
             continue
-        path = Path(match.group(3))
+        path = Path(match.group(3).rstrip())
         try:
             relative = path.resolve().relative_to(root).as_posix()
         except ValueError:
