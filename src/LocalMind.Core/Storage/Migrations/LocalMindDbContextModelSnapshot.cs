@@ -41,7 +41,11 @@ namespace LocalMind.Core.Storage.Migrations
                     b.HasIndex("DocumentId", "Ordinal")
                         .IsUnique();
 
-                    b.ToTable("Chunks");
+                    b.ToTable("Chunks", t =>
+                        {
+                        t.HasCheckConstraint("CK_Chunks_Ordinal", "\"Ordinal\" >= 0");
+                        t.HasCheckConstraint("CK_Chunks_StartOffset", "\"StartOffset\" >= 0");
+                        });
                 });
 
             modelBuilder.Entity("LocalMind.Core.Storage.Entities.DocumentEntity", b =>
@@ -74,7 +78,10 @@ namespace LocalMind.Core.Storage.Migrations
                     b.HasIndex("Path")
                         .IsUnique();
 
-                    b.ToTable("Documents");
+                    b.ToTable("Documents", t =>
+                        {
+                        t.HasCheckConstraint("CK_Documents_Status", "\"Status\" IN ('Indexed', 'Empty', 'NoText', 'Error')");
+                        });
                 });
 
             modelBuilder.Entity("LocalMind.Core.Storage.Entities.EmbeddingEntity", b =>
@@ -93,7 +100,10 @@ namespace LocalMind.Core.Storage.Migrations
 
                     b.HasIndex("ModelId");
 
-                    b.ToTable("Embeddings");
+                    b.ToTable("Embeddings", t =>
+                        {
+                        t.HasCheckConstraint("CK_Embeddings_Vector", "length(\"Vector\") > 0 AND length(\"Vector\") % 4 = 0");
+                        });
                 });
 
             modelBuilder.Entity("LocalMind.Core.Storage.Entities.EmbeddingModelEntity", b =>
@@ -111,7 +121,10 @@ namespace LocalMind.Core.Storage.Migrations
                     b.HasIndex("Name")
                         .IsUnique();
 
-                    b.ToTable("EmbeddingModels");
+                    b.ToTable("EmbeddingModels", t =>
+                        {
+                        t.HasCheckConstraint("CK_EmbeddingModels_Name", "length(trim(\"Name\")) > 0");
+                        });
                 });
 
             modelBuilder.Entity("LocalMind.Core.Storage.Entities.SourceFolderEntity", b =>
@@ -121,7 +134,10 @@ namespace LocalMind.Core.Storage.Migrations
 
                     b.HasKey("Path");
 
-                    b.ToTable("SourceFolders");
+                    b.ToTable("SourceFolders", t =>
+                        {
+                        t.HasCheckConstraint("CK_SourceFolders_Path", "length(trim(\"Path\")) > 0");
+                        });
                 });
 
             modelBuilder.Entity("LocalMind.Core.Storage.Entities.ChunkEntity", b =>

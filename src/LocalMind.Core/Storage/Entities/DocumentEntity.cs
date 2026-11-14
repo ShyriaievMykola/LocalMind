@@ -28,6 +28,7 @@ public sealed class DocumentEntityConfiguration : IEntityTypeConfiguration<Docum
     /// <inheritdoc />
     public void Configure(EntityTypeBuilder<DocumentEntity> builder)
     {
+        builder.ToTable(table => table.HasCheckConstraint(StorageChecks.DocumentStatusName, StorageChecks.DocumentStatus));
         builder.HasKey(d => d.Id);
         builder.HasIndex(d => d.Path).IsUnique();
         builder.Property(d => d.ContentHash).HasMaxLength(Document.ContentHashLength);

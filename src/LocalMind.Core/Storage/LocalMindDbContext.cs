@@ -20,7 +20,11 @@ public sealed class LocalMindDbContext(DbContextOptions<LocalMindDbContext> opti
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        modelBuilder.Entity<SourceFolderEntity>().HasKey(f => f.Path);
+        modelBuilder.Entity<SourceFolderEntity>(folder =>
+        {
+            folder.HasKey(f => f.Path);
+            folder.ToTable(table => table.HasCheckConstraint(StorageChecks.SourceFolderPathName, StorageChecks.SourceFolderPath));
+        });
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(LocalMindDbContext).Assembly);
     }
 }

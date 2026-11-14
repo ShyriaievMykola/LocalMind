@@ -17,6 +17,7 @@ public sealed class EmbeddingModelEntityConfiguration : IEntityTypeConfiguration
     /// <inheritdoc />
     public void Configure(EntityTypeBuilder<EmbeddingModelEntity> builder)
     {
+        builder.ToTable(table => table.HasCheckConstraint(StorageChecks.EmbeddingModelNameName, StorageChecks.EmbeddingModelName));
         builder.HasKey(m => m.Id);
         builder.HasIndex(m => m.Name).IsUnique();
     }

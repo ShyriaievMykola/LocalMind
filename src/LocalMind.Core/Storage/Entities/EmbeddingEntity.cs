@@ -24,6 +24,7 @@ public sealed class EmbeddingEntityConfiguration : IEntityTypeConfiguration<Embe
     /// <inheritdoc />
     public void Configure(EntityTypeBuilder<EmbeddingEntity> builder)
     {
+        builder.ToTable(table => table.HasCheckConstraint(StorageChecks.EmbeddingVectorName, StorageChecks.EmbeddingVector));
         builder.HasKey(e => new { e.ChunkId, e.ModelId });
         builder.HasIndex(e => e.ModelId);
         builder.HasOne(e => e.Chunk)
