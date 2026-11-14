@@ -97,8 +97,8 @@ public sealed partial class IndexingService : IIndexingService, IDisposable
         _retryDelay = delay;
         _limits = ingestionOptions?.Value ?? new IngestionOptions();
 
-        _processing = Task.Run(() => ProcessQueueAsync(_shutdown.Token), _shutdown.Token);
-        _watching = Task.Run(() => ConsumeWatcherAsync(_shutdown.Token), _shutdown.Token);
+        _processing = Task.Run(() => ProcessQueueAsync(_shutdown.Token), CancellationToken.None);
+        _watching = Task.Run(() => ConsumeWatcherAsync(_shutdown.Token), CancellationToken.None);
     }
 
     /// <inheritdoc />
