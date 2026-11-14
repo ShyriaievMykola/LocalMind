@@ -93,6 +93,52 @@ public sealed class UnhandledErrorReporterTests
         Assert.Equal(0, _dispatcher.PendingCount);
     }
 
+    [Fact]
+    public void Report_WithCrashReportStore_WritesCrashReportFile()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+        try
+        {
+            var reporter = new UnhandledErrorReporter(_dispatcher, _logger, new CrashReportStore(folder));
+
+            reporter.Report(new InvalidOperationException("збій у вікні"), "UI-потік");
+
+            var report = Assert.Single(Directory.GetFiles(folder, "crash-*.txt"));
+            var text = File.ReadAllText(report);
+            Assert.Contains("Джерело:   UI-потік", text, StringComparison.Ordinal);
+            Assert.Contains("збій у вікні", text, StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (Directory.Exists(folder))
+            {
+                Directory.Delete(folder, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void Log_LoggerThrows_CrashReportStillWritten()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+        try
+        {
+            _logger.ThrowOnLog = true;
+            var reporter = new UnhandledErrorReporter(_dispatcher, _logger, new CrashReportStore(folder));
+
+            reporter.Log(new InvalidOperationException("збій"), "домен застосунку");
+
+            Assert.Single(Directory.GetFiles(folder, "crash-*.txt"));
+        }
+        finally
+        {
+            if (Directory.Exists(folder))
+            {
+                Directory.Delete(folder, recursive: true);
+            }
+        }
+    }
+
     private sealed class CapturingLogger : ILogger<UnhandledErrorReporter>
     {
         public List<(LogLevel Level, Exception? Exception)> Entries { get; } = [];

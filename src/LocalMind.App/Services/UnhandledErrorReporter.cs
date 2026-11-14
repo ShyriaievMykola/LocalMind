@@ -5,9 +5,13 @@ namespace LocalMind.App.Services;
 /// <summary>
 /// Приймає необроблені винятки: пише їх у лог і повідомляє UI, щоб показати користувачу, що сталася помилка.
 /// Може викликатися з будь-якого потоку; подія <see cref="Reported"/> завжди приходить у UI-потоці.
+/// Кожен виняток іде і в журнал, і в окремий звіт про аварію (<see cref="CrashReportStore"/>), якщо його передано.
 /// Сам обробник помилок ніколи не кидає винятків.
 /// </summary>
-public sealed partial class UnhandledErrorReporter(IUiDispatcher dispatcher, ILogger<UnhandledErrorReporter> logger)
+public sealed partial class UnhandledErrorReporter(
+    IUiDispatcher dispatcher,
+    ILogger<UnhandledErrorReporter> logger,
+    CrashReportStore? crashReports = null)
 {
     /// <summary>Текст для користувача: без технічних деталей, які він не зможе використати.</summary>
     public const string UserMessage = "Сталася неочікувана помилка, але застосунок продовжує працювати. Подробиці записано в лог.";
@@ -28,6 +32,15 @@ public sealed partial class UnhandledErrorReporter(IUiDispatcher dispatcher, ILo
         catch (Exception)
         {
             // Збій логера не повинен перетворити обробку помилки на нову помилку.
+        }
+
+        try
+        {
+            crashReports?.TryWrite(exception, source);
+        }
+        catch (Exception)
+        {
+            // Те саме для звіту про аварію: TryWrite сам ловить помилки диска, це запас на непередбачене.
         }
     }
 

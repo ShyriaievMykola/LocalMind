@@ -2,10 +2,12 @@ using Microsoft.Extensions.Configuration;
 using LocalMind.App.ViewModels;
 using LocalMind.Core;
 using LocalMind.Core.Configuration;
+using LocalMind.Core.Diagnostics;
 using LocalMind.Search;
 using LocalMind.Search.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace LocalMind.App.Services;
 
@@ -65,6 +67,11 @@ public static class AppHost
         builder.Services.AddSingleton<AppRestartState>();
         builder.Services.AddTransient<IAccountClient, BackupAccountClient>();
         builder.Services.AddTransient<IBackupOperations, BackupOperations>();
+        // Журнал (попередження й помилки) і звіти про аварії — у logs/ поруч із налаштуваннями: у GUI немає консолі,
+        // тож без файла після прогону не видно, чи були збої.
+        var logsDirectory = Path.Combine(Path.GetDirectoryName(settingsFile.Path)!, "logs");
+        builder.Services.AddSingleton<ILoggerProvider>(_ => new FileLoggerProvider(logsDirectory, "app"));
+        builder.Services.AddSingleton(new CrashReportStore(logsDirectory));
         builder.Services.AddSingleton<UnhandledErrorReporter>();
         builder.Services.AddHostedService<CoreStartup>();
         builder.Services.AddSingleton<IFileLauncher, SystemFileLauncher>();
