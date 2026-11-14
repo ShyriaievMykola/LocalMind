@@ -39,11 +39,11 @@ FORBIDDEN_RUSSIAN_LETTERS = set("ыэъёЫЭЪЁ")  # їх немає в укр
 
 STOP_WORDS: dict[str, set[str]] = {
     "en": set("the a an of and or to in on at by for with from as is are was were be been this that these those it its "
-              "which who whom what when where why how not no but if then than so such into over under about between while during "
+              "which who whom what when where why how not no but if then than so such into over under about between while during like many much more most some any each other own same very just only earlier later rather another whereas"
               "their there they them his her he she we you your our can could would should will may might also".split()),
     "uk": set("і й та а але або що це той ця ці як у в на з із до від по за при про для без між під над не ні чи "
               "є був була були буде також його її їх вони він вона воно ми ви ти я так тільки вже ще дуже де коли "
-              "яка який які яке цей ця цього".split()),
+              "яка який які яке цей ця цього через після перед поблизу якому якого якій якої свою свій свого своє своя свої його вони можуть може бути буде мати таке таку тому тоді поки якщо тощо навіть лише тільки".split()),
     "de": set("der die das ein eine einer eines und oder zu in im auf an bei für mit von aus als ist sind war waren "
               "wird werden nicht kein aber wenn dann dass sich auch es er sie wir ihr ich den dem des durch über "
               "unter nach vor".split()),
@@ -52,7 +52,7 @@ STOP_WORDS: dict[str, set[str]] = {
               "oraz lub albo ale że się".split()),
     "fr": set("le la les un une des de du et ou à au aux en dans sur par pour avec sans sous entre est sont était "
               "étaient être ne pas qui que quoi dont où ce cet cette ces il elle ils elles nous vous je tu on se "
-              "son sa ses leur leurs mais si comme aussi".split()),
+              "son sa ses leur leurs mais si comme aussi loin très plus moins bien tout tous toute toutes même autre autres dont lors alors".split()),
     "es": set("el la los las un una unos unas de del y o a al en por para con sin sobre entre es son era eran ser "
               "no que quien cual donde cuando como este esta estos estas ese esa su sus se lo le les más muy también "
               "pero si".split()),
