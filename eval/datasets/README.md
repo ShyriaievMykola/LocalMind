@@ -74,6 +74,13 @@ dotnet run --project src/LocalMind.Cli -c Release -- eval --dataset eval/dataset
 Корпус індексується один раз на весь файл; налаштування нарізки й моделі змінюються через `appsettings.json` або змінні
 оточення `LocalMind__Chunking__...` / `LocalMind__Embedding__...` між запусками.
 
+## Відкритий корпус для досліджень
+
+[`open/`](open) — великий багатомовний корпус реальних відкритих текстів (Вікіпедія, Wikivoyage, Cookbook, Gutenberg, Вікіджерела,
+Stack Exchange; uk, en, de, pl, fr, es, it; md, txt, docx, pdf). Тексти в Git не лежать: їх збирає `open/build_corpus.py`
+з офіційних API, а `open/manifest.jsonl` описує кожен документ (мова, джерело, URL, ліцензія, тема, sha256). Докладніше — в
+[`open/README.md`](open/README.md). Запитів і розмітки там поки немає, тож `eval` на ньому ще не запускається.
+
 ## Приватність
 
 У Git — лише відкриті або власноруч написані тексти. **Особисті нотатки, листування, документи з іменами, адресами,
