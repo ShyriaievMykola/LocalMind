@@ -64,7 +64,8 @@ internal static class RecallReport
 
         Console.WriteLine($"Прочитано {total} векторів");
         var order = Enumerable.Range(0, total).ToArray();
-        new Random(7).Shuffle(order);
+        // Детерміноване перемішування для відтворюваного бенчмарку, не криптографія.
+        new Random(7).Shuffle(order); // NOSONAR S2245
         var queries = order.Take(QueryCount).Select(i => all[i]).ToArray();
         var pool = order.Skip(QueryCount).ToArray();
 
