@@ -67,6 +67,17 @@ internal sealed partial class CoreStartup(
         }
     }
 
+    /// <summary>
+    /// Зупиняє фонову індексацію разом з хостом, поки сервіси ще живі. Інакше контейнер при звільненні
+    /// прибирає EF раніше, ніж індексація скасує поточний файл, і в журнал потрапляють
+    /// <see cref="ObjectDisposedException"/> та «Не вдалося зберегти статус помилки» (#205).
+    /// </summary>
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        await base.StopAsync(cancellationToken);
+        (indexing as IDisposable)?.Dispose();
+    }
+
     [LoggerMessage(Level = LogLevel.Error, Message = "Не вдалося підготувати базу даних")]
     private static partial void LogStorageFailed(ILogger logger, Exception exception);
 
